@@ -1,0 +1,5 @@
+pip install -U streamlit llama-index llama-index-llms-ollama llama-index-embeddings-ollama ollama pydantic pytest ddgs
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+ollama serve
+streamlit run app.py
