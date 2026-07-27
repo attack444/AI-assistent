@@ -1,0 +1,36 @@
+Сделай так.
+# requirements.txt
+streamlit
+llama-index-core
+llama-index-llms-ollama
+llama-index-embeddings-ollama
+ollama
+pydantic
+pytest
+ddgs
+Потом выполни именно эти команды:
+python --version
+Если версия ниже 3.10, поставь Python 3.10+.
+python -m venv .venv
+Активируй окружение:
+# macOS / Linux
+source .venv/bin/activate
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+Обнови инструменты установки и поставь зависимости:
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+Если нужно проверить по одному пакету, ставь так:
+python -m pip install streamlit
+python -m pip install llama-index-core
+python -m pip install llama-index-llms-ollama
+python -m pip install llama-index-embeddings-ollama
+python -m pip install ollama
+python -m pip install ddgs
+После установки запусти Ollama и скачай модели. Официальная интеграция LlamaIndex с Ollama использует ollama serve, а модели подтягиваются командой ollama pull ....
+ollama serve
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+И затем сам интерфейс:
+streamlit run app.py
+Если снова упадёт, пришли сюда первые 10–20 строк ошибки из терминала — по ни
