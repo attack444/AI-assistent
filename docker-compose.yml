@@ -1,0 +1,28 @@
+# docker-compose.yml
+
+services:
+ollama:
+image: ollama/ollama:latest
+container_name: ai-helper-ollama
+ports:
+- "11434:11434"
+volumes:
+- ollama_data:/root/.ollama
+restart: unless-stopped
+
+app:
+build: .
+container_name: ai-helper-app
+ports:
+- "8501:8501"
+environment:
+- OLLAMA_HOST=http://ollama:11434
+- STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+depends_on:
+- ollama
+volumes:
+- ./:/app
+restart: unless-stopped
+
+volumes:
+ollama_data:
