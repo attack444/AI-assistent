@@ -8,6 +8,10 @@ from typing import Optional
 import streamlit as st
 
 from core import (
+    DEFAULT_EMBED_MODEL,
+    DEFAULT_LLM_MODEL,
+    DEFAULT_OLLAMA_HOST,
+    REQUIRED_OLLAMA_MODELS,
     EditPlan,
     OllamaStatus,
     answer_with_web,
@@ -21,13 +25,16 @@ from core import (
     delete_project,
     ensure_dirs,
     get_index_info,
+    get_missing_models,
     load_configured_index,
     load_history,
     load_projects,
     ollama_serve_error_hint,
+    pull_ollama_models,
     query_project,
     register_project,
     save_history_entry,
+    try_start_ollama,
     web_search_news,
     web_search_text,
 )
@@ -76,21 +83,50 @@ with st.sidebar:
     st.divider()
     st.header("⚙️ Модель")
 
-    default_ollama_host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    llm_model = st.text_input("LLM", value="llama3.1:8b")
-    embed_model = st.text_input("Embeddings", value="nomic-embed-text")
+    default_ollama_host = os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_HOST)
+    llm_model = st.text_input("LLM", value=DEFAULT_LLM_MODEL)
+    embed_model = st.text_input("Embeddings", value=DEFAULT_EMBED_MODEL)
     ollama_host = st.text_input("Ollama host", value=default_ollama_host)
 
-    ollama_status: OllamaStatus = check_ollama_status(ollama_host)
+    if "ollama_status" not in st.session_state:
+        st.session_state["ollama_status"] = check_ollama_status(ollama_host)
+
+    col_o1, col_o2 = st.columns(2)
+    with col_o1:
+        if st.button("🔄 Проверить Ollama", use_container_width=True):
+            st.session_state["ollama_status"] = check_ollama_status(ollama_host)
+    with col_o2:
+        if st.button("▶ Запустить Ollama", use_container_width=True):
+            with st.spinner("Запускаю Ollama..."):
+                started = try_start_ollama(ollama_host)
+            st.session_state["ollama_status"] = check_ollama_status(ollama_host)
+            if started:
+                st.success("Ollama запущен")
+            else:
+                st.warning("Не удалось запустить автоматически. Установи Ollama с ollama.com")
+
+    ollama_status: OllamaStatus = st.session_state["ollama_status"]
     if ollama_status.reachable:
         st.success(ollama_status.message)
-        if ollama_status.models:
+        missing = get_missing_models(REQUIRED_OLLAMA_MODELS, ollama_status.models)
+        if missing:
+            st.warning(f"Не хватает моделей: {', '.join(missing)}")
+            if st.button(f"⬇ Скачать модели ({len(missing)})", use_container_width=True):
+                with st.spinner("Скачиваю модели — это может занять несколько минут..."):
+                    ok, failed = pull_ollama_models(missing, ollama_host)
+                st.session_state["ollama_status"] = check_ollama_status(ollama_host)
+                if ok:
+                    st.success(f"Скачано: {', '.join(ok)}")
+                if failed:
+                    st.error("\n".join(failed))
+                st.rerun()
+        elif ollama_status.models:
             with st.expander("Установленные модели"):
                 for m in ollama_status.models:
                     st.text(m)
     else:
         st.error(ollama_status.message)
-        with st.expander("Ошибка «порт 11434 занят» при ollama serve?"):
+        with st.expander("Ошибка «порт 11434 занят»?"):
             st.info(ollama_serve_error_hint())
 
     context_window = st.number_input("Context window", value=64000, step=1024)

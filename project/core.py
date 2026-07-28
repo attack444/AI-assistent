@@ -58,6 +58,11 @@ MAX_CONTENT_CHARS_PER_FILE = 20_000
 MAX_BACKUP_KEEP_DAYS = 14
 MAX_HISTORY_ENTRIES = 500
 
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_LLM_MODEL = "llama3.1:8b"
+DEFAULT_EMBED_MODEL = "nomic-embed-text"
+REQUIRED_OLLAMA_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_EMBED_MODEL]
+
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -322,7 +327,7 @@ def check_ollama_status(
             reachable=True,
             message=(
                 "Ollama работает, но модели не установлены. "
-                "Выполни: ollama pull llama3.1:8b && ollama pull nomic-embed-text"
+                "Нажми «Скачать модели» в боковой панели."
             ),
             models=[],
             already_running=True,
@@ -331,8 +336,8 @@ def check_ollama_status(
         return OllamaStatus(
             reachable=False,
             message=(
-                "Ollama не отвечает. Запусти Ollama Desktop (Windows/macOS) "
-                "или выполни «ollama serve» в отдельном терминале."
+                "Ollama не отвечает. Нажми «Запустить Ollama» в боковой панели "
+                "или перезапусти START.bat."
             ),
             models=[],
             already_running=False,
@@ -350,9 +355,106 @@ def ollama_serve_error_hint() -> str:
     """Подсказка при ошибке «bind: address already in use» на порту 11434."""
     return (
         "Ошибка «bind: address already in use» на порту 11434 означает, что Ollama **уже запущен** "
-        "(обычно через Ollama Desktop). Повторно выполнять `ollama serve` **не нужно** — "
-        "просто используй приложение. Проверка: `ollama list` или открой http://localhost:11434."
+        "(обычно через Ollama Desktop). Повторно запускать **не нужно** — "
+        "нажми кнопку «Проверить Ollama» или перезапусти START.bat."
     )
+
+
+def model_is_installed(required: str, installed: List[str]) -> bool:
+    base = required.split(":")[0]
+    for name in installed:
+        if name == required or name.startswith(f"{required}:") or name.startswith(f"{base}:"):
+            return True
+    return False
+
+
+def get_missing_models(
+    required: List[str],
+    installed: List[str],
+) -> List[str]:
+    return [m for m in required if not model_is_installed(m, installed)]
+
+
+def try_start_ollama(
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+    wait_seconds: int = 45,
+) -> bool:
+    """Попытаться запустить Ollama Desktop / ollama serve."""
+    import platform
+
+    if check_ollama_status(ollama_host).reachable:
+        return True
+
+    system = platform.system()
+
+    if system == "Windows":
+        candidates = [
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "Ollama.exe",
+            Path("C:/Program Files/Ollama/Ollama.exe"),
+        ]
+        exe = next((p for p in candidates if p.exists()), None)
+        if not exe:
+            return False
+        flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+        subprocess.Popen(
+            [str(exe)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+        )
+    elif system == "Darwin":
+        subprocess.Popen(
+            ["open", "-a", "Ollama"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        ollama_bin = shutil_which("ollama")
+        if not ollama_bin:
+            return False
+        subprocess.Popen(
+            [ollama_bin, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    for _ in range(wait_seconds):
+        time.sleep(1)
+        if check_ollama_status(ollama_host).reachable:
+            return True
+    return check_ollama_status(ollama_host).reachable
+
+
+def pull_ollama_models(
+    models: List[str],
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
+) -> Tuple[List[str], List[str]]:
+    """Скачать модели через ollama CLI. Возвращает (успешные, ошибки)."""
+    ok: List[str] = []
+    failed: List[str] = []
+
+    ollama_bin = shutil_which("ollama")
+    if not ollama_bin:
+        return [], [f"ollama CLI не найден — установи Ollama с https://ollama.com"]
+
+    for model in models:
+        try:
+            proc = subprocess.run(
+                [ollama_bin, "pull", model],
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
+            if proc.returncode == 0:
+                ok.append(model)
+            else:
+                failed.append(f"{model}: {proc.stderr or proc.stdout or 'unknown error'}")
+        except subprocess.TimeoutExpired:
+            failed.append(f"{model}: превышено время ожидания")
+        except Exception as exc:
+            failed.append(f"{model}: {exc}")
+
+    return ok, failed
 
 
 # ---------------------------------------------------------------------------
