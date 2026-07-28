@@ -49,23 +49,39 @@ source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### 2. Установи и запусти Ollama
+### 2. Установи Ollama
 
-Скачай с [ollama.com](https://ollama.com), затем:
+Скачай с [ollama.com](https://ollama.com) и установи. На Windows/macOS Ollama Desktop **запускается автоматически** — отдельно выполнять `ollama serve` **не нужно**.
+
+Скачай модели:
 
 ```bash
-ollama serve
 ollama pull llama3.1:8b
 ollama pull nomic-embed-text
 ```
 
 ### 3. Запусти интерфейс
 
+**Windows (PowerShell):**
+
+```powershell
+.\run.ps1
+```
+
+**Linux / macOS:**
+
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+**Или вручную:**
+
 ```bash
 streamlit run app.py
 ```
 
-Откроется `http://localhost:8501`
+Откроется `http://localhost:8501` — **без** приветственного окна с полем Email (настроено в `.streamlit/config.toml`).
 
 ---
 
@@ -153,3 +169,39 @@ HTML, CSS, SCSS, SQL, Bash, PowerShell, Dockerfile, YAML, TOML, JSON и друг
 * Держи тесты в проекте — ассистент их запустит автоматически после правок.
 * Включи `git init` в проекте, чтобы `git apply` работал корректно.
 * Используй модели побольше (например, `llama3.1:70b`) для сложных задач.
+
+---
+
+## Решение частых проблем
+
+### При запуске Streamlit появляется окно с полем Email
+
+Это стандартное приветствие Streamlit. В проекте оно **отключено** через `.streamlit/config.toml`:
+
+```toml
+[server]
+showEmailPrompt = false
+
+[browser]
+gatherUsageStats = false
+```
+
+Запускай через `run.ps1` (Windows) или `run.sh` (Linux/macOS) — скрипты также выставляют нужные переменные окружения.
+
+Если окно всё равно появляется, обнови Streamlit:
+
+```bash
+pip install -U streamlit
+```
+
+### Ошибка `ollama serve`: `bind: address already in use` на порту 11434
+
+**Это не ошибка приложения** — Ollama **уже запущен** (обычно через Ollama Desktop в фоне).
+
+Что делать:
+
+1. **Ничего** — повторно `ollama serve` не нужен.
+2. Проверь, что Ollama работает: `ollama list` или открой http://localhost:11434
+3. В боковой панели приложения должен быть зелёный статус «Ollama работает».
+
+Запускать `ollama serve` нужно только если Ollama Desktop **не установлен** (например, только CLI на Linux без systemd-сервиса).

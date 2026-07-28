@@ -75,6 +75,14 @@ class EditResult:
     errors: str
 
 
+@dataclass
+class OllamaStatus:
+    reachable: bool
+    message: str
+    models: List[str] = field(default_factory=list)
+    already_running: bool = False
+
+
 class PatchItem(BaseModel):
     path: str
     reason: str
@@ -280,6 +288,71 @@ def parse_model_json(model_cls: Type[T], raw: str) -> T:
     if hasattr(model_cls, "model_validate_json"):
         return model_cls.model_validate_json(raw)
     return model_cls.parse_raw(raw)
+
+
+# ---------------------------------------------------------------------------
+# Ollama health check
+# ---------------------------------------------------------------------------
+
+def check_ollama_status(
+    ollama_host: str = "http://localhost:11434",
+    timeout: float = 3.0,
+) -> OllamaStatus:
+    """Проверить доступность Ollama API."""
+    import urllib.error
+    import urllib.request
+
+    base = ollama_host.rstrip("/")
+    url = f"{base}/api/tags"
+
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        models = [str(m.get("name", "")) for m in data.get("models", []) if m.get("name")]
+        if models:
+            return OllamaStatus(
+                reachable=True,
+                message=f"Ollama работает ({len(models)} моделей). Команду «ollama serve» запускать не нужно.",
+                models=models,
+                already_running=True,
+            )
+        return OllamaStatus(
+            reachable=True,
+            message=(
+                "Ollama работает, но модели не установлены. "
+                "Выполни: ollama pull llama3.1:8b && ollama pull nomic-embed-text"
+            ),
+            models=[],
+            already_running=True,
+        )
+    except urllib.error.URLError:
+        return OllamaStatus(
+            reachable=False,
+            message=(
+                "Ollama не отвечает. Запусти Ollama Desktop (Windows/macOS) "
+                "или выполни «ollama serve» в отдельном терминале."
+            ),
+            models=[],
+            already_running=False,
+        )
+    except Exception as exc:
+        return OllamaStatus(
+            reachable=False,
+            message=f"Не удалось подключиться к Ollama: {exc}",
+            models=[],
+            already_running=False,
+        )
+
+
+def ollama_serve_error_hint() -> str:
+    """Подсказка при ошибке «bind: address already in use» на порту 11434."""
+    return (
+        "Ошибка «bind: address already in use» на порту 11434 означает, что Ollama **уже запущен** "
+        "(обычно через Ollama Desktop). Повторно выполнять `ollama serve` **не нужно** — "
+        "просто используй приложение. Проверка: `ollama list` или открой http://localhost:11434."
+    )
 
 
 # ---------------------------------------------------------------------------

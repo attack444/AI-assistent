@@ -9,10 +9,12 @@ import streamlit as st
 
 from core import (
     EditPlan,
+    OllamaStatus,
     answer_with_web,
     apply_edit_plan,
     ask_llm_for_patch_plan,
     build_index,
+    check_ollama_status,
     choose_candidates,
     cleanup_old_backups,
     clear_history,
@@ -22,6 +24,7 @@ from core import (
     load_configured_index,
     load_history,
     load_projects,
+    ollama_serve_error_hint,
     query_project,
     register_project,
     save_history_entry,
@@ -77,6 +80,19 @@ with st.sidebar:
     llm_model = st.text_input("LLM", value="llama3.1:8b")
     embed_model = st.text_input("Embeddings", value="nomic-embed-text")
     ollama_host = st.text_input("Ollama host", value=default_ollama_host)
+
+    ollama_status: OllamaStatus = check_ollama_status(ollama_host)
+    if ollama_status.reachable:
+        st.success(ollama_status.message)
+        if ollama_status.models:
+            with st.expander("Установленные модели"):
+                for m in ollama_status.models:
+                    st.text(m)
+    else:
+        st.error(ollama_status.message)
+        with st.expander("Ошибка «порт 11434 занят» при ollama serve?"):
+            st.info(ollama_serve_error_hint())
+
     context_window = st.number_input("Context window", value=64000, step=1024)
     top_k = st.number_input("Top K (поиск)", value=5, step=1, min_value=1, max_value=20)
     chunk_size = st.number_input("Chunk size", value=1024, step=128)
