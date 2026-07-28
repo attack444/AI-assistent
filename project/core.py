@@ -7,9 +7,8 @@ import os
 import subprocess
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 
@@ -33,6 +32,7 @@ APP_DIR = Path.home() / ".ai-helper"
 PROJECTS_FILE = APP_DIR / "projects.json"
 INDICES_DIR = APP_DIR / "indices"
 BACKUPS_DIR = APP_DIR / "backups"
+HISTORY_FILE = APP_DIR / "history.json"
 
 INDEX_EXTENSIONS = {
     ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx",
@@ -42,6 +42,8 @@ INDEX_EXTENSIONS = {
     ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".env",
     ".md", ".txt", ".rst", ".sql", ".sh", ".bash", ".zsh", ".ps1",
     ".xml", ".gradle", ".dockerfile", ".gitignore", ".editorconfig",
+    ".lua", ".r", ".jl", ".ex", ".exs", ".erl", ".hrl", ".clj", ".scala",
+    ".dart", ".zig", ".nim", ".v", ".pl", ".pm",
 }
 IGNORE_DIRS = {
     ".git", ".venv", "venv", "env", "__pycache__", ".pytest_cache",
@@ -51,9 +53,10 @@ IGNORE_DIRS = {
 
 MAX_FILE_SIZE_BYTES = 500_000
 MAX_EDIT_FILE_SIZE_BYTES = 120_000
-MAX_FILES_IN_PROMPT = 6
+MAX_FILES_IN_PROMPT = 8
 MAX_CONTENT_CHARS_PER_FILE = 20_000
 MAX_BACKUP_KEEP_DAYS = 14
+MAX_HISTORY_ENTRIES = 500
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -62,6 +65,14 @@ T = TypeVar("T", bound=BaseModel)
 class ProjectConfig:
     name: str
     root: str
+
+
+@dataclass
+class EditResult:
+    success: bool
+    applied_files: List[str]
+    test_output: str
+    errors: str
 
 
 class PatchItem(BaseModel):
@@ -75,6 +86,10 @@ class EditPlan(BaseModel):
     patches: List[PatchItem] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
+
+# ---------------------------------------------------------------------------
+# Storage helpers
+# ---------------------------------------------------------------------------
 
 def ensure_dirs() -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
@@ -95,6 +110,32 @@ def save_projects(projects: Dict[str, ProjectConfig]) -> None:
     raw = {name: asdict(cfg) for name, cfg in projects.items()}
     PROJECTS_FILE.write_text(json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8")
 
+
+def register_project(name: str, project_root: Path) -> None:
+    projects = load_projects()
+    projects[name] = ProjectConfig(name=name, root=str(project_root.resolve()))
+    save_projects(projects)
+
+
+def delete_project(name: str) -> None:
+    projects = load_projects()
+    if name in projects:
+        del projects[name]
+        save_projects(projects)
+
+
+def print_projects() -> None:
+    projects = load_projects()
+    if not projects:
+        print("Проекты не добавлены.")
+        return
+    for name, cfg in projects.items():
+        print(f"- {name}: {cfg.root}")
+
+
+# ---------------------------------------------------------------------------
+# Path / ID helpers
+# ---------------------------------------------------------------------------
 
 def normalize_path(path_str: str) -> Path:
     return Path(path_str).expanduser().resolve()
@@ -136,7 +177,9 @@ def is_indexable_file(path: Path) -> bool:
     if path.stat().st_size > MAX_FILE_SIZE_BYTES:
         return False
     suffix = path.suffix.lower()
-    return suffix in INDEX_EXTENSIONS or path.name.lower() in {"dockerfile", "makefile", "license", "readme"}
+    return suffix in INDEX_EXTENSIONS or path.name.lower() in {
+        "dockerfile", "makefile", "license", "readme",
+    }
 
 
 def iter_project_files(root: Path) -> List[Path]:
@@ -144,12 +187,10 @@ def iter_project_files(root: Path) -> List[Path]:
     for current_root, dirnames, filenames in os.walk(root):
         current = Path(current_root)
         dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS and not d.startswith(".")]
-
         for filename in filenames:
             path = current / filename
             if is_indexable_file(path):
                 files.append(path)
-
     return sorted(files)
 
 
@@ -166,9 +207,12 @@ def file_metadata_factory(project_root: Path):
             "project_root": str(project_root),
             "language_hint": p.suffix.lower().lstrip("."),
         }
-
     return _metadata
 
+
+# ---------------------------------------------------------------------------
+# Manifest
+# ---------------------------------------------------------------------------
 
 def load_manifest(project_root: Path) -> Dict[str, Any]:
     p = project_manifest_path(project_root)
@@ -206,6 +250,26 @@ def manifest_signature(manifest: Dict[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def get_index_info(project_root: Path) -> Optional[Dict[str, Any]]:
+    """Return index stats: file count and last build timestamp."""
+    manifest = load_manifest(project_root)
+    if not manifest:
+        return None
+    storage_dir = project_storage_dir(project_root)
+    last_built: Optional[str] = None
+    if storage_dir.exists():
+        ts = storage_dir.stat().st_mtime
+        last_built = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    return {
+        "file_count": manifest.get("file_count", 0),
+        "last_built": last_built,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pydantic helpers
+# ---------------------------------------------------------------------------
+
 def model_schema(model_cls: Type[T]) -> Dict[str, Any]:
     if hasattr(model_cls, "model_json_schema"):
         return model_cls.model_json_schema()
@@ -217,6 +281,10 @@ def parse_model_json(model_cls: Type[T], raw: str) -> T:
         return model_cls.model_validate_json(raw)
     return model_cls.parse_raw(raw)
 
+
+# ---------------------------------------------------------------------------
+# LLM / embedding setup
+# ---------------------------------------------------------------------------
 
 def load_llm(
     model: str,
@@ -242,7 +310,7 @@ def configure_settings(
     llm_model: str,
     embed_model: str,
     ollama_host: str,
-    context_window: Optional[int],
+    context_window: Optional[int] = None,
 ) -> None:
     Settings.llm = load_llm(
         model=llm_model,
@@ -251,6 +319,10 @@ def configure_settings(
     )
     Settings.embed_model = load_embed_model(model=embed_model, base_url=ollama_host)
 
+
+# ---------------------------------------------------------------------------
+# Index build / load
+# ---------------------------------------------------------------------------
 
 def build_index(
     project_root: Path,
@@ -312,11 +384,29 @@ def load_index(project_root: Path) -> VectorStoreIndex:
     storage_dir = project_storage_dir(project_root)
 
     if not storage_dir.exists():
-        raise FileNotFoundError(f"Индекс не найден для проекта {project_root}. Сначала запусти build.")
+        raise FileNotFoundError(
+            f"Индекс не найден для проекта {project_root}. Сначала запусти построение индекса."
+        )
 
     storage_context = StorageContext.from_defaults(persist_dir=str(storage_dir))
     return load_index_from_storage(storage_context)
 
+
+def load_configured_index(
+    project_root: Path,
+    llm_model: str,
+    embed_model: str,
+    ollama_host: str,
+    context_window: Optional[int] = None,
+) -> VectorStoreIndex:
+    """Configure LLM/embed settings, then load the persisted index."""
+    configure_settings(llm_model, embed_model, ollama_host, context_window)
+    return load_index(project_root)
+
+
+# ---------------------------------------------------------------------------
+# Retrieval helpers
+# ---------------------------------------------------------------------------
 
 def read_text_file(path: Path, limit: int = MAX_CONTENT_CHARS_PER_FILE) -> str:
     text = path.read_text(encoding="utf-8", errors="ignore")
@@ -361,6 +451,43 @@ def choose_candidates(project_root: Path, index: VectorStoreIndex, query: str, t
     return unique[:MAX_FILES_IN_PROMPT]
 
 
+# ---------------------------------------------------------------------------
+# Q&A
+# ---------------------------------------------------------------------------
+
+def query_project(
+    project_root: Path,
+    query: str,
+    top_k: int,
+    llm_model: str = "llama3.1:8b",
+    embed_model: str = "nomic-embed-text",
+    ollama_host: str = "http://localhost:11434",
+    context_window: Optional[int] = None,
+) -> Tuple[str, List[Dict[str, str]]]:
+    configure_settings(llm_model, embed_model, ollama_host, context_window)
+    index = load_index(project_root)
+    query_engine = index.as_query_engine(similarity_top_k=top_k)
+    response = query_engine.query(query)
+
+    sources: List[Dict[str, str]] = []
+    source_nodes = getattr(response, "source_nodes", None) or []
+    for node in source_nodes[:8]:
+        meta = getattr(node.node, "metadata", {}) or {}
+        snippet = (node.node.get_text() or "").strip().replace("\n", " ")
+        sources.append(
+            {
+                "path": meta.get("path", "unknown"),
+                "snippet": snippet[:300],
+            }
+        )
+
+    return str(response), sources
+
+
+# ---------------------------------------------------------------------------
+# Patch generation & application
+# ---------------------------------------------------------------------------
+
 def build_patch_prompt(project_root: Path, query: str, candidate_files: List[Path]) -> str:
     blocks: List[str] = []
     for p in candidate_files:
@@ -385,15 +512,16 @@ def build_patch_prompt(project_root: Path, query: str, candidate_files: List[Pat
     return f"""
 Ты — локальный AI-ассистент программиста.
 
-Верни ТОЛЬКО JSON, который соответствует схеме.
+Верни ТОЛЬКО JSON, который соответствует схеме. Без markdown-обёртки.
 
 Правила:
 1) Меняй только файлы из списка ниже.
 2) Для каждого файла в patches верни unified diff patch (git apply compatible).
-3) Не добавляй markdown вокруг JSON.
+3) При создании нового файла в patch используй заголовок: --- /dev/null и +++ b/<path>.
 4) Если изменений не нужно, верни пустой массив patches.
-5) Если не хватает контекста, не выдумывай.
-6) Не создавай и не удаляй файлы в этой версии, только редактируй существующие.
+5) Если не хватает контекста — не выдумывай.
+6) Не удаляй существующие файлы.
+7) Не добавляй markdown вокруг JSON.
 
 Запрос пользователя:
 {query}
@@ -409,12 +537,19 @@ JSON schema:
 """.strip()
 
 
-def ask_llm_for_patch_plan(llm_model: str, project_root: Path, query: str, candidate_files: List[Path]) -> EditPlan:
-    from ollama import chat
+def ask_llm_for_patch_plan(
+    llm_model: str,
+    ollama_host: str,
+    project_root: Path,
+    query: str,
+    candidate_files: List[Path],
+) -> EditPlan:
+    from ollama import Client
 
+    client = Client(host=ollama_host)
     prompt = build_patch_prompt(project_root, query, candidate_files)
 
-    response = chat(
+    response = client.chat(
         model=llm_model,
         messages=[
             {"role": "system", "content": "Return only valid JSON. Do not wrap in markdown."},
@@ -536,9 +671,12 @@ def apply_edit_plan(
     plan: EditPlan,
     run_tests_after: bool = True,
     tests_cmd: Optional[str] = None,
-) -> None:
+) -> EditResult:
     originals: Dict[Path, str] = {}
+    new_files: List[Path] = []
     changed_python_files: List[Path] = []
+    applied_files: List[str] = []
+    test_output = ""
 
     patch_text = "\n\n".join(item.patch.strip() for item in plan.patches if item.patch.strip())
 
@@ -550,8 +688,11 @@ def apply_edit_plan(
             if target.exists():
                 originals[target] = target.read_text(encoding="utf-8", errors="ignore")
                 safe_backup_file(project_root, target)
+            else:
+                new_files.append(target)
             if target.suffix == ".py":
                 changed_python_files.append(target)
+            applied_files.append(item.path)
 
         ok, msg = apply_git_patch(project_root, patch_text)
         if not ok:
@@ -562,37 +703,38 @@ def apply_edit_plan(
             raise RuntimeError(f"Проверка Python-синтаксиса не прошла:\n{errors}")
 
         if run_tests_after:
-            code, output = run_tests(project_root, tests_cmd=tests_cmd)
+            code, test_output = run_tests(project_root, tests_cmd=tests_cmd)
             if code != 0:
-                raise RuntimeError(f"Тесты упали (code={code}).\n{output}")
+                raise RuntimeError(f"Тесты упали (code={code}).\n{test_output}")
 
-    except Exception:
-        if originals:
-            restore_files(originals)
-        raise
-
-
-def query_project(project_root: Path, query: str, top_k: int) -> Tuple[str, List[Dict[str, str]]]:
-    index = load_index(project_root)
-    query_engine = index.as_query_engine(similarity_top_k=top_k)
-    response = query_engine.query(query)
-
-    sources: List[Dict[str, str]] = []
-    source_nodes = getattr(response, "source_nodes", None) or []
-    for node in source_nodes[:8]:
-        meta = getattr(node.node, "metadata", {}) or {}
-        snippet = (node.node.get_text() or "").strip().replace("\n", " ")
-        sources.append(
-            {
-                "path": meta.get("path", "unknown"),
-                "snippet": snippet[:300],
-            }
+        return EditResult(
+            success=True,
+            applied_files=applied_files,
+            test_output=test_output,
+            errors="",
         )
 
-    return str(response), sources
+    except Exception as exc:
+        if originals:
+            restore_files(originals)
+        for nf in new_files:
+            try:
+                if nf.exists():
+                    nf.unlink()
+            except Exception:
+                pass
+        return EditResult(
+            success=False,
+            applied_files=[],
+            test_output=test_output,
+            errors=str(exc),
+        )
 
 
-@lru_cache(maxsize=128)
+# ---------------------------------------------------------------------------
+# Web search
+# ---------------------------------------------------------------------------
+
 def web_search_text(query: str, max_results: int = 5, region: str = "ru-ru") -> List[Dict[str, str]]:
     with DDGS() as ddgs:
         results = ddgs.text(
@@ -604,7 +746,6 @@ def web_search_text(query: str, max_results: int = 5, region: str = "ru-ru") -> 
     return [_normalize_web_item(r) for r in results]
 
 
-@lru_cache(maxsize=64)
 def web_search_news(
     query: str,
     max_results: int = 5,
@@ -661,34 +802,45 @@ def format_web_results(results: List[Dict[str, str]]) -> str:
 def answer_with_web(
     project_root: Path,
     llm_model: str,
+    embed_model: str,
     ollama_host: str,
     query: str,
     top_k: int,
     search_kind: str = "text",
     max_web_results: int = 5,
+    context_window: Optional[int] = None,
 ) -> Tuple[str, List[Dict[str, str]], List[Dict[str, str]]]:
-    index = load_index(project_root)
-    query_engine = index.as_query_engine(similarity_top_k=top_k)
-    local_response = query_engine.query(query)
+    from ollama import Client
 
     local_sources: List[Dict[str, str]] = []
-    source_nodes = getattr(local_response, "source_nodes", None) or []
-    for node in source_nodes[:8]:
-        meta = getattr(node.node, "metadata", {}) or {}
-        snippet = (node.node.get_text() or "").strip().replace("\n", " ")
-        local_sources.append(
-            {
-                "path": meta.get("path", "unknown"),
-                "snippet": snippet[:300],
-            }
-        )
+    local_response_text = ""
+
+    try:
+        configure_settings(llm_model, embed_model, ollama_host, context_window)
+        index = load_index(project_root)
+        query_engine = index.as_query_engine(similarity_top_k=top_k)
+        local_response = query_engine.query(query)
+        local_response_text = str(local_response)
+
+        source_nodes = getattr(local_response, "source_nodes", None) or []
+        for node in source_nodes[:8]:
+            meta = getattr(node.node, "metadata", {}) or {}
+            snippet = (node.node.get_text() or "").strip().replace("\n", " ")
+            local_sources.append(
+                {
+                    "path": meta.get("path", "unknown"),
+                    "snippet": snippet[:300],
+                }
+            )
+    except FileNotFoundError:
+        local_response_text = "Индекс не построен. Используются только интернет-результаты."
 
     if search_kind == "news":
         web_results = web_search_news(query, max_results=max_web_results)
     else:
         web_results = web_search_text(query, max_results=max_web_results)
 
-    from ollama import chat
+    client = Client(host=ollama_host)
 
     prompt = f"""
 Ты — AI-ассистент программиста.
@@ -705,13 +857,13 @@ def answer_with_web(
 {query}
 
 ЛОКАЛЬНЫЙ КОНТЕКСТ ПРОЕКТА:
-{local_response}
+{local_response_text}
 
 ИНТЕРНЕТ-РЕЗУЛЬТАТЫ:
 {format_web_results(web_results)}
 """.strip()
 
-    resp = chat(
+    resp = client.chat(
         model=llm_model,
         messages=[
             {"role": "system", "content": "Answer in Russian. Be precise."},
@@ -723,20 +875,55 @@ def answer_with_web(
     return resp.message.content, local_sources, web_results
 
 
-def register_project(name: str, project_root: Path) -> None:
-    projects = load_projects()
-    projects[name] = ProjectConfig(name=name, root=str(project_root.resolve()))
-    save_projects(projects)
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
+
+def load_history() -> List[Dict[str, Any]]:
+    ensure_dirs()
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
 
 
-def print_projects() -> None:
-    projects = load_projects()
-    if not projects:
-        print("Проекты не добавлены.")
+def save_history_entry(entry: Dict[str, Any]) -> None:
+    ensure_dirs()
+    history = load_history()
+    history.append({**entry, "timestamp": datetime.now().isoformat()})
+    if len(history) > MAX_HISTORY_ENTRIES:
+        history = history[-MAX_HISTORY_ENTRIES:]
+    HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def clear_history() -> None:
+    ensure_dirs()
+    HISTORY_FILE.write_text("[]", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Backups
+# ---------------------------------------------------------------------------
+
+def cleanup_old_backups(project_root: Path) -> None:
+    root = BACKUPS_DIR / project_id(project_root)
+    if not root.exists():
         return
-    for name, cfg in projects.items():
-        print(f"- {name}: {cfg.root}")
 
+    cutoff = time.time() - (MAX_BACKUP_KEEP_DAYS * 24 * 60 * 60)
+    for p in root.rglob("*"):
+        try:
+            if p.is_file() and p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# CLI helpers
+# ---------------------------------------------------------------------------
 
 def resolve_project_path(project_name: Optional[str], project_root: Optional[str]) -> Tuple[str, Path]:
     projects = load_projects()
@@ -753,17 +940,3 @@ def resolve_project_path(project_name: Optional[str], project_root: Optional[str
 
     cfg = projects[project_name]
     return cfg.name, normalize_path(cfg.root)
-
-
-def cleanup_old_backups(project_root: Path) -> None:
-    root = BACKUPS_DIR / project_id(project_root)
-    if not root.exists():
-        return
-
-    cutoff = time.time() - (MAX_BACKUP_KEEP_DAYS * 24 * 60 * 60)
-    for p in root.rglob("*"):
-        try:
-            if p.is_file() and p.stat().st_mtime < cutoff:
-                p.unlink()
-        except Exception:
-            pass
