@@ -18,9 +18,9 @@ dist/
 build/
 *.egg-info/
 
-# Streamlit
-
-.streamlit/
+# Streamlit (config.toml коммитим, локальные credentials — нет)
+.streamlit/*
+!.streamlit/config.toml
 
 # AI helper storage
 

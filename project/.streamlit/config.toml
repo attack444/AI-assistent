@@ -1,0 +1,11 @@
+[server]
+# Не показывать приветственное окно с полем Email при первом запуске
+showEmailPrompt = false
+
+[browser]
+# Отключить сбор телеметрии
+gatherUsageStats = false
+
+[logger]
+# Скрыть лишние сообщения в терминале при запуске
+hideWelcomeMessage = true
