@@ -35,7 +35,17 @@ STREAMLIT_ENV = {
 
 
 def log(msg: str) -> None:
-    print(msg, flush=True)
+    text = str(msg)
+    try:
+        print(text, flush=True)
+    except UnicodeEncodeError:
+        # Windows-консоль без UTF-8: убираем emoji, печатаем безопасно
+        safe = text.encode("ascii", errors="ignore").decode("ascii")
+        if not safe.strip():
+            safe = text.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(
+                sys.stdout.encoding or "utf-8", errors="replace"
+            )
+        print(safe, flush=True)
 
 
 def venv_python() -> Path:
@@ -73,19 +83,19 @@ def ensure_venv() -> Path:
     py = venv_python()
     if py.exists():
         return py
-    log("📦 Создаю виртуальное окружение...")
+    log("Создаю виртуальное окружение...")
     subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
     return venv_python()
 
 
 def ensure_dependencies(python: Path) -> None:
-    log("📦 Устанавливаю зависимости (первый запуск может занять несколько минут)...")
+    log("Устанавливаю зависимости (первый запуск может занять несколько минут)...")
     subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip", "-q"], check=True)
     subprocess.run(
         [str(python), "-m", "pip", "install", "-r", str(REQUIREMENTS), "-q"],
         check=True,
     )
-    log("✓ Зависимости установлены")
+    log("[OK] Зависимости установлены")
 
 
 def find_ollama_exe() -> Path | None:
@@ -105,7 +115,7 @@ def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) ->
     if ollama_reachable(host):
         return True
 
-    log("🔄 Ollama не отвечает — пытаюсь запустить автоматически...")
+    log("Ollama не отвечает — пытаюсь запустить автоматически...")
     system = platform.system()
 
     if system == "Windows":
@@ -119,7 +129,7 @@ def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) ->
                 creationflags=flags,
             )
         else:
-            log("⚠ Ollama не найден. Установи с https://ollama.com/download")
+            log("[!] Ollama не найден. Установи с https://ollama.com/download")
             return False
     elif system == "Darwin":
         subprocess.Popen(
@@ -136,13 +146,13 @@ def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) ->
                 stderr=subprocess.DEVNULL,
             )
         else:
-            log("⚠ Ollama не найден. Установи: curl -fsSL https://ollama.com/install.sh | sh")
+            log("[!] Ollama не найден. Установи: curl -fsSL https://ollama.com/install.sh | sh")
             return False
 
     for i in range(wait_seconds):
         time.sleep(1)
         if ollama_reachable(host):
-            log("✓ Ollama запущен")
+            log("[OK] Ollama запущен")
             return True
         if i % 5 == 4:
             log(f"  жду Ollama... ({i + 1}/{wait_seconds} сек)")
@@ -157,15 +167,15 @@ def pull_model(model: str) -> bool:
         if exe:
             ollama_bin = str(exe.parent / "ollama.exe") if platform.system() == "Windows" else str(exe)
         if not ollama_bin or not Path(ollama_bin).exists():
-            log(f"⚠ Не найден ollama CLI — пропускаю загрузку {model}")
+            log(f"[!] Не найден ollama CLI — пропускаю загрузку {model}")
             return False
 
-    log(f"⬇ Скачиваю модель {model} (может занять несколько минут)...")
+    log(f"Скачиваю модель {model} (может занять несколько минут)...")
     result = subprocess.run([ollama_bin, "pull", model], cwd=str(PROJECT_DIR))
     if result.returncode == 0:
-        log(f"✓ Модель {model} готова")
+        log(f"[OK] Модель {model} готова")
         return True
-    log(f"✗ Не удалось скачать {model}")
+    log(f"[ERR] Не удалось скачать {model}")
     return False
 
 
@@ -173,26 +183,30 @@ def ensure_models(host: str = DEFAULT_OLLAMA_HOST) -> None:
     installed = get_installed_models(host)
     missing = [m for m in REQUIRED_MODELS if not model_is_installed(m, installed)]
     if not missing:
-        log(f"✓ Все модели установлены ({', '.join(REQUIRED_MODELS)})")
+        log(f"[OK] Все модели установлены ({', '.join(REQUIRED_MODELS)})")
         return
-    log(f"📥 Нужно скачать модели: {', '.join(missing)}")
+    log(f"Нужно скачать модели: {', '.join(missing)}")
     for model in missing:
         pull_model(model)
 
 
 def launch_streamlit(python: Path) -> int:
     log("")
-    log("🚀 Запускаю AI Helper...")
+    log("Запускаю AI Helper...")
     log("   Браузер откроется автоматически: http://localhost:8501")
     log("   Для остановки нажми Ctrl+C в этом окне")
     log("")
 
     env = {**os.environ, **STREAMLIT_ENV}
-    return subprocess.run(
-        [str(python), "-m", "streamlit", "run", "app.py", "--server.headless=false"],
-        cwd=str(PROJECT_DIR),
-        env=env,
-    ).returncode
+    try:
+        return subprocess.run(
+            [str(python), "-m", "streamlit", "run", "app.py", "--server.headless=false"],
+            cwd=str(PROJECT_DIR),
+            env=env,
+        ).returncode
+    except FileNotFoundError:
+        log("Streamlit не найден. Перезапусти START.bat — зависимости установятся заново.")
+        return 1
 
 
 def pause_on_error() -> None:
@@ -212,10 +226,10 @@ def main() -> int:
 
         if not try_start_ollama():
             if ollama_reachable():
-                log("✓ Ollama уже работает (возможно, запущен параллельно)")
+                log("[OK] Ollama уже работает (возможно, запущен параллельно)")
             else:
                 log("")
-                log("✗ Ollama недоступен.")
+                log("[ERR] Ollama недоступен.")
                 log("  1. Установи Ollama: https://ollama.com/download")
                 log("  2. Перезапусти START.bat")
                 log("")
@@ -231,11 +245,11 @@ def main() -> int:
         log("\nОстановлено пользователем.")
         return 0
     except subprocess.CalledProcessError as exc:
-        log(f"\n✗ Ошибка выполнения команды (код {exc.returncode})")
+        log(f"\n[ERR] Ошибка выполнения команды (код {exc.returncode})")
         pause_on_error()
         return exc.returncode or 1
     except Exception as exc:
-        log(f"\n✗ Ошибка: {exc}")
+        log(f"\n[ERR] Ошибка: {exc}")
         pause_on_error()
         return 1
 
