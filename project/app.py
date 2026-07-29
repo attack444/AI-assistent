@@ -35,7 +35,7 @@ from core import (
 )
 from memory import MemoryStore
 from profile import UserProfile, load_profile, save_profile
-from tools import AGENT_LOG, scan_for_projects
+from tools import AGENT_LOG, git_run, scan_for_projects
 
 ensure_dirs()
 
@@ -57,6 +57,9 @@ st.markdown(
 .tc-run{background:#1e293b;border-left:3px solid #3b82f6}
 .tc-ok {background:#052e16;border-left:3px solid #22c55e}
 .tc-err{background:#2d0a0a;border-left:3px solid #ef4444}
+.diff-add{color:#4ade80}
+.diff-rem{color:#f87171}
+.quick-chip button{font-size:.75em !important;padding:2px 8px !important;border-radius:12px !important}
 </style>
 """,
     unsafe_allow_html=True,
@@ -206,6 +209,61 @@ with st.sidebar:
                 memory.forget(e.id)
                 st.rerun()
 
+    # ── Git panel ────────────────────────────────────────────────────────────
+    if project_root and (project_root / ".git").exists():
+        st.subheader("Git")
+        with st.expander("Статус репозитория"):
+            git_cols = st.columns(2)
+            if git_cols[0].button("Status", use_container_width=True, key="git_status"):
+                r = git_run("status --short", str(project_root))
+                st.code(r.get("output") or "(чисто)", language="")
+            if git_cols[1].button("Log", use_container_width=True, key="git_log"):
+                r = git_run("log --oneline -8", str(project_root))
+                st.code(r.get("output") or "нет коммитов", language="")
+            git_cols2 = st.columns(2)
+            if git_cols2[0].button("Diff", use_container_width=True, key="git_diff"):
+                r = git_run("diff --stat", str(project_root))
+                st.code(r.get("output") or "(нет изменений)", language="diff")
+            if git_cols2[1].button("Branch", use_container_width=True, key="git_branch"):
+                r = git_run("branch -a", str(project_root))
+                st.code(r.get("output") or "", language="")
+            commit_msg = st.text_input("Сообщение коммита", placeholder="fix: ...", key="git_commit_msg")
+            if st.button("Commit all", use_container_width=True, key="git_commit_btn"):
+                if commit_msg.strip():
+                    git_run("add -A", str(project_root))
+                    r = git_run(f'commit -m "{commit_msg.strip()}"', str(project_root))
+                    st.code(r.get("output") or "", language="")
+                else:
+                    st.warning("Введи сообщение коммита")
+
+    # ── File tree ─────────────────────────────────────────────────────────────
+    if project_root:
+        st.subheader("Файлы проекта")
+        with st.expander("Дерево файлов"):
+            _HIDE = {"node_modules", ".git", "__pycache__", ".venv", "venv", "dist", "build"}
+            def _tree(d: Path, depth: int = 0, max_depth: int = 3) -> None:
+                if depth > max_depth:
+                    return
+                try:
+                    items = sorted(d.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
+                except (PermissionError, OSError):
+                    return
+                for item in items[:50]:
+                    if item.name in _HIDE or item.name.startswith("."):
+                        continue
+                    indent = "  " * depth
+                    if item.is_dir():
+                        st.caption(f"{indent}📁 {item.name}/")
+                        _tree(item, depth + 1, max_depth)
+                    else:
+                        try:
+                            size = item.stat().st_size
+                            label = f"{indent}📄 {item.name}  *{size:,} B*"
+                        except OSError:
+                            label = f"{indent}📄 {item.name}"
+                        st.caption(label)
+            _tree(project_root)
+
     # ── Advanced ─────────────────────────────────────────────────────────────
     with st.expander("Расширенные"):
         cw  = st.number_input("Context window", value=settings.context_window, step=1024)
@@ -347,6 +405,9 @@ def _cmd(raw: str) -> Optional[str]:
             "`/projects` — список проектов\n"
             "`/add <путь>` — добавить проект\n"
             "`/scan <путь>` — найти проекты на диске\n"
+            "`/git <команда>` — git в текущем проекте\n"
+            "`/clip` — показать буфер обмена\n"
+            "`/deps` — проверить устаревшие зависимости\n"
             "`/profile` — показать профиль\n"
             "`/memory` — показать память\n"
             "`/forget <слово>` — удалить записи по ключевому слову\n"
@@ -447,6 +508,37 @@ def _cmd(raw: str) -> Optional[str]:
         st.rerun()
         return None
 
+    elif name == "git":
+        if not project_root:
+            return "Нет активного проекта."
+        if not arg:
+            arg = "status --short"
+        r = git_run(arg, str(project_root))
+        out = r.get("output", "").strip() or "(пусто)"
+        return f"```\n{out}\n```"
+
+    elif name == "clip":
+        from tools import clipboard_get
+        r = clipboard_get()
+        if not r.get("ok"):
+            return f"Ошибка: {r.get('error', '?')}"
+        text = r.get("text", "").strip()
+        if not text:
+            return "Буфер обмена пуст."
+        return f"**Буфер обмена:**\n```\n{text[:2000]}\n```"
+
+    elif name == "deps":
+        if not project_root:
+            return "Нет активного проекта."
+        from tools import check_deps
+        r = check_deps(str(project_root))
+        if not r.get("ok"):
+            return f"Ошибка: {r.get('error', '?')}"
+        lines = []
+        for c in r.get("checks", []):
+            lines.append(f"**{c['type']}** (`{Path(c['file']).name}`):\n```\n{c['outdated']}\n```")
+        return "\n\n".join(lines) or "Всё актуально."
+
     elif name == "log":
         if not AGENT_LOG.exists():
             return "Лог пуст."
@@ -483,6 +575,24 @@ if not project_root:
         "Используй `/help` для списка команд."
     )
 
+# ── Quick-prompt chips ────────────────────────────────────────────────────
+if project_root:
+    _CHIPS = [
+        ("🔍 Что не так?",    "Проверь все файлы проекта, найди проблемы и исправь"),
+        ("📋 Структура",      "Покажи структуру проекта: файлы, папки, что за что отвечает"),
+        ("🔀 Git статус",     "Покажи git status и последние коммиты"),
+        ("📦 Зависимости",    "Проверь устаревшие зависимости проекта"),
+        ("✨ Форматировать",   "Отформатируй все Python-файлы проекта через black"),
+        ("📝 README",          "Напиши или обнови README.md для проекта"),
+    ]
+    chip_cols = st.columns(len(_CHIPS))
+    _quick_input: Optional[str] = None
+    for col, (label, prompt) in zip(chip_cols, _CHIPS):
+        if col.button(label, use_container_width=True, key=f"chip_{label}"):
+            _quick_input = prompt
+else:
+    _quick_input = None
+
 # Render existing messages
 for hist_msg in chat_msgs:
     with st.chat_message(hist_msg["role"]):
@@ -499,7 +609,14 @@ for hist_msg in chat_msgs:
 # ---------------------------------------------------------------------------
 # Input
 # ---------------------------------------------------------------------------
-if user_input := st.chat_input("Задай вопрос, дай задание, или /help..."):
+_effective_input = _quick_input or None
+
+if _effective_input is None:
+    _typed = st.chat_input("Задай вопрос, дай задание, или /help...")
+    if _typed:
+        _effective_input = _typed
+
+if user_input := _effective_input:
     with st.chat_message("user"):
         st.markdown(user_input)
     chat_msgs.append({"role": "user", "content": user_input})
@@ -590,11 +707,44 @@ if user_input := st.chat_input("Задай вопрос, дай задание, 
                         elif ev.type == "tool_result":
                             ok = ev.tool_result.get("ok", False)
                             css, icon = ("tc-ok", "✓") if ok else ("tc-err", "✗")
+
+                            # Build summary label
+                            if ev.tool_name == "write_file" and ok:
+                                added   = ev.tool_result.get("added", 0)
+                                removed = ev.tool_result.get("removed", 0)
+                                is_new  = ev.tool_result.get("is_new", False)
+                                fname   = Path(ev.tool_result.get("path", "")).name
+                                action  = "создан" if is_new else f"+{added} -{removed} строк"
+                                label   = f"{icon} <b>write_file</b> {fname} ({action})"
+                            elif ev.tool_name == "git_run" and ok:
+                                cmd = ev.tool_args.get("command", "")
+                                label = f"{icon} <b>git</b> {cmd}"
+                            else:
+                                label = f"{icon} <b>{ev.tool_name}</b>"
+
                             with tool_area:
                                 st.markdown(
-                                    f'<div class="tc {css}">{icon} <b>{ev.tool_name}</b></div>',
+                                    f'<div class="tc {css}">{label}</div>',
                                     unsafe_allow_html=True,
                                 )
+                                # Show diff inline for write_file
+                                diff_text = ev.tool_result.get("diff", "")
+                                if ev.tool_name == "write_file" and ok and diff_text and diff_text != "(файл не изменится)":
+                                    with st.expander(f"Diff {Path(ev.tool_result.get('path','')).name}"):
+                                        st.code(diff_text, language="diff")
+                                # Show output for git/run_command/run_powershell
+                                if ev.tool_name in ("git_run", "run_command", "run_powershell") and ok:
+                                    out = ev.tool_result.get("output", "").strip()
+                                    if out:
+                                        with st.expander("Вывод"):
+                                            st.code(out, language="")
+                                # Show diff_preview
+                                if ev.tool_name == "diff_preview" and ok:
+                                    diff_text = ev.tool_result.get("diff", "")
+                                    if diff_text:
+                                        with st.expander("Предпросмотр изменений"):
+                                            st.code(diff_text, language="diff")
+
                             if tool_steps:
                                 tool_steps[-1]["result"] = ev.tool_result
                             # Mark reindex if FS changed

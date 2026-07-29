@@ -111,15 +111,36 @@ def read_file_lines(path: str, start: int = 1, end: int = 200) -> Dict[str, Any]
 
 
 def write_file(path: str, content: str) -> Dict[str, Any]:
-    """Перезаписывает файл. Автоматический бэкап перед записью."""
+    """Перезаписывает файл. Автоматический бэкап + diff до/после."""
     args = {"path": path}
     try:
+        import difflib
         p = Path(path).expanduser().resolve()
+        old_text = ""
         if p.exists():
             _backup(p)
+            try:
+                old_text = p.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                pass
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
-        r: Dict[str, Any] = {"ok": True, "path": str(p), "bytes": len(content.encode())}
+        # Build unified diff for display
+        diff_lines = list(difflib.unified_diff(
+            old_text.splitlines(keepends=True),
+            content.splitlines(keepends=True),
+            fromfile=f"{p.name} (до)",
+            tofile=f"{p.name} (после)",
+            n=3,
+        ))
+        diff = "".join(diff_lines[:200])  # cap at 200 diff lines
+        added   = sum(1 for l in diff_lines if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in diff_lines if l.startswith("-") and not l.startswith("---"))
+        r: Dict[str, Any] = {
+            "ok": True, "path": str(p), "bytes": len(content.encode()),
+            "diff": diff, "added": added, "removed": removed,
+            "is_new": old_text == "",
+        }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("write_file", args, r)
@@ -573,6 +594,256 @@ def save_memory(content: str, type: str = "fact", project: str = "") -> Dict[str
 
 
 # ---------------------------------------------------------------------------
+# Git tools
+# ---------------------------------------------------------------------------
+
+def git_run(command: str, repo_path: str = ".") -> Dict[str, Any]:
+    """
+    Выполняет git-команду в репозитории.
+    Примеры: 'status', 'diff', 'log --oneline -10', 'add .', 'commit -m "fix"', 'branch'
+    """
+    args = {"command": command, "repo_path": repo_path}
+    try:
+        p = Path(repo_path).expanduser().resolve()
+        git_dir = p / ".git"
+        if not git_dir.exists():
+            # Ищем .git вверх по дереву
+            cur = p
+            for _ in range(5):
+                if (cur / ".git").exists():
+                    p = cur
+                    break
+                if cur.parent == cur:
+                    break
+                cur = cur.parent
+        full_cmd = f"git {command}"
+        code, out = _run(full_cmd, cwd=str(p), timeout=30)
+        r: Dict[str, Any] = {
+            "ok": code == 0,
+            "output": out[:8000],
+            "returncode": code,
+            "repo": str(p),
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc), "output": ""}
+    _log("git_run", args, r)
+    return r
+
+
+def diff_preview(path: str, new_content: str) -> Dict[str, Any]:
+    """
+    Показывает unified diff между текущим содержимым файла и новым.
+    Используй ПЕРЕД write_file чтобы показать пользователю что изменится.
+    """
+    import difflib
+    args = {"path": path}
+    try:
+        p = Path(path).expanduser().resolve()
+        old = p.read_text(encoding="utf-8", errors="ignore") if p.exists() else ""
+        lines = list(difflib.unified_diff(
+            old.splitlines(keepends=True),
+            new_content.splitlines(keepends=True),
+            fromfile=f"{p.name} (текущий)",
+            tofile=f"{p.name} (новый)",
+            n=3,
+        ))
+        added   = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
+        diff = "".join(lines[:300])
+        r: Dict[str, Any] = {
+            "ok": True, "diff": diff or "(файл не изменится)",
+            "added": added, "removed": removed,
+            "is_new": not p.exists(),
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc), "diff": ""}
+    _log("diff_preview", args, r)
+    return r
+
+
+# ---------------------------------------------------------------------------
+# Windows clipboard & notifications
+# ---------------------------------------------------------------------------
+
+def clipboard_get() -> Dict[str, Any]:
+    """Читает текст из буфера обмена Windows."""
+    args: Dict = {}
+    if not _IS_WINDOWS:
+        r: Dict[str, Any] = {"ok": False, "error": "Только Windows"}
+        _log("clipboard_get", args, r)
+        return r
+    code, out = _run(
+        "powershell -NoProfile -NonInteractive -Command \"Get-Clipboard\"",
+        timeout=10,
+    )
+    r = {"ok": code == 0, "text": out, "length": len(out)}
+    _log("clipboard_get", args, r)
+    return r
+
+
+def clipboard_set(text: str) -> Dict[str, Any]:
+    """Записывает текст в буфер обмена Windows."""
+    args = {"text": text[:100]}
+    if not _IS_WINDOWS:
+        r: Dict[str, Any] = {"ok": False, "error": "Только Windows"}
+        _log("clipboard_set", args, r)
+        return r
+    try:
+        escaped = text.replace("'", "''")
+        script = f"Set-Clipboard -Value '{escaped}'"
+        code, out = _run(
+            f'powershell -NoProfile -NonInteractive -Command "{script}"',
+            timeout=10,
+        )
+        r: Dict[str, Any] = {"ok": code == 0, "chars": len(text), "output": out}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("clipboard_set", args, r)
+    return r
+
+
+def notify_windows(title: str, message: str, duration: int = 5) -> Dict[str, Any]:
+    """
+    Показывает всплывающее уведомление Windows 10/11 (в трее).
+    Используй когда длинная задача завершена.
+    """
+    args = {"title": title, "message": message}
+    if not _IS_WINDOWS:
+        r: Dict[str, Any] = {"ok": False, "error": "Только Windows"}
+        _log("notify_windows", args, r)
+        return r
+    try:
+        t = title.replace("'", "''")
+        m = message.replace("'", "''")
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$n = New-Object System.Windows.Forms.NotifyIcon; "
+            "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+            "$n.Visible = $true; "
+            f"$n.ShowBalloonTip({duration * 1000}, '{t}', '{m}', "
+            "[System.Windows.Forms.ToolTipIcon]::Info); "
+            f"Start-Sleep -Milliseconds {duration * 1000 + 500}; "
+            "$n.Dispose()"
+        )
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        r: Dict[str, Any] = {"ok": True, "title": title, "message": message}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("notify_windows", args, r)
+    return r
+
+
+# ---------------------------------------------------------------------------
+# Code formatting & dependency check
+# ---------------------------------------------------------------------------
+
+def format_code(path: str, tool: str = "auto") -> Dict[str, Any]:
+    """
+    Форматирует файл кода.
+    tool: 'auto' (угадать), 'black' (Python), 'isort' (Python imports),
+          'prettier' (JS/TS/JSON/CSS/HTML), 'autopep8' (Python)
+    Если инструмент не установлен — возвращает ok=False с подсказкой.
+    """
+    args = {"path": path, "tool": tool}
+    try:
+        p = Path(path).expanduser().resolve()
+        if not p.is_file():
+            r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
+            _log("format_code", args, r)
+            return r
+
+        suffix = p.suffix.lower()
+        if tool == "auto":
+            if suffix == ".py":
+                tool = "black"
+            elif suffix in {".js", ".ts", ".jsx", ".tsx", ".json", ".css", ".html", ".md"}:
+                tool = "prettier"
+            else:
+                r = {"ok": False, "error": f"Не знаю чем форматировать {suffix}. Укажи tool явно."}
+                _log("format_code", args, r)
+                return r
+
+        import shutil as _shutil
+        if tool == "black":
+            if not _shutil.which("black"):
+                r = {"ok": False, "error": "black не установлен. Запусти: pip install black"}
+                _log("format_code", args, r)
+                return r
+            code, out = _run(f'black "{p}"', timeout=30)
+        elif tool == "isort":
+            if not _shutil.which("isort"):
+                r = {"ok": False, "error": "isort не установлен. Запусти: pip install isort"}
+                _log("format_code", args, r)
+                return r
+            code, out = _run(f'isort "{p}"', timeout=30)
+        elif tool == "autopep8":
+            if not _shutil.which("autopep8"):
+                r = {"ok": False, "error": "autopep8 не установлен. Запусти: pip install autopep8"}
+                _log("format_code", args, r)
+                return r
+            code, out = _run(f'autopep8 --in-place "{p}"', timeout=30)
+        elif tool == "prettier":
+            if not _shutil.which("prettier"):
+                r = {"ok": False, "error": "prettier не установлен. Запусти: npm install -g prettier"}
+                _log("format_code", args, r)
+                return r
+            code, out = _run(f'prettier --write "{p}"', timeout=30)
+        else:
+            r = {"ok": False, "error": f"Неизвестный форматтер: {tool}"}
+            _log("format_code", args, r)
+            return r
+
+        r = {"ok": code == 0, "path": str(p), "tool": tool, "output": out}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("format_code", args, r)
+    return r
+
+
+def check_deps(project_path: str) -> Dict[str, Any]:
+    """
+    Проверяет зависимости проекта.
+    - requirements.txt → pip list --outdated
+    - package.json → npm outdated
+    Возвращает список устаревших пакетов.
+    """
+    args = {"project_path": project_path}
+    try:
+        p = Path(project_path).expanduser().resolve()
+        results: Dict[str, Any] = {"ok": True, "checks": []}
+
+        req = p / "requirements.txt"
+        if req.exists():
+            code, out = _run("pip list --outdated --format=columns", cwd=str(p), timeout=60)
+            results["checks"].append({
+                "type": "pip",
+                "file": str(req),
+                "outdated": out if code == 0 else f"Ошибка: {out}",
+            })
+
+        pkg = p / "package.json"
+        if pkg.exists():
+            code, out = _run("npm outdated", cwd=str(p), timeout=60)
+            results["checks"].append({
+                "type": "npm",
+                "file": str(pkg),
+                "outdated": out or "(всё актуально)",
+            })
+
+        if not results["checks"]:
+            results["ok"] = False
+            results["error"] = "Не найдено requirements.txt или package.json"
+
+    except Exception as exc:
+        results = {"ok": False, "error": str(exc), "checks": []}
+    _log("check_deps", args, results)
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Ollama tools schema
 # ---------------------------------------------------------------------------
 
@@ -884,6 +1155,120 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    # ── Git ──────────────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "git_run",
+            "description": (
+                "Выполняет git-команду в репозитории. "
+                "Примеры команд: 'status', 'diff', 'diff HEAD', 'log --oneline -10', "
+                "'add .', 'commit -m \"fix: ...\"', 'branch', 'checkout -b feature', "
+                "'stash', 'pull', 'push', 'show HEAD'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "git-команда без слова 'git'"},
+                    "repo_path": {"type": "string", "description": "Путь к репозиторию"},
+                },
+                "required": ["command", "repo_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "diff_preview",
+            "description": (
+                "Показывает unified diff между текущим файлом и новым содержимым. "
+                "Используй ПЕРЕД write_file чтобы пользователь видел изменения."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "new_content": {"type": "string", "description": "Новое содержимое файла"},
+                },
+                "required": ["path", "new_content"],
+            },
+        },
+    },
+    # ── Clipboard & notifications ─────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "clipboard_get",
+            "description": "Читает текст из буфера обмена Windows. Удобно когда пользователь скопировал код.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clipboard_set",
+            "description": "Записывает текст в буфер обмена Windows.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notify_windows",
+            "description": "Показывает всплывающее уведомление Windows 10/11. Используй когда длинная задача завершена.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "message": {"type": "string"},
+                    "duration": {"type": "integer", "default": 5,
+                                 "description": "Длительность уведомления в секундах"},
+                },
+                "required": ["title", "message"],
+            },
+        },
+    },
+    # ── Code quality ─────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "format_code",
+            "description": (
+                "Форматирует файл кода: black/isort/autopep8 для Python, prettier для JS/TS/JSON. "
+                "tool='auto' — угадать автоматически."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "tool": {
+                        "type": "string",
+                        "enum": ["auto", "black", "isort", "autopep8", "prettier"],
+                        "default": "auto",
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_deps",
+            "description": "Проверяет устаревшие зависимости: pip list --outdated (requirements.txt) или npm outdated (package.json).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_path": {"type": "string"},
+                },
+                "required": ["project_path"],
+            },
+        },
+    },
 ]
 
 TOOL_FUNCTIONS: Dict[str, Any] = {
@@ -908,4 +1293,12 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "web_search": web_search,
     "scan_for_projects": scan_for_projects,
     "save_memory": save_memory,
+    # new
+    "git_run": git_run,
+    "diff_preview": diff_preview,
+    "clipboard_get": clipboard_get,
+    "clipboard_set": clipboard_set,
+    "notify_windows": notify_windows,
+    "format_code": format_code,
+    "check_deps": check_deps,
 }
