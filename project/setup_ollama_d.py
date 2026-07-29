@@ -138,7 +138,7 @@ def main() -> int:
     else:
         log("[!] Моделей нет ни на C:, ни на D:.")
         log("    После настройки скачай:")
-        log("      ollama pull qwen2.5-coder:7b")
+        log("      ollama pull qwen2.5-coder:14b")
         log("      ollama pull nomic-embed-text")
 
     log("")

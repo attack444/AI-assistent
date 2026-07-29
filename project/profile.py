@@ -14,7 +14,7 @@ class UserProfile:
     name: str = "Пользователь"
     style: str = "кратко, без воды, код > объяснения"
     preferred_languages: List[str] = field(default_factory=list)
-    preferred_model: str = "qwen2.5-coder:7b"
+    preferred_model: str = "qwen2.5-coder:14b"
     auto_apply_edits: bool = True
     auto_index: bool = True
     verbosity: str = "minimal"        # minimal | normal | verbose

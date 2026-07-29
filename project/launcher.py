@@ -27,7 +27,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 VENV_DIR = PROJECT_DIR / ".venv"
 REQUIREMENTS = PROJECT_DIR / "requirements.txt"
 DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-REQUIRED_MODELS = ["qwen2.5-coder:7b", "nomic-embed-text"]
+REQUIRED_MODELS = ["qwen2.5-coder:14b", "nomic-embed-text"]
 SHORTCUT_FLAG = PROJECT_DIR / ".ai_helper_shortcut_created"
 
 STREAMLIT_ENV = {
