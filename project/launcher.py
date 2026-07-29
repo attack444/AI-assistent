@@ -206,16 +206,93 @@ def find_ollama_exe() -> Path | None:
 
 
 def ollama_env() -> dict[str, str]:
+    """Окружение для запуска Ollama — включает OLLAMA_MODELS."""
     return {**os.environ}
 
 
-def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) -> bool:
-    if ollama_reachable(host):
-        return True
+def ensure_ollama_models_permanent() -> None:
+    """
+    Прописать OLLAMA_MODELS через setx, чтобы Ollama Desktop при автозапуске
+    тоже использовал D: (действует с следующего сеанса Windows).
+    """
+    target = os.environ.get("OLLAMA_MODELS", "")
+    if not target or platform.system() != "Windows":
+        return
+    try:
+        result = subprocess.run(
+            ["setx", "OLLAMA_MODELS", target],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode == 0:
+            log(f"[OK] OLLAMA_MODELS={target} прописан постоянно (setx)")
+        else:
+            log(f"[!] setx не сработал: {(result.stderr or result.stdout).strip()}")
+    except Exception as exc:
+        log(f"[!] setx: {exc}")
 
-    log("Ollama не отвечает — пытаюсь запустить автоматически...")
-    system = platform.system()
+
+def kill_ollama_process() -> bool:
+    """Завершить все процессы Ollama на Windows."""
+    if platform.system() != "Windows":
+        return False
+    try:
+        result = subprocess.run(
+            ["taskkill", "/IM", "ollama.exe", "/F"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            log("[OK] Ollama остановлен")
+            time.sleep(2)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def ollama_uses_correct_path(host: str = DEFAULT_OLLAMA_HOST) -> bool:
+    """
+    Проверяет что запущенный Ollama использует правильный OLLAMA_MODELS.
+    Считает 'правильным' если API возвращает хоть одну модель
+    ИЛИ папка моделей пустая (ещё ничего не скачано).
+    Возвращает False только когда: Ollama запущен, список пустой, но папка на D: непустая.
+    """
+    target = os.environ.get("OLLAMA_MODELS", "")
+    if not target:
+        return True  # не задан — считаем норм
+
+    installed = get_installed_models(host)
+    if installed:
+        return True  # модели видны — всё хорошо
+
+    # Список пуст. Проверим есть ли файлы на целевом диске
+    from ollama_paths import has_data
+    target_path = Path(target)
+    if has_data(target_path):
+        # Файлы есть, но Ollama их не видит — значит запущен с другим путём
+        return False
+
+    return True  # Список пуст и папка пуста — нормально (первый запуск)
+
+
+def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) -> bool:
+    """
+    Запустить Ollama с правильным OLLAMA_MODELS.
+    Если Ollama уже запущен, но использует неверный путь — перезапустить.
+    """
     env = ollama_env()
+    models_path = os.environ.get("OLLAMA_MODELS", "")
+    system = platform.system()
+
+    if ollama_reachable(host):
+        if ollama_uses_correct_path(host):
+            log(f"[OK] Ollama запущен, папка моделей: {models_path or 'default'}")
+            return True
+        # Запущен с неверным путём — перезапустим
+        log(f"[!] Ollama запущен, но не видит модели на {models_path}")
+        log("    Перезапускаю Ollama с правильным путём...")
+        kill_ollama_process()
+
+    log(f"Запускаю Ollama (OLLAMA_MODELS={models_path or 'default'})...")
 
     if system == "Windows":
         exe = find_ollama_exe()
@@ -377,6 +454,10 @@ def main() -> int:
     try:
         models_path = apply_ollama_models_env()
         log(f"Папка моделей Ollama: {models_path}")
+
+        # Прописать путь постоянно через setx — чтобы Ollama Desktop при
+        # автозапуске Windows тоже использовал D:
+        ensure_ollama_models_permanent()
 
         python = ensure_venv()
         ensure_dependencies(python)
