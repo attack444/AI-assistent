@@ -1,7 +1,13 @@
-# agent.py — ReAct agent loop with Ollama tool calling
+# agent.py — ReAct agent loop
+# Uses raw HTTP for tool-calling to bypass Pydantic validation bug:
+# some Ollama versions return tool_call arguments as JSON string instead of dict,
+# which makes the ollama Python client crash before we can handle it.
 from __future__ import annotations
 
+import inspect
 import json
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
@@ -11,6 +17,9 @@ from profile import UserProfile
 from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA
 
 MAX_STEPS = 12
+
+# Directory of this file — used to tell agent where its own source code lives
+SELF_DIR = Path(__file__).resolve().parent
 
 
 @dataclass
@@ -23,7 +32,100 @@ class AgentEvent:
 
 
 # ---------------------------------------------------------------------------
-# System prompt builder
+# Raw HTTP helpers — no Pydantic, no surprises
+# ---------------------------------------------------------------------------
+
+def _raw_chat(
+    host: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+    options: Dict[str, Any],
+    tools: Optional[List[Dict[str, Any]]] = None,
+    timeout: float = 300.0,
+) -> Dict[str, Any]:
+    """POST /api/chat (stream=False). Returns raw parsed JSON dict."""
+    url = f"{host.rstrip('/')}/api/chat"
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": options,
+    }
+    if tools:
+        body["tools"] = tools
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _stream_chat(
+    host: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+    options: Dict[str, Any],
+    timeout: float = 300.0,
+) -> Generator[str, None, None]:
+    """POST /api/chat (stream=True). Yields text chunks."""
+    url = f"{host.rstrip('/')}/api/chat"
+    body = json.dumps(
+        {"model": model, "messages": messages, "stream": True, "options": options},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw_line in resp:
+            line = raw_line.decode("utf-8").strip()
+            if not line:
+                continue
+            try:
+                chunk = json.loads(line)
+                txt = chunk.get("message", {}).get("content", "")
+                if txt:
+                    yield txt
+                if chunk.get("done", False):
+                    break
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+
+def _parse_args(raw: Any) -> Dict[str, Any]:
+    """Parse tool arguments — handle both dict and JSON-string forms."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            return {}
+    return {}
+
+
+def _extract_tool_calls(raw_msg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Extract tool calls from raw Ollama message dict."""
+    calls = []
+    for i, tc in enumerate(raw_msg.get("tool_calls", []) or []):
+        fn = tc.get("function", {})
+        name = fn.get("name", "").strip()
+        if not name:
+            continue
+        calls.append({
+            "id": tc.get("id", f"call_{i}"),
+            "name": name,
+            "arguments": _parse_args(fn.get("arguments", {})),
+        })
+    return calls
+
+
+# ---------------------------------------------------------------------------
+# System prompt
 # ---------------------------------------------------------------------------
 
 def build_system_prompt(
@@ -36,30 +138,32 @@ def build_system_prompt(
     proj_path = str(project_root) if project_root else "нет"
     mem_ctx   = memory.get_context(query, project=str(project_root) if project_root else "")
     langs     = ", ".join(profile.preferred_languages) if profile.preferred_languages else "любые"
-    confirm   = "без подтверждения — применяй сразу" if not profile.confirm_before_apply else "спрашивай подтверждение"
-    rules_txt = ("\nПравила пользователя:\n" + "\n".join(f"- {r}" for r in profile.rules)) if profile.rules else ""
+    confirm   = "без подтверждения" if not profile.confirm_before_apply else "с подтверждением"
+    rules_txt = ("\nПравила:\n" + "\n".join(f"- {r}" for r in profile.rules)) if profile.rules else ""
 
-    prompt = f"""Ты — персональный AI-ассистент программиста. Пользователь: {profile.name}.
+    return f"""Ты — персональный AI-ассистент программиста. Пользователь: {profile.name}.
 
-Стиль: {profile.style}
-Verbosity: {profile.verbosity}
-Изменения файлов: {confirm}
+Стиль: {profile.style} | Verbosity: {profile.verbosity} | Изменения: {confirm}
 Активный проект: {proj_name} ({proj_path})
 Языки: {langs}
 {rules_txt}
 
 Инструкции:
-- Кратко: факт → действие → результат. Без "конечно", "отлично", "давайте".
-- Ссылайся на файл:строка при каждом изменении.
-- Действуй — не спрашивай разрешения (если confirm=False).
-- Не знаешь — используй web_search или search_code, не выдумывай.
-- После write_file/create_file: одной строкой что сделал.
-- При ошибке: причина + исправление немедленно.
-- Обнаружил факт / предпочтение пользователя — сохрани в save_memory.
+- Кратко: факт → действие → результат. Без лишних слов.
+- Ссылайся на конкретный файл:строка при изменениях.
+- Действуй — не спрашивай разрешения (если confirm=без).
+- Не знаешь — используй web_search или search_code. Не выдумывай.
+- После write_file/create_file — одной строкой что сделал.
+- При ошибке — причина + исправление сразу.
+- Замечаешь предпочтение пользователя — сохрани в save_memory.
 - Пиши по-русски.
-{mem_ctx}""".strip()
 
-    return prompt
+Самообновление:
+- Исходный код этого ассистента: {SELF_DIR}
+- Файлы: app.py, core.py, agent.py, tools.py, memory.py, profile.py, launcher.py
+- Для обновления: read_file → изменить → write_file → python -m py_compile <файл>
+
+{mem_ctx}""".strip()
 
 
 # ---------------------------------------------------------------------------
@@ -72,15 +176,14 @@ def _dispatch(
     project_root: Optional[Path],
     memory: MemoryStore,
 ) -> Dict[str, Any]:
-    # Fill missing defaults
-    if name == "search_code" and "root" not in args and project_root:
-        args["root"] = str(project_root)
-    if name == "run_tests" and "project_root" not in args and project_root:
-        args["project_root"] = str(project_root)
-    if name == "run_command" and "cwd" not in args and project_root:
-        args["cwd"] = str(project_root)
+    # Fill implicit defaults
+    if name == "search_code"  and "root"         not in args and project_root:
+        args["root"]          = str(project_root)
+    if name == "run_tests"    and "project_root" not in args and project_root:
+        args["project_root"]  = str(project_root)
+    if name == "run_command"  and "cwd"          not in args and project_root:
+        args["cwd"]           = str(project_root)
 
-    # save_memory is handled here (needs MemoryStore)
     if name == "save_memory":
         entry = memory.add(
             content=args.get("content", ""),
@@ -93,12 +196,9 @@ def _dispatch(
     if fn is None:
         return {"ok": False, "error": f"Неизвестный инструмент: {name}"}
 
-    # Filter args to only those accepted by the function
-    import inspect
     sig = inspect.signature(fn)
-    valid_keys = set(sig.parameters.keys())
-    filtered = {k: v for k, v in args.items() if k in valid_keys}
-    return fn(**filtered)
+    valid = set(sig.parameters.keys())
+    return fn(**{k: v for k, v in args.items() if k in valid})
 
 
 # ---------------------------------------------------------------------------
@@ -116,101 +216,104 @@ def run_agent(
     context_window: int = 64000,
 ) -> Generator[AgentEvent, None, None]:
     """
-    ReAct agent loop.
-    Yields AgentEvent objects; caller renders them.
+    ReAct loop. Yields AgentEvent objects.
+    Uses raw HTTP to avoid Pydantic validation errors on tool_call arguments.
     """
-    from ollama import Client
-
-    client = Client(host=ollama_host)
     system_prompt = build_system_prompt(profile, memory, project_root, user_message)
+    options       = {"temperature": 0.05, "num_ctx": context_window}
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    # Include last 20 turns of history
     for msg in chat_history[-20:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": user_message})
 
     steps = 0
+    tool_calls_made = False
+
     while steps < MAX_STEPS:
         steps += 1
 
+        # ── Tool-calling step: raw HTTP, handles string arguments ────────────
         try:
-            response = client.chat(
+            raw_resp = _raw_chat(
+                host=ollama_host,
                 model=llm_model,
                 messages=messages,
+                options=options,
                 tools=TOOLS_SCHEMA,
-                options={"temperature": 0.05, "num_ctx": context_window},
             )
         except Exception as exc:
-            yield AgentEvent(type="error", content=f"Ollama: {exc}")
+            yield AgentEvent(type="error", content=f"Ollama ({ollama_host}): {exc}")
             return
 
-        msg = response.message
-        tool_calls = getattr(msg, "tool_calls", None) or []
+        raw_msg     = raw_resp.get("message", {}) or {}
+        content     = (raw_msg.get("content") or "").strip()
+        tool_calls  = _extract_tool_calls(raw_msg)
 
         if tool_calls:
-            # Append assistant message with tool_calls to history
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.content or "",
-                    "tool_calls": [
-                        {
-                            "id": getattr(tc, "id", f"call_{i}"),
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": json.dumps(
-                                    tc.function.arguments
-                                    if isinstance(tc.function.arguments, dict)
-                                    else {}
-                                ),
-                            },
-                        }
-                        for i, tc in enumerate(tool_calls)
-                    ],
-                }
-            )
+            tool_calls_made = True
 
-            for i, tc in enumerate(tool_calls):
-                name = tc.function.name
-                try:
-                    raw_args = tc.function.arguments
-                    args: Dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-                except Exception:
-                    args = {}
-
-                call_id = getattr(tc, "id", f"call_{i}")
-
-                yield AgentEvent(type="tool_call", tool_name=name, tool_args=dict(args))
-
-                result = _dispatch(name, dict(args), project_root, memory)
-
-                yield AgentEvent(type="tool_result", tool_name=name, tool_result=result)
-
-                messages.append(
+            # Add assistant turn with tool_calls to history
+            messages.append({
+                "role": "assistant",
+                "content": content,
+                "tool_calls": [
                     {
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "content": json.dumps(result, ensure_ascii=False)[:6000],
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
+                        },
                     }
-                )
+                    for tc in tool_calls
+                ],
+            })
 
-            # Continue loop to get next model response
+            for tc in tool_calls:
+                yield AgentEvent(type="tool_call", tool_name=tc["name"], tool_args=tc["arguments"])
+
+                result = _dispatch(tc["name"], dict(tc["arguments"]), project_root, memory)
+
+                yield AgentEvent(type="tool_result", tool_name=tc["name"], tool_result=result)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": json.dumps(result, ensure_ascii=False)[:6000],
+                })
+
+            # Continue loop — let model decide next step
             continue
 
-        # No tool calls — deliver final text
-        final = (msg.content or "").strip()
-        if final:
-            # Chunk text for streaming effect in UI
-            chunk = 6
-            for i in range(0, len(final), chunk):
-                yield AgentEvent(type="text", content=final[i : i + chunk])
+        # ── Final text response ──────────────────────────────────────────────
+        if tool_calls_made and not content:
+            # Tools were used but model returned empty — stream a fresh summary
+            try:
+                for chunk in _stream_chat(ollama_host, llm_model, messages, options):
+                    yield AgentEvent(type="text", content=chunk)
+            except Exception as exc:
+                yield AgentEvent(type="error", content=f"Stream error: {exc}")
+        elif tool_calls_made and content:
+            # Stream fresh answer so model uses tool results properly
+            messages.append({"role": "assistant", "content": ""})
+            messages.pop()  # remove temp
+            try:
+                for chunk in _stream_chat(ollama_host, llm_model, messages, options):
+                    yield AgentEvent(type="text", content=chunk)
+            except Exception:
+                # Fallback: use content from non-streaming call
+                for i in range(0, len(content), 6):
+                    yield AgentEvent(type="text", content=content[i:i+6])
+        else:
+            # No tools at all — fake-stream the content (avoids a second API call)
+            for i in range(0, len(content), 6):
+                yield AgentEvent(type="text", content=content[i:i+6])
 
         yield AgentEvent(type="done")
         return
 
     yield AgentEvent(
         type="error",
-        content=f"Превышен лимит шагов ({MAX_STEPS}). Упрости задачу или раздели на части.",
+        content=f"Превышен лимит шагов ({MAX_STEPS}). Раздели задачу на части.",
     )

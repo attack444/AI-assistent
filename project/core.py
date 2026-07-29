@@ -61,7 +61,7 @@ MAX_BACKUP_KEEP_DAYS = 14
 MAX_HISTORY_ENTRIES = 500
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-DEFAULT_LLM_MODEL = "llama3.1:8b"
+DEFAULT_LLM_MODEL = "qwen2.5-coder:7b"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
 REQUIRED_OLLAMA_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_EMBED_MODEL]
 
@@ -584,7 +584,7 @@ def pull_ollama_models(
 
     ollama_bin = shutil_which("ollama")
     if not ollama_bin:
-        return [], [f"ollama CLI не найден — установи Ollama с https://ollama.com"]
+        return [], ["ollama CLI не найден — установи Ollama с https://ollama.com"]
 
     for model in models:
         try:

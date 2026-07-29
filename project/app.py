@@ -5,16 +5,13 @@ import json
 import os
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Dict, Generator, List, Optional
 
 import streamlit as st
 
-from agent import AgentEvent, run_agent
+from agent import run_agent
 from core import (
     AppSettings,
-    DEFAULT_EMBED_MODEL,
-    DEFAULT_LLM_MODEL,
-    DEFAULT_OLLAMA_HOST,
     REQUIRED_OLLAMA_MODELS,
     build_index,
     check_ollama_status,
@@ -80,6 +77,10 @@ if "profile" not in st.session_state:
 
 if "memory" not in st.session_state:
     st.session_state["memory"] = MemoryStore()
+
+# LlamaIndex is expensive to import — cache it per project
+# Key: "idx_cache_{project_name}" → VectorStoreIndex object
+# Invalidated when _reindex flag is set or index is rebuilt
 
 settings: AppSettings = st.session_state["settings"]
 profile: UserProfile  = st.session_state["profile"]
@@ -151,7 +152,7 @@ with st.sidebar:
         miss = get_missing_models(REQUIRED_OLLAMA_MODELS, ost.models)
         if miss:
             st.warning(f"Нужны: {', '.join(miss)}")
-            if st.button(f"⬇ Скачать", use_container_width=True):
+            if st.button("⬇ Скачать", use_container_width=True):
                 with st.spinner("Скачиваю..."):
                     pull_ollama_models(miss, ollama_host)
                 st.session_state["ost"] = check_ollama_status(ollama_host)
@@ -240,12 +241,22 @@ if pnames and selected_project and selected_project != "<нет>" and selected_p
     project_root = Path(projects[selected_project].root)
 
 # ---------------------------------------------------------------------------
-# Auto-reindex on project switch
+# Auto-reindex on project switch  (throttled: check at most every 60 s)
 # ---------------------------------------------------------------------------
+import time as _time
+
 if project_root and st.session_state.get("_last_proj") != selected_project:
     st.session_state["_last_proj"] = selected_project
     st.session_state[f"chat_{selected_project}"] = []
+    st.session_state.pop(f"idx_obj_{selected_project}", None)  # invalidate index cache
     st.session_state["_reindex"] = needs_reindex(project_root)
+    st.session_state["_reindex_checked_at"] = _time.time()
+elif project_root and not st.session_state.get("_reindex"):
+    # Re-check staleness every 60 seconds at most (avoids scanning FS on every render)
+    last_checked = st.session_state.get("_reindex_checked_at", 0)
+    if _time.time() - last_checked > 60:
+        st.session_state["_reindex"] = needs_reindex(project_root)
+        st.session_state["_reindex_checked_at"] = _time.time()
 
 # ---------------------------------------------------------------------------
 # Status bar
@@ -279,9 +290,29 @@ if project_root and st.session_state.get("_reindex"):
                 )
                 cleanup_old_backups(project_root)
                 st.session_state["_reindex"] = False
+                st.session_state.pop(f"idx_obj_{selected_project}", None)
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+
+# ---------------------------------------------------------------------------
+# Cached index loader (avoids re-loading LlamaIndex from disk every message)
+# ---------------------------------------------------------------------------
+def _get_cached_index(project_root: Optional[Path]):
+    """Return cached VectorStoreIndex or None. Invalidated when _reindex is set."""
+    if not project_root:
+        return None
+    cache_key = f"idx_obj_{selected_project}"
+    if st.session_state.get("_reindex") or cache_key not in st.session_state:
+        return None
+    return st.session_state.get(cache_key)
+
+
+def _store_cached_index(project_root: Optional[Path], idx) -> None:
+    if not project_root:
+        return
+    st.session_state[f"idx_obj_{selected_project}"] = idx
+
 
 # ---------------------------------------------------------------------------
 # Helper: format tool args for display
@@ -335,6 +366,7 @@ def _cmd(raw: str) -> Optional[str]:
             )
             cleanup_old_backups(project_root)
             st.session_state["_reindex"] = False
+            st.session_state.pop(f"idx_obj_{selected_project}", None)
             info = get_index_info(project_root)
             return f"Индекс готов. Файлов: {info['file_count'] if info else '?'}"
         except Exception as e:
