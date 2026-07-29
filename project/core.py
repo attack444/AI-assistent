@@ -34,6 +34,7 @@ PROJECTS_FILE = APP_DIR / "projects.json"
 INDICES_DIR = APP_DIR / "indices"
 BACKUPS_DIR = APP_DIR / "backups"
 HISTORY_FILE = APP_DIR / "history.json"
+SETTINGS_FILE = APP_DIR / "settings.json"
 
 INDEX_EXTENSIONS = {
     ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx",
@@ -90,6 +91,20 @@ class OllamaStatus:
     message: str
     models: List[str] = field(default_factory=list)
     already_running: bool = False
+
+
+@dataclass
+class AppSettings:
+    llm_model: str = DEFAULT_LLM_MODEL
+    embed_model: str = DEFAULT_EMBED_MODEL
+    ollama_host: str = DEFAULT_OLLAMA_HOST
+    context_window: int = 64000
+    top_k: int = 5
+    chunk_size: int = 1024
+    chunk_overlap: int = 150
+    use_web: bool = False
+    search_kind: str = "text"
+    max_web_results: int = 5
 
 
 class PatchItem(BaseModel):
@@ -346,6 +361,71 @@ def verify_ollama_for_indexing(
         return True, "Ollama и embeddings работают"
     except Exception as exc:
         return False, f"Ошибка embeddings ({embed_model}): {exc}"
+
+
+# ---------------------------------------------------------------------------
+# Settings persistence
+# ---------------------------------------------------------------------------
+
+def load_settings() -> AppSettings:
+    ensure_dirs()
+    if not SETTINGS_FILE.exists():
+        return AppSettings()
+    try:
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        valid = {k: v for k, v in data.items() if k in AppSettings.__dataclass_fields__}
+        return AppSettings(**valid)
+    except Exception:
+        return AppSettings()
+
+
+def save_settings(s: AppSettings) -> None:
+    ensure_dirs()
+    SETTINGS_FILE.write_text(json.dumps(asdict(s), indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Index staleness
+# ---------------------------------------------------------------------------
+
+def needs_reindex(project_root: Path) -> bool:
+    """Return True if the project has changed since the last index build."""
+    project_root = project_root.resolve()
+    storage_dir = project_storage_dir(project_root)
+    if not is_index_complete(storage_dir):
+        return True
+    old_manifest = load_manifest(project_root)
+    if not old_manifest:
+        return True
+    files = iter_project_files(project_root)
+    if not files:
+        return False
+    new_manifest = build_manifest(project_root, files)
+    return manifest_signature(old_manifest) != manifest_signature(new_manifest)
+
+
+# ---------------------------------------------------------------------------
+# Project statistics
+# ---------------------------------------------------------------------------
+
+def get_project_stats(project_root: Path) -> Dict[str, Any]:
+    """Return file counts by extension and total size."""
+    files = iter_project_files(project_root)
+    by_ext: Dict[str, int] = {}
+    total_size = 0
+    for f in files:
+        ext = f.suffix.lower() or "(no ext)"
+        by_ext[ext] = by_ext.get(ext, 0) + 1
+        try:
+            total_size += f.stat().st_size
+        except OSError:
+            pass
+    top_exts = sorted(by_ext.items(), key=lambda x: x[1], reverse=True)[:12]
+    return {
+        "total_files": len(files),
+        "total_size_kb": round(total_size / 1024),
+        "top_extensions": top_exts,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -909,7 +989,6 @@ def run_tests(project_root: Path, tests_cmd: Optional[str] = None) -> Tuple[int,
 
 
 def shutil_which(cmd: str) -> Optional[str]:
-    import shutil
     return shutil.which(cmd)
 
 
@@ -1011,6 +1090,104 @@ def apply_edit_plan(
             test_output=test_output,
             errors=str(exc),
         )
+
+
+# ---------------------------------------------------------------------------
+# Streaming chat with project context
+# ---------------------------------------------------------------------------
+
+def stream_chat_with_context(
+    user_message: str,
+    chat_history: List[Dict[str, str]],
+    project_root: Path,
+    llm_model: str,
+    embed_model: str,
+    ollama_host: str,
+    top_k: int = 5,
+    context_window: Optional[int] = None,
+    search_web: bool = False,
+    max_web_results: int = 5,
+    search_kind: str = "text",
+) -> Tuple[Any, List[Dict[str, str]], List[Dict[str, str]]]:
+    """
+    Returns (streaming_generator, local_sources, web_results).
+    The generator yields string chunks; iterate it to get the full response.
+    """
+    from ollama import Client
+
+    sources: List[Dict[str, str]] = []
+    context_text = ""
+
+    # RAG: get relevant project code
+    try:
+        configure_settings(llm_model, embed_model, ollama_host, context_window)
+        index = load_index(project_root)
+        retriever = index.as_retriever(similarity_top_k=top_k)
+        nodes = retriever.retrieve(user_message)
+        parts: List[str] = []
+        for node in nodes[:top_k]:
+            meta = getattr(node.node, "metadata", {}) or {}
+            path = meta.get("path", "unknown")
+            text = (node.node.get_text() or "").strip()
+            sources.append({"path": path, "snippet": text[:300]})
+            lang = path.rsplit(".", 1)[-1] if "." in path else ""
+            parts.append(f"### {path}\n```{lang}\n{text[:3000]}\n```")
+        context_text = "\n\n".join(parts)
+    except FileNotFoundError:
+        context_text = ""
+
+    # Optional web search
+    web_results: List[Dict[str, str]] = []
+    web_text = ""
+    if search_web:
+        try:
+            if search_kind == "news":
+                web_results = web_search_news(user_message, max_results=max_web_results)
+            else:
+                web_results = web_search_text(user_message, max_results=max_web_results)
+            web_text = format_web_results(web_results)
+        except Exception:
+            pass
+
+    # Build system message
+    system_parts = [
+        "Ты — продвинутый AI-ассистент программиста. "
+        "Отвечай точно и по делу. Используй markdown. Пиши по-русски. "
+        "Приводи примеры кода. Не выдумывай факты.",
+    ]
+    if context_text:
+        system_parts.append(
+            f"\nКОД ПРОЕКТА (используй для ответа, ссылайся на конкретные файлы):\n{context_text}"
+        )
+    if web_text:
+        system_parts.append(f"\nАКТУАЛЬНАЯ ИНФОРМАЦИЯ ИЗ ИНТЕРНЕТА:\n{web_text}")
+
+    system_msg = "\n".join(system_parts)
+
+    # Conversation history (last 20 turns to stay within context)
+    ollama_messages: List[Dict[str, str]] = [{"role": "system", "content": system_msg}]
+    for msg in chat_history[-20:]:
+        ollama_messages.append({"role": msg["role"], "content": msg["content"]})
+    ollama_messages.append({"role": "user", "content": user_message})
+
+    client = Client(host=ollama_host)
+
+    def _gen():
+        try:
+            for chunk in client.chat(
+                model=llm_model,
+                messages=ollama_messages,
+                stream=True,
+                options={
+                    "temperature": 0.15,
+                    "num_ctx": context_window or 64000,
+                },
+            ):
+                yield chunk.message.content or ""
+        except Exception as exc:
+            yield f"\n\n**Ошибка соединения с Ollama:** {exc}"
+
+    return _gen(), sources, web_results
 
 
 # ---------------------------------------------------------------------------
