@@ -584,7 +584,7 @@ def pull_ollama_models(
 
     ollama_bin = shutil_which("ollama")
     if not ollama_bin:
-        return [], [f"ollama CLI не найден — установи Ollama с https://ollama.com"]
+        return [], ["ollama CLI не найден — установи Ollama с https://ollama.com"]
 
     for model in models:
         try:

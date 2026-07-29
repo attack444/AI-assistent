@@ -5,16 +5,13 @@ import json
 import os
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Dict, Generator, List, Optional
 
 import streamlit as st
 
-from agent import AgentEvent, run_agent
+from agent import run_agent
 from core import (
     AppSettings,
-    DEFAULT_EMBED_MODEL,
-    DEFAULT_LLM_MODEL,
-    DEFAULT_OLLAMA_HOST,
     REQUIRED_OLLAMA_MODELS,
     build_index,
     check_ollama_status,
@@ -151,7 +148,7 @@ with st.sidebar:
         miss = get_missing_models(REQUIRED_OLLAMA_MODELS, ost.models)
         if miss:
             st.warning(f"Нужны: {', '.join(miss)}")
-            if st.button(f"⬇ Скачать", use_container_width=True):
+            if st.button("⬇ Скачать", use_container_width=True):
                 with st.spinner("Скачиваю..."):
                     pull_ollama_models(miss, ollama_host)
                 st.session_state["ost"] = check_ollama_status(ollama_host)
