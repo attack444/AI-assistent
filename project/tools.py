@@ -803,6 +803,125 @@ def format_code(path: str, tool: str = "auto") -> Dict[str, Any]:
     return r
 
 
+def apply_self_improvement(file: str, new_content: str, reason: str = "") -> Dict[str, Any]:
+    """
+    Безопасно применяет улучшение к собственному исходному коду ассистента.
+    Перед изменением делает бэкап всех файлов.
+    При ошибке компиляции — автоматический откат.
+    Используй только для файлов из папки ассистента (agent.py, tools.py и т.д.)
+    """
+    args = {"file": file, "reason": reason[:200]}
+    try:
+        from self_update import backup_all_sources, safe_apply_patch
+        from pathlib import Path as _Path
+
+        SELF_DIR = _Path(__file__).resolve().parent
+        target = SELF_DIR / file
+        if not target.exists():
+            r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {target}"}
+            _log("apply_self_improvement", args, r)
+            return r
+
+        # Бэкап ВСЕХ файлов перед изменением
+        backup_dir = backup_all_sources(label=f"self_improve_{_Path(file).stem}")
+
+        r = safe_apply_patch(target, new_content, reason=reason, backup_dir=backup_dir)
+        r["backup_dir"] = str(backup_dir)
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("apply_self_improvement", args, r)
+    return r
+
+
+def self_update_check(model: str = "", ollama_host: str = "http://localhost:11434") -> Dict[str, Any]:
+    """
+    Проверяет обновления:
+    - Модель Ollama (ollama pull)
+    - Компиляция исходников ассистента
+    - Устаревшие pip-зависимости
+    Возвращает полный отчёт.
+    """
+    args = {"model": model}
+    try:
+        from core import DEFAULT_LLM_MODEL
+        from self_update import full_update_cycle
+        m = model or DEFAULT_LLM_MODEL
+        r = full_update_cycle(m, ollama_host)
+        r["ok"] = True
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("self_update_check", args, r)
+    return r
+
+
+def search_better_models(current_model: str) -> Dict[str, Any]:
+    """
+    Ищет в интернете информацию о новых моделях для программирования.
+    Помогает решить стоит ли переходить на другую модель.
+    """
+    args = {"current_model": current_model}
+    try:
+        from self_update import check_for_better_models
+        r = check_for_better_models(current_model)
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("search_better_models", args, r)
+    return r
+
+
+def self_code_analyze(aspect: str = "reliability") -> Dict[str, Any]:
+    """
+    Читает собственный код и формирует промпт для самоанализа.
+    aspect: 'performance', 'reliability', 'features', 'ui', 'tools', 'windows'
+    Возвращает контекст и промпт для улучшения — агент использует это чтобы предложить patch.
+    """
+    args = {"aspect": aspect}
+    try:
+        from self_update import (
+            IMPROVEMENT_ASPECTS,
+            SOURCE_FILES,
+            SELF_DIR as _SELF_DIR,
+            build_self_improvement_prompt,
+            run_self_check,
+        )
+
+        files: Dict[str, str] = {}
+        # Берём самые релевантные файлы по аспекту
+        priority = {
+            "performance": ["core.py", "agent.py"],
+            "reliability": ["agent.py", "tools.py", "core.py"],
+            "features":    ["tools.py", "app.py"],
+            "ui":          ["app.py"],
+            "tools":       ["tools.py", "agent.py"],
+            "windows":     ["tools.py", "launcher.py", "ollama_paths.py"],
+        }.get(aspect, SOURCE_FILES[:3])
+
+        for name in priority:
+            p = _SELF_DIR / name
+            if p.exists():
+                files[name] = p.read_text(encoding="utf-8", errors="ignore")[:4000]
+
+        self_check = run_self_check()
+        prompt = build_self_improvement_prompt(aspect, files)
+
+        r: Dict[str, Any] = {
+            "ok": True,
+            "aspect": aspect,
+            "description": IMPROVEMENT_ASPECTS.get(aspect, aspect),
+            "files_analyzed": list(files.keys()),
+            "self_check": self_check["summary"],
+            "prompt_for_agent": prompt,
+            "instruction": (
+                "Используй этот анализ, чтобы предложить конкретное улучшение. "
+                "Затем вызови apply_self_improvement(file, new_content, reason) для применения."
+            ),
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("self_code_analyze", args, r)
+    return r
+
+
 def check_deps(project_path: str) -> Dict[str, Any]:
     """
     Проверяет зависимости проекта.
@@ -1269,6 +1388,81 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    # ── Self-evolution ────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_self_improvement",
+            "description": (
+                "Безопасно применяет улучшение к собственному коду ассистента. "
+                "Делает бэкап всех файлов, записывает изменение, проверяет компиляцию. "
+                "При ошибке — автоматический откат. "
+                "Используй только для файлов: app.py, core.py, agent.py, tools.py, memory.py, profile.py, launcher.py, self_update.py"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "description": "Имя файла (например 'tools.py')"},
+                    "new_content": {"type": "string", "description": "Полное новое содержимое файла"},
+                    "reason": {"type": "string", "description": "Причина изменения — что улучшаем и почему"},
+                },
+                "required": ["file", "new_content", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "self_update_check",
+            "description": (
+                "Проверяет обновления: модель Ollama (ollama pull), "
+                "компиляцию исходников, устаревшие pip-зависимости. "
+                "Вызывай при запросе пользователя или раз в день."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "default": "", "description": "Модель для проверки (пусто = текущая)"},
+                    "ollama_host": {"type": "string", "default": "http://localhost:11434"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_better_models",
+            "description": "Ищет в интернете новые LLM-модели для программирования. Помогает решить стоит ли переходить.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "current_model": {"type": "string", "description": "Текущая модель, например 'qwen2.5-coder:14b'"},
+                },
+                "required": ["current_model"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "self_code_analyze",
+            "description": (
+                "Анализирует собственный код ассистента по заданному аспекту. "
+                "Возвращает промпт и контекст для предложения улучшений. "
+                "aspect: 'performance', 'reliability', 'features', 'ui', 'tools', 'windows'"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "aspect": {
+                        "type": "string",
+                        "enum": ["performance", "reliability", "features", "ui", "tools", "windows"],
+                        "default": "reliability",
+                    },
+                },
+            },
+        },
+    },
 ]
 
 TOOL_FUNCTIONS: Dict[str, Any] = {
@@ -1301,4 +1495,9 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "notify_windows": notify_windows,
     "format_code": format_code,
     "check_deps": check_deps,
+    # self-evolution
+    "apply_self_improvement": apply_self_improvement,
+    "self_update_check": self_update_check,
+    "search_better_models": search_better_models,
+    "self_code_analyze": self_code_analyze,
 }

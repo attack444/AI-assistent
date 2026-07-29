@@ -36,6 +36,13 @@ from core import (
 from memory import MemoryStore
 from profile import UserProfile, load_profile, save_profile
 from tools import AGENT_LOG, git_run, scan_for_projects
+from self_update import (
+    backup_all_sources,
+    get_improvement_log,
+    list_backups,
+    rollback_sources,
+    run_self_check,
+)
 
 ensure_dirs()
 
@@ -264,6 +271,68 @@ with st.sidebar:
                         st.caption(label)
             _tree(project_root)
 
+    # ── Self-evolution panel ─────────────────────────────────────────────────
+    st.subheader("🧬 Самоэволюция")
+    with st.expander("Обновления и улучшения"):
+        ev_cols = st.columns(2)
+        if ev_cols[0].button("Проверить обновления", use_container_width=True, key="ev_check"):
+            with st.spinner("Проверяю..."):
+                from tools import self_update_check
+                rpt = self_update_check(model=llm_model, ollama_host=ollama_host)
+            sc = rpt.get("self_check", {})
+            mu = rpt.get("model_update", {})
+            deps = rpt.get("deps", {})
+            if mu.get("updated"):
+                st.success(f"Модель обновлена: {mu.get('model')}")
+            elif mu.get("up_to_date"):
+                st.info(f"Модель актуальна: {mu.get('model')}")
+            else:
+                st.warning(f"Обновление: {mu.get('error','?')}")
+            if sc.get("compile_errors"):
+                for e in sc["compile_errors"]:
+                    st.error(f"{e['file']}: {e['error']}")
+            else:
+                st.success(f"Код: всё компилируется ({len(sc.get('compile_ok',[]))} файлов)")
+            if deps and deps.get("outdated"):
+                st.warning(f"Устаревших pip-пакетов: {deps['count']}")
+                st.code("\n".join(deps["outdated"][:5]))
+
+        if ev_cols[1].button("Бэкап кода", use_container_width=True, key="ev_backup"):
+            with st.spinner("Сохраняю бэкап..."):
+                bd = backup_all_sources(label="manual")
+            st.success(f"Бэкап: {bd.name}")
+
+        # Rollback selector
+        backups = list_backups(limit=5)
+        if backups:
+            bk_names = [b["name"] for b in backups]
+            selected_bk = st.selectbox("Откат к бэкапу", ["— выбери —"] + bk_names, key="bk_sel")
+            if selected_bk != "— выбери —" and st.button("Откатить", key="bk_roll", type="primary"):
+                from pathlib import Path as _P
+                bk_path = _P(next(b["path"] for b in backups if b["name"] == selected_bk))
+                ok, msgs = rollback_sources(bk_path)
+                if ok:
+                    st.success(f"Откат выполнен: {', '.join(msgs)}")
+                else:
+                    st.error(f"Ошибка: {msgs}")
+
+        # Improvement log
+        imp_log = get_improvement_log(limit=10)
+        if imp_log:
+            st.caption("**Последние изменения:**")
+            for entry in imp_log[:5]:
+                event = entry.get("event", "")
+                ts = entry.get("ts", "")[:16]
+                if event == "patch_applied":
+                    st.caption(f"✓ {ts} → {entry.get('file')} +{entry.get('added')} -{entry.get('removed')}")
+                elif event == "patch_rejected":
+                    st.caption(f"✗ {ts} → {entry.get('file')} (откат: {entry.get('error','')[:40]})")
+                elif event == "model_pull":
+                    upd = "обновлена" if entry.get("updated") else "актуальна"
+                    st.caption(f"🤖 {ts} → модель {upd}")
+                elif event == "backup_created":
+                    st.caption(f"💾 {ts} → бэкап {entry.get('name','')}")
+
     # ── Advanced ─────────────────────────────────────────────────────────────
     with st.expander("Расширенные"):
         cw  = st.number_input("Context window", value=settings.context_window, step=1024)
@@ -408,6 +477,10 @@ def _cmd(raw: str) -> Optional[str]:
             "`/git <команда>` — git в текущем проекте\n"
             "`/clip` — показать буфер обмена\n"
             "`/deps` — проверить устаревшие зависимости\n"
+            "`/selfupdate` — проверить обновления модели и зависимостей\n"
+            "`/evolve <аспект>` — запустить самоулучшение (performance/reliability/features/ui/tools/windows)\n"
+            "`/backups` — список бэкапов кода\n"
+            "`/selfcheck` — проверить компиляцию своего кода\n"
             "`/profile` — показать профиль\n"
             "`/memory` — показать память\n"
             "`/forget <слово>` — удалить записи по ключевому слову\n"
@@ -539,6 +612,71 @@ def _cmd(raw: str) -> Optional[str]:
             lines.append(f"**{c['type']}** (`{Path(c['file']).name}`):\n```\n{c['outdated']}\n```")
         return "\n\n".join(lines) or "Всё актуально."
 
+    elif name == "selfupdate":
+        from tools import self_update_check
+        with st.spinner("Проверяю обновления..."):
+            rpt = self_update_check(model=llm_model, ollama_host=ollama_host)
+        mu = rpt.get("model_update", {})
+        sc = rpt.get("self_check", {})
+        deps = rpt.get("deps", {})
+        lines = ["**Отчёт об обновлениях:**\n"]
+        if mu.get("updated"):
+            lines.append(f"✅ Модель обновлена: `{mu.get('model')}`")
+        elif mu.get("up_to_date"):
+            lines.append(f"✓ Модель актуальна: `{mu.get('model')}`")
+        else:
+            lines.append(f"⚠ Модель: {mu.get('error','?')}")
+        if sc.get("compile_errors"):
+            for e in sc["compile_errors"]:
+                lines.append(f"❌ Ошибка компиляции `{e['file']}`: {e['error']}")
+        else:
+            lines.append(f"✓ Код: {len(sc.get('compile_ok',[]))} файлов компилируются")
+        if deps:
+            if deps.get("outdated"):
+                lines.append(f"📦 Устаревших пакетов: {deps['count']}")
+                lines.append("```\n" + "\n".join(deps["outdated"][:8]) + "\n```")
+            else:
+                lines.append("✓ Pip-зависимости актуальны")
+        return "\n".join(lines)
+
+    elif name == "evolve":
+        aspect = arg or "reliability"
+        valid = ["performance", "reliability", "features", "ui", "tools", "windows"]
+        if aspect not in valid:
+            return f"Неизвестный аспект. Варианты: {', '.join(valid)}"
+        return (
+            f"Запускаю самоанализ по аспекту **{aspect}**...\n\n"
+            f"Агент прочитает свой код и предложит конкретное улучшение.\n"
+            f"Используй этот запрос в чате:\n\n"
+            f"> Проанализируй свой код аспект={aspect} и предложи одно конкретное улучшение. "
+            f"Используй self_code_analyze(aspect='{aspect}'), затем diff_preview, "
+            f"затем apply_self_improvement."
+        )
+
+    elif name == "backups":
+        bks = list_backups(limit=8)
+        if not bks:
+            return "Бэкапов нет."
+        lines = ["**Бэкапы кода:**"]
+        for b in bks:
+            lines.append(f"- `{b['name']}` — {b['count']} файлов")
+        lines.append("\nДля отката: **Самоэволюция → Откат к бэкапу** в боковой панели")
+        return "\n".join(lines)
+
+    elif name == "selfcheck":
+        sc = run_self_check()
+        lines = [f"**Проверка кода:** {sc['summary']}"]
+        if sc.get("compile_errors"):
+            for e in sc["compile_errors"]:
+                lines.append(f"❌ `{e['file']}`: {e['error']}")
+        else:
+            lines.append("✓ Все файлы компилируются")
+        if sc.get("log_errors"):
+            lines.append(f"\n⚠ Последние ошибки агента ({len(sc['log_errors'])}):")
+            for e in sc["log_errors"][:5]:
+                lines.append(f"- [{e['ts']}] {e['tool']}")
+        return "\n".join(lines)
+
     elif name == "log":
         if not AGENT_LOG.exists():
             return "Лог пуст."
@@ -583,7 +721,7 @@ if project_root:
         ("🔀 Git статус",     "Покажи git status и последние коммиты"),
         ("📦 Зависимости",    "Проверь устаревшие зависимости проекта"),
         ("✨ Форматировать",   "Отформатируй все Python-файлы проекта через black"),
-        ("📝 README",          "Напиши или обнови README.md для проекта"),
+        ("🧬 Улучши себя",    "Проанализируй свой код через self_code_analyze(aspect='reliability'), предложи улучшение, примени через apply_self_improvement"),
     ]
     chip_cols = st.columns(len(_CHIPS))
     _quick_input: Optional[str] = None
