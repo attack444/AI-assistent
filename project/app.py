@@ -92,9 +92,25 @@ if "memory" not in st.session_state:
 # Key: "idx_cache_{project_name}" → VectorStoreIndex object
 # Invalidated when _reindex flag is set or index is rebuilt
 
+import time as _time
+
 settings: AppSettings = st.session_state["settings"]
 profile: UserProfile  = st.session_state["profile"]
 memory: MemoryStore   = st.session_state["memory"]
+
+# ---------------------------------------------------------------------------
+# Compute project_root EARLY (before sidebar) from previous session state.
+# This prevents NameError when sidebar references project_root.
+# After the sidebar selectbox renders, project_root is recomputed below.
+# ---------------------------------------------------------------------------
+projects = load_projects()
+pnames = list(projects.keys())
+_prev_sel: Optional[str] = st.session_state.get("sel_proj")
+project_root: Optional[Path] = None
+if _prev_sel and _prev_sel != "<нет>" and _prev_sel in projects:
+    project_root = Path(projects[_prev_sel].root)
+elif pnames:
+    project_root = Path(projects[pnames[0]].root)
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -104,8 +120,6 @@ with st.sidebar:
 
     # ── Projects ────────────────────────────────────────────────────────────
     st.subheader("Проекты")
-    projects = load_projects()
-    pnames = list(projects.keys())
 
     selected_project: Optional[str] = st.selectbox(
         "Активный",
@@ -361,16 +375,16 @@ with st.sidebar:
 
 
 # ---------------------------------------------------------------------------
-# Project root
+# Project root — recompute with the updated selectbox value
 # ---------------------------------------------------------------------------
-project_root: Optional[Path] = None
-if pnames and selected_project and selected_project != "<нет>" and selected_project in projects:
+if selected_project and selected_project != "<нет>" and selected_project in projects:
     project_root = Path(projects[selected_project].root)
+else:
+    project_root = None
 
 # ---------------------------------------------------------------------------
 # Auto-reindex on project switch  (throttled: check at most every 60 s)
 # ---------------------------------------------------------------------------
-import time as _time
 
 if project_root and st.session_state.get("_last_proj") != selected_project:
     st.session_state["_last_proj"] = selected_project
@@ -731,7 +745,40 @@ if project_root:
 else:
     _quick_input = None
 
+# ---------------------------------------------------------------------------
+# File attachment uploader
+# ---------------------------------------------------------------------------
+_TEXT_EXTS = {
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".json",
+    ".md", ".txt", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".sh",
+    ".bat", ".ps1", ".env", ".sql", ".xml", ".csv", ".log", ".rs",
+    ".go", ".java", ".cpp", ".c", ".h", ".rb", ".php",
+}
+_IMG_EXTS  = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+
+with st.expander("📎 Прикрепить файлы (код, изображения, макеты)", expanded=False):
+    uploaded = st.file_uploader(
+        "Перетащи файлы сюда или нажми «Browse files»",
+        accept_multiple_files=True,
+        key="file_uploader",
+        label_visibility="collapsed",
+    )
+    if uploaded:
+        st.session_state["_attachments"] = uploaded
+        cols = st.columns(min(len(uploaded), 4))
+        for i, f in enumerate(uploaded):
+            ext = Path(f.name).suffix.lower()
+            with cols[i % 4]:
+                if ext in _IMG_EXTS:
+                    st.image(f, caption=f.name, use_container_width=True)
+                else:
+                    st.caption(f"📄 **{f.name}**")
+    elif "file_uploader" in st.session_state and not uploaded:
+        st.session_state.pop("_attachments", None)
+
+# ---------------------------------------------------------------------------
 # Render existing messages
+# ---------------------------------------------------------------------------
 for hist_msg in chat_msgs:
     with st.chat_message(hist_msg["role"]):
         st.markdown(hist_msg["content"])
@@ -755,9 +802,53 @@ if _effective_input is None:
         _effective_input = _typed
 
 if user_input := _effective_input:
+    # ── Build message with attachments ──────────────────────────────────────
+    attachments = st.session_state.pop("_attachments", []) or []
+    attachment_parts: List[str] = []
+    attachment_display: List[str] = []
+
+    for f in attachments:
+        ext = Path(f.name).suffix.lower()
+        raw = f.read()
+        if ext in _IMG_EXTS:
+            import base64
+            b64 = base64.b64encode(raw).decode()
+            attachment_parts.append(
+                f"[Изображение: {f.name}]\n"
+                f"(Данные base64 доступны, но текущая модель не поддерживает vision. "
+                f"Опиши что на изображении словами или укажи путь к файлу.)"
+            )
+            attachment_display.append(f"🖼 {f.name}")
+        elif ext in _TEXT_EXTS or True:
+            try:
+                text = raw.decode("utf-8", errors="replace")
+            except Exception:
+                text = "(двоичный файл)"
+            preview = text[:8000] + ("...[обрезано]" if len(text) > 8000 else "")
+            attachment_parts.append(f"[Файл: {f.name}]\n```{ext.lstrip('.')}\n{preview}\n```")
+            attachment_display.append(f"📄 {f.name} ({len(text):,} символов)")
+
+    # Compose full message (attachments prepended as context)
+    if attachment_parts:
+        full_user_msg = (
+            "Прикреплённые файлы:\n\n"
+            + "\n\n".join(attachment_parts)
+            + "\n\n---\n"
+            + user_input
+        )
+        display_msg = (
+            user_input
+            + "\n\n*Прикреплено: "
+            + ", ".join(attachment_display)
+            + "*"
+        )
+    else:
+        full_user_msg = user_input
+        display_msg = user_input
+
     with st.chat_message("user"):
-        st.markdown(user_input)
-    chat_msgs.append({"role": "user", "content": user_input})
+        st.markdown(display_msg)
+    chat_msgs.append({"role": "user", "content": display_msg})
 
     # ── Commands ──────────────────────────────────────────────────────────────
     cmd_resp = _cmd(user_input)
@@ -769,7 +860,7 @@ if user_input := _effective_input:
     else:
         # ── Inline "открой <path>" detection ─────────────────────────────────
         path_added: Optional[Path] = None
-        low = user_input.lower()
+        low = user_input.lower()  # use clean input for path detection
         if any(kw in low for kw in ("открой ", "open ", "добавь проект", "/add ")):
             for token in user_input.split():
                 candidate = Path(token).expanduser()
@@ -822,7 +913,7 @@ if user_input := _effective_input:
 
                 def _stream_agent() -> Generator[str, None, None]:
                     for ev in run_agent(
-                        user_message=user_input,
+                        user_message=full_user_msg,
                         chat_history=[m for m in chat_msgs[:-1]],
                         project_root=project_root,
                         profile=profile,
