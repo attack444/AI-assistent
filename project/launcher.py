@@ -21,6 +21,8 @@ import urllib.request
 from pathlib import Path
 from typing import Tuple
 
+from ollama_paths import apply_ollama_models_env, diagnose_models, find_models_dirs
+
 PROJECT_DIR = Path(__file__).resolve().parent
 VENV_DIR = PROJECT_DIR / ".venv"
 REQUIREMENTS = PROJECT_DIR / "requirements.txt"
@@ -203,12 +205,17 @@ def find_ollama_exe() -> Path | None:
     return None
 
 
+def ollama_env() -> dict[str, str]:
+    return {**os.environ}
+
+
 def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) -> bool:
     if ollama_reachable(host):
         return True
 
     log("Ollama не отвечает — пытаюсь запустить автоматически...")
     system = platform.system()
+    env = ollama_env()
 
     if system == "Windows":
         exe = find_ollama_exe()
@@ -221,12 +228,14 @@ def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) ->
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=flags,
+            env=env,
         )
     elif system == "Darwin":
         subprocess.Popen(
             ["open", "-a", "Ollama"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
     else:
         ollama_bin = shutil.which("ollama")
@@ -237,6 +246,7 @@ def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) ->
             [ollama_bin, "serve"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
 
     for i in range(wait_seconds):
@@ -261,12 +271,34 @@ def pull_model(model: str) -> bool:
         return False
 
     log(f"Скачиваю {model} (может занять несколько минут)...")
-    result = subprocess.run([ollama_bin, "pull", model])
+    result = subprocess.run([ollama_bin, "pull", model], env=ollama_env())
     if result.returncode == 0:
         log(f"[OK] {model} готова")
         return True
     log(f"[ERR] Не удалось скачать {model}")
     return False
+
+
+def diagnose_running_ollama(host: str = DEFAULT_OLLAMA_HOST) -> list[str]:
+    """Ollama уже запущен, но API не видит модели — типично после смены OLLAMA_MODELS."""
+    if not ollama_reachable(host):
+        return []
+    if get_installed_models(host):
+        return []
+
+    locations = find_models_dirs()
+    if not locations:
+        return []
+
+    best_path, best_size = locations[0]
+    return [
+        "[!] Ollama запущен, но ollama list пустой.",
+        f"    Файлы моделей найдены: {best_path} ({best_size} MB)",
+        "    Ollama Desktop читает OLLAMA_MODELS только при старте.",
+        "    1. ПКМ на иконке Ollama в трее -> Quit",
+        "    2. Запусти «Настроить Ollama на диск D.bat» (скопирует на D:)",
+        "    3. Запусти Ollama снова и проверь: ollama list",
+    ]
 
 
 def ensure_models(host: str = DEFAULT_OLLAMA_HOST) -> None:
@@ -343,11 +375,17 @@ def main() -> int:
     log("")
 
     try:
+        models_path = apply_ollama_models_env()
+        log(f"Папка моделей Ollama: {models_path}")
+
         python = ensure_venv()
         ensure_dependencies(python)
 
         # Создать ярлык при первом успешном запуске
         maybe_create_shortcut_once()
+
+        for line in diagnose_models():
+            log(line)
 
         if not try_start_ollama():
             if ollama_reachable():
@@ -362,6 +400,9 @@ def main() -> int:
                 log("  просто перезапусти START.bat.")
                 pause_on_error()
                 return 1
+
+        for line in diagnose_running_ollama():
+            log(line)
 
         ensure_models()
         return launch_streamlit(python)
