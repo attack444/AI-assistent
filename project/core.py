@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -62,6 +63,9 @@ DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_LLM_MODEL = "llama3.1:8b"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
 REQUIRED_OLLAMA_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_EMBED_MODEL]
+
+# Файлы, которые LlamaIndex создаёт при persist — без них индекс неполный
+INDEX_PERSIST_FILES = ("docstore.json", "index_store.json")
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -264,19 +268,84 @@ def manifest_signature(manifest: Dict[str, Any]) -> str:
 
 
 def get_index_info(project_root: Path) -> Optional[Dict[str, Any]]:
-    """Return index stats: file count and last build timestamp."""
-    manifest = load_manifest(project_root)
-    if not manifest:
-        return None
+    """Return index stats: file count, last build timestamp, and health status."""
     storage_dir = project_storage_dir(project_root)
+    manifest = load_manifest(project_root)
+    complete = is_index_complete(storage_dir)
+
+    if not manifest and not complete:
+        return None
+
     last_built: Optional[str] = None
     if storage_dir.exists():
-        ts = storage_dir.stat().st_mtime
-        last_built = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            ts = storage_dir.stat().st_mtime
+            last_built = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        except OSError:
+            last_built = None
+
+    if complete:
+        status = "ready"
+        status_label = "Готов"
+    elif storage_dir.exists() and any(storage_dir.iterdir()):
+        status = "corrupted"
+        status_label = "Повреждён — нужна пересборка"
+    else:
+        status = "missing"
+        status_label = "Не построен"
+
     return {
-        "file_count": manifest.get("file_count", 0),
+        "file_count": manifest.get("file_count", 0) if manifest else 0,
         "last_built": last_built,
+        "status": status,
+        "status_label": status_label,
+        "storage_dir": str(storage_dir),
     }
+
+
+def is_index_complete(storage_dir: Path) -> bool:
+    """Проверить, что индекс полностью сохранён и можно загружать."""
+    if not storage_dir.exists() or not storage_dir.is_dir():
+        return False
+    return all((storage_dir / name).is_file() for name in INDEX_PERSIST_FILES)
+
+
+def clear_index_storage(project_root: Path) -> Path:
+    """Удалить неполный или повреждённый индекс проекта."""
+    project_root = project_root.resolve()
+    storage_dir = project_storage_dir(project_root)
+    if storage_dir.exists():
+        shutil.rmtree(storage_dir, ignore_errors=True)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_path = project_manifest_path(project_root)
+    if manifest_path.exists():
+        try:
+            manifest_path.unlink()
+        except OSError:
+            pass
+
+    return storage_dir
+
+
+def verify_ollama_for_indexing(
+    embed_model: str,
+    ollama_host: str,
+    timeout: float = 30.0,
+) -> Tuple[bool, str]:
+    """Проверить, что Ollama отвечает и embeddings работают."""
+    status = check_ollama_status(ollama_host, timeout=min(timeout, 5.0))
+    if not status.reachable:
+        return False, status.message
+
+    try:
+        embed = load_embed_model(embed_model, ollama_host)
+        vector = embed.get_text_embedding("index health check")
+        if not vector:
+            return False, "Ollama вернула пустой embedding — проверь модель nomic-embed-text"
+        return True, "Ollama и embeddings работают"
+    except Exception as exc:
+        return False, f"Ошибка embeddings ({embed_model}): {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -516,13 +585,20 @@ def build_index(
         raise RuntimeError(f"В проекте не найдено индексируемых файлов: {project_root}")
 
     storage_dir = project_storage_dir(project_root)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-
     new_manifest = build_manifest(project_root, files)
     old_manifest = load_manifest(project_root)
 
-    if not force and old_manifest and manifest_signature(old_manifest) == manifest_signature(new_manifest):
+    if (
+        not force
+        and is_index_complete(storage_dir)
+        and old_manifest
+        and manifest_signature(old_manifest) == manifest_signature(new_manifest)
+    ):
         return storage_dir
+
+    ok, msg = verify_ollama_for_indexing(embed_model, ollama_host)
+    if not ok:
+        raise RuntimeError(msg)
 
     configure_settings(
         llm_model=llm_model,
@@ -530,6 +606,12 @@ def build_index(
         ollama_host=ollama_host,
         context_window=context_window,
     )
+
+    # Чистая сборка: не загружаем старый persist (иначе падает на отсутствующем docstore.json)
+    if force or not is_index_complete(storage_dir):
+        clear_index_storage(project_root)
+    storage_dir = project_storage_dir(project_root)
+    storage_dir.mkdir(parents=True, exist_ok=True)
 
     reader = SimpleDirectoryReader(
         input_files=[str(p) for p in files],
@@ -539,19 +621,38 @@ def build_index(
         exclude_empty=True,
     )
     documents = reader.load_data()
+    if not documents:
+        raise RuntimeError("Не удалось прочитать файлы проекта для индексации")
 
-    storage_context = StorageContext.from_defaults(persist_dir=str(storage_dir))
+    # Сборка во временную папку — атомарная замена, без битого индекса при сбое
+    temp_dir = storage_dir.parent / f".{storage_dir.name}.building"
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    index = VectorStoreIndex.from_documents(
-        documents,
-        storage_context=storage_context,
-        transformations=[SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)],
-        show_progress=True,
-    )
+    try:
+        storage_context = StorageContext.from_defaults()
+        index = VectorStoreIndex.from_documents(
+            documents,
+            storage_context=storage_context,
+            transformations=[SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)],
+            show_progress=True,
+        )
+        index.storage_context.persist(persist_dir=str(temp_dir))
 
-    index.storage_context.persist(persist_dir=str(storage_dir))
-    save_manifest(project_root, new_manifest)
-    return storage_dir
+        if not is_index_complete(temp_dir):
+            raise RuntimeError(
+                "Индекс не сохранился полностью. Проверь Ollama и свободное место на диске."
+            )
+
+        if storage_dir.exists():
+            shutil.rmtree(storage_dir, ignore_errors=True)
+        temp_dir.replace(storage_dir)
+        save_manifest(project_root, new_manifest)
+        return storage_dir
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
 
 def load_index(project_root: Path) -> VectorStoreIndex:
@@ -560,7 +661,13 @@ def load_index(project_root: Path) -> VectorStoreIndex:
 
     if not storage_dir.exists():
         raise FileNotFoundError(
-            f"Индекс не найден для проекта {project_root}. Сначала запусти построение индекса."
+            f"Индекс не найден для проекта {project_root}. Сначала построй индекс на вкладке «Индекс»."
+        )
+
+    if not is_index_complete(storage_dir):
+        raise FileNotFoundError(
+            "Индекс повреждён или не до конца построен (нет docstore.json). "
+            "Нажми «Построить / обновить индекс» для пересборки."
         )
 
     storage_context = StorageContext.from_defaults(persist_dir=str(storage_dir))

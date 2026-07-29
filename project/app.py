@@ -22,10 +22,12 @@ from core import (
     choose_candidates,
     cleanup_old_backups,
     clear_history,
+    clear_index_storage,
     delete_project,
     ensure_dirs,
     get_index_info,
     get_missing_models,
+    iter_project_files,
     load_configured_index,
     load_history,
     load_projects,
@@ -35,6 +37,7 @@ from core import (
     register_project,
     save_history_entry,
     try_start_ollama,
+    verify_ollama_for_indexing,
     web_search_news,
     web_search_text,
 )
@@ -156,12 +159,44 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Индекс", "💬 Вопрос�
 # Tab 1 — Index
 # ===========================================================================
 with tab1:
+    index_info = get_index_info(project_root)
+    indexable_count = len(iter_project_files(project_root))
+
     col_btn, col_info = st.columns([1, 2])
 
+    with col_info:
+        st.metric("Файлов для индексации", indexable_count)
+        if index_info:
+            if index_info.get("status") == "ready":
+                st.success(f"Статус: {index_info['status_label']}")
+                st.metric("Файлов в индексе", index_info["file_count"])
+                if index_info.get("last_built"):
+                    st.caption(f"Последнее построение: {index_info['last_built']}")
+            elif index_info.get("status") == "corrupted":
+                st.warning(f"Статус: {index_info['status_label']}")
+                st.caption("Нажми «Построить / обновить индекс» — старый индекс будет пересоздан.")
+            else:
+                st.info(f"Статус: {index_info.get('status_label', 'Не построен')}")
+        else:
+            st.info("Индекс ещё не построен.")
+
     with col_btn:
-        if st.button("🔄 Построить / обновить индекс", use_container_width=True):
-            with st.spinner("Строю индекс..."):
+        ollama_ok, ollama_msg = verify_ollama_for_indexing(embed_model, ollama_host)
+        if ollama_ok:
+            st.caption(ollama_msg)
+        else:
+            st.warning(ollama_msg)
+
+        if st.button("Построить / обновить индекс", use_container_width=True, type="primary"):
+            if indexable_count == 0:
+                st.error("В проекте нет файлов для индексации. Проверь путь к проекту.")
+            elif not ollama_ok:
+                st.error(f"Сначала исправь Ollama: {ollama_msg}")
+            else:
+                progress = st.progress(0, text="Подготовка...")
                 try:
+                    progress.progress(10, text="Проверка Ollama и embeddings...")
+                    progress.progress(25, text=f"Индексирую {indexable_count} файлов — это может занять время...")
                     build_index(
                         project_root=project_root,
                         llm_model=llm_model,
@@ -173,24 +208,33 @@ with tab1:
                         context_window=int(context_window),
                     )
                     cleanup_old_backups(project_root)
-                    st.success("✅ Индекс готов")
+                    progress.progress(100, text="Готово!")
+                    st.success("Индекс успешно построен")
                     st.rerun()
-                except Exception as exc:
+                except FileNotFoundError as exc:
+                    st.error(str(exc))
+                except RuntimeError as exc:
                     st.error(f"Ошибка построения индекса:\n{exc}")
+                except Exception as exc:
+                    st.error(
+                        f"Ошибка построения индекса:\n{exc}\n\n"
+                        "Попробуй «Очистить индекс» и построить заново."
+                    )
+                finally:
+                    progress.empty()
 
-    with col_info:
-        info = get_index_info(project_root)
-        if info:
-            st.metric("Файлов в индексе", info["file_count"])
-            st.caption(f"Последнее построение: {info['last_built']}")
-        else:
-            st.info("Индекс ещё не построен.")
+        if st.button("Очистить индекс", use_container_width=True):
+            clear_index_storage(project_root)
+            st.success("Индекс очищен. Теперь построй его заново.")
+            st.rerun()
 
     st.divider()
     st.markdown(
         "Индекс хранится в `~/.ai-helper/indices/` отдельно от кода проекта. "
-        "Пересобирай после крупных изменений."
+        "При ошибке `docstore.json` нажми **Очистить индекс**, затем **Построить**."
     )
+    if index_info and index_info.get("storage_dir"):
+        st.caption(f"Папка индекса: `{index_info['storage_dir']}`")
 
 # ===========================================================================
 # Tab 2 — Questions
