@@ -1,22 +1,13 @@
-"""Пути к моделям Ollama: D:, C: и конфиг ~/.ai-helper/ollama_paths.json."""
+"""Управление путём к моделям Ollama (D: > конфиг > C:)."""
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
 
-DEFAULT_D_ROOT = Path("D:/Ollama")
-DEFAULT_D_MODELS = DEFAULT_D_ROOT / ".ollama" / "models"
-DEFAULT_C_MODELS = Path.home() / ".ollama" / "models"
+D_MODELS   = Path("D:/Ollama/.ollama/models")
+C_MODELS   = Path.home() / ".ollama" / "models"
 CONFIG_FILE = Path.home() / ".ai-helper" / "ollama_paths.json"
-
-CANDIDATE_SUFFIXES = [
-    DEFAULT_D_MODELS,
-    DEFAULT_C_MODELS,
-    Path("D:/.ollama/models"),
-    Path("D:/Ollama/models"),
-    Path("D:/ollama/models"),
-]
 
 
 def dir_size_mb(path: Path) -> float:
@@ -26,7 +17,7 @@ def dir_size_mb(path: Path) -> float:
     return round(total / 1024 / 1024, 1)
 
 
-def has_model_data(path: Path, min_mb: float = 1.0) -> bool:
+def has_data(path: Path, min_mb: float = 1.0) -> bool:
     return path.exists() and dir_size_mb(path) >= min_mb
 
 
@@ -48,14 +39,20 @@ def save_config(models_path: Path) -> None:
 
 
 def find_models_dirs() -> list[tuple[Path, float]]:
+    """Возвращает все существующие папки с моделями, сортировка по размеру."""
     candidates: list[Path] = []
-    env = os.environ.get("OLLAMA_MODELS", "").strip()
-    if env:
-        candidates.append(Path(env))
-    cfg = load_config().get("OLLAMA_MODELS", "")
-    if cfg:
-        candidates.append(Path(str(cfg)))
-    candidates.extend(CANDIDATE_SUFFIXES)
+
+    cfg_raw = str(load_config().get("OLLAMA_MODELS", "")).strip()
+    if cfg_raw:
+        candidates.append(Path(cfg_raw))
+
+    candidates += [
+        D_MODELS,
+        Path("D:/.ollama/models"),
+        Path("D:/Ollama/models"),
+        Path("D:/ollama/models"),
+        C_MODELS,
+    ]
 
     found: list[tuple[Path, float]] = []
     seen: set[str] = set()
@@ -71,43 +68,35 @@ def find_models_dirs() -> list[tuple[Path, float]]:
         size = dir_size_mb(path)
         if size > 1:
             found.append((path, size))
-    return sorted(found, key=lambda item: item[1], reverse=True)
+    return sorted(found, key=lambda x: x[1], reverse=True)
 
 
 def resolve_ollama_models_path() -> Path:
     """
-    Выбрать папку моделей Ollama.
+    Выбрать целевую папку моделей.
 
     Приоритет:
-    1. Папка из OLLAMA_MODELS / ollama_paths.json, если в ней уже есть модели
-    2. Самая большая папка с моделями на диске
-    3. D:\\Ollama\\.ollama\\models (если диск D: есть)
+    1. Переменная среды OLLAMA_MODELS (выставляется START.bat)
+    2. Конфиг ~/.ai-helper/ollama_paths.json
+    3. D:\\Ollama\\.ollama\\models  (если диск D: доступен)
     4. ~/.ollama/models
     """
     env_raw = os.environ.get("OLLAMA_MODELS", "").strip()
-    config_raw = str(load_config().get("OLLAMA_MODELS", "")).strip()
-
-    for raw in (env_raw, config_raw):
-        if not raw:
-            continue
-        path = Path(raw)
-        if has_model_data(path):
-            return path
-
-    locations = find_models_dirs()
-    if locations:
-        return locations[0][0]
-
-    if config_raw:
-        return Path(config_raw)
     if env_raw:
         return Path(env_raw)
+
+    cfg_raw = str(load_config().get("OLLAMA_MODELS", "")).strip()
+    if cfg_raw:
+        return Path(cfg_raw)
+
     if Path("D:/").exists():
-        return DEFAULT_D_MODELS
-    return DEFAULT_C_MODELS
+        return D_MODELS
+
+    return C_MODELS
 
 
 def apply_ollama_models_env() -> Path:
+    """Убедиться что OLLAMA_MODELS выставлена и папка существует."""
     path = resolve_ollama_models_path()
     path.mkdir(parents=True, exist_ok=True)
     os.environ["OLLAMA_MODELS"] = str(path)
@@ -115,25 +104,25 @@ def apply_ollama_models_env() -> Path:
 
 
 def diagnose_models() -> list[str]:
-    """Сообщения для лога, если ollama list пустой, а файлы моделей есть."""
+    """Предупреждения, если OLLAMA_MODELS указывает на пустую папку."""
     lines: list[str] = []
     current = Path(os.environ.get("OLLAMA_MODELS", resolve_ollama_models_path()))
+
+    if has_data(current):
+        return lines
+
     locations = find_models_dirs()
-
-    if has_model_data(current):
-        return lines
-
     if not locations:
-        lines.append("[!] Папка моделей пуста. Будут скачаны при первом запуске.")
+        lines.append("[!] Моделей Ollama нет. Будут скачаны при первом запуске.")
         return lines
 
-    best_path, best_size = locations[0]
+    best_path, best_mb = locations[0]
     if str(best_path).lower() == str(current).lower():
         return lines
 
-    lines.append("[!] ollama list пустой: OLLAMA_MODELS указывает на пустую папку")
-    lines.append(f"    Сейчас: {current}")
-    lines.append(f"    Найдены модели: {best_path} ({best_size} MB)")
-    lines.append("    Запусти «Настроить Ollama на диск D.bat» или скопируй модели вручную.")
-    lines.append("    После смены пути полностью перезапусти Ollama (Quit в трее).")
+    lines.append("[!] ollama list пустой: OLLAMA_MODELS указывает на пустую папку.")
+    lines.append(f"    Текущий путь : {current}")
+    lines.append(f"    Файлы есть   : {best_path}  ({best_mb} MB)")
+    lines.append("    Запусти setup_d.bat — скрипт скопирует модели на D: и удалит с C:.")
+    lines.append("    После этого перезапусти Ollama (Quit в трее -> запустить снова).")
     return lines

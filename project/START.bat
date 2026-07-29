@@ -16,7 +16,6 @@ if not exist "!SCRIPT_DIR!\launcher.py" (
     set "PATH_FILE=%USERPROFILE%\.ai-helper\project_dir.txt"
     if exist "!PATH_FILE!" (
         set /p "SCRIPT_DIR=" < "!PATH_FILE!"
-        REM Убираем trailing backslash
         if "!SCRIPT_DIR:~-1!"=="\" set "SCRIPT_DIR=!SCRIPT_DIR:~0,-1!"
     )
 )
@@ -42,6 +41,23 @@ set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 set "STREAMLIT_BROWSER_GATHER_USAGE_STATS=false"
 set "STREAMLIT_SERVER_SHOW_EMAIL_PROMPT=false"
+
+REM ============================================================
+REM  Путь к моделям Ollama: всегда D:\Ollama\.ollama\models
+REM  если диск D: есть, иначе — стандартный путь на C:
+REM ============================================================
+set "OLLAMA_D=D:\Ollama\.ollama\models"
+
+if exist "D:\" (
+    REM D: есть — используем его
+    set "OLLAMA_MODELS=!OLLAMA_D!"
+    if not exist "!OLLAMA_D!" mkdir "!OLLAMA_D!" >nul 2>&1
+    echo  [Ollama] Папка моделей: !OLLAMA_D!
+) else (
+    REM D: нет — стандартный путь
+    set "OLLAMA_MODELS=%USERPROFILE%\.ollama\models"
+    echo  [Ollama] Диска D: нет, папка: %USERPROFILE%\.ollama\models
+)
 
 echo.
 echo  ========================================
