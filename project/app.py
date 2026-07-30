@@ -35,7 +35,7 @@ from core import (
 )
 from memory import MemoryStore
 from profile import UserProfile, load_profile, save_profile
-from tools import AGENT_LOG, git_run, scan_for_projects
+from tools import AGENT_LOG, git_run, github_create_pr, github_pr_list, scan_for_projects
 from self_update import (
     backup_all_sources,
     get_improvement_log,
@@ -174,6 +174,16 @@ with st.sidebar:
     else:
         st.caption("Без ключа — только локальные модели")
 
+    st.divider()
+    st.caption("🔌 Прокси (для России / VPN)")
+    http_proxy_val = st.text_input(
+        "HTTP Proxy",
+        value=settings.http_proxy,
+        key="sb_proxy",
+        placeholder="http://127.0.0.1:7890",
+        help="Если Groq даёт 403 — укажи адрес прокси твоего VPN клиента",
+    )
+
     if fast_llm_model.strip():
         st.caption(f"⚡ Локал чат: `{fast_llm_model}` · 🤖 Агент: `{llm_model}`")
     else:
@@ -189,6 +199,7 @@ with st.sidebar:
         fast_llm_model=fast_llm_model,
         groq_api_key=groq_key,
         groq_model=groq_model_val,
+        http_proxy=http_proxy_val,
     )
     if asdict(_new_s) != asdict(settings):
         save_settings(_new_s)
@@ -320,6 +331,7 @@ with st.sidebar:
                         fast_llm_model=settings.fast_llm_model,
                         groq_api_key=settings.groq_api_key,
                         groq_model=settings.groq_model,
+                        http_proxy=settings.http_proxy,
                     ):
                         if _ev.type == "text":
                             _msg_parts.append(_ev.content)
@@ -329,6 +341,37 @@ with st.sidebar:
                     st.code(f"Коммит: {_auto_msg}\n{commit_r.get('output','')}", language="")
                 else:
                     st.warning("Не удалось сгенерировать сообщение")
+
+    # ── GitHub panel ──────────────────────────────────────────────────────────
+    if project_root and (project_root / ".git").exists():
+        st.subheader("GitHub")
+        with st.expander("Pull Requests & Issues"):
+            gh_cols = st.columns(2)
+            if gh_cols[0].button("PR list", use_container_width=True, key="gh_prs"):
+                r = github_pr_list(str(project_root))
+                st.code(r.get("output") or r.get("error", ""), language="")
+            if gh_cols[1].button("Issues", use_container_width=True, key="gh_issues"):
+                from tools import github_issue_list
+                r = github_issue_list(str(project_root))
+                st.code(r.get("output") or r.get("error", ""), language="")
+            st.caption("Создать Pull Request")
+            pr_title = st.text_input("Название PR", key="gh_pr_title", placeholder="feat: описание")
+            pr_body  = st.text_area("Описание PR", key="gh_pr_body", height=80, placeholder="(опционально)")
+            pr_base  = st.text_input("Base ветка", key="gh_pr_base", value="main")
+            pr_draft = st.checkbox("Черновик (draft)", key="gh_pr_draft", value=True)
+            if st.button("Создать PR на GitHub", use_container_width=True, key="gh_create_pr"):
+                if pr_title.strip():
+                    with st.spinner("Создаю PR..."):
+                        r = github_create_pr(
+                            title=pr_title, body=pr_body, base=pr_base,
+                            repo_path=str(project_root), draft=pr_draft,
+                        )
+                    if r.get("ok"):
+                        st.success(f"PR создан: {r.get('url', '')}")
+                    else:
+                        st.error(r.get("error", r.get("output", "Ошибка")))
+                else:
+                    st.warning("Введи название PR")
 
     # ── File tree ─────────────────────────────────────────────────────────────
     if project_root:
@@ -1002,6 +1045,7 @@ if user_input := _effective_input:
                         fast_llm_model=settings.fast_llm_model,
                         groq_api_key=settings.groq_api_key,
                         groq_model=settings.groq_model,
+                        http_proxy=settings.http_proxy,
                     ):
                         if ev.type == "info":
                             mode, mdl = (ev.content.split(":", 1) + [""])[:2]

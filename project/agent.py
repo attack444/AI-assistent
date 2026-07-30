@@ -125,6 +125,15 @@ def _groq_headers(api_key: str) -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
 
 
+def _make_opener(proxy: str = "") -> "urllib.request.OpenerDirector":
+    """Build urllib opener with optional HTTP proxy."""
+    import urllib.request as _ur
+    if proxy.strip():
+        handler = _ur.ProxyHandler({"http": proxy, "https": proxy})
+        return _ur.build_opener(handler)
+    return _ur.build_opener()
+
+
 class GroqAuthError(Exception):
     """Raised when Groq returns 401/403 — key invalid or revoked."""
 
@@ -161,6 +170,7 @@ def _groq_stream(
     max_tokens: int = 768,
     temperature: float = 0.1,
     timeout: float = 60.0,
+    proxy: str = "",
 ) -> Generator[str, None, None]:
     """Stream text from Groq API. Much faster than local Ollama."""
     body = json.dumps({
@@ -175,7 +185,7 @@ def _groq_stream(
         headers=_groq_headers(api_key),
     )
     try:
-        resp_cm = urllib.request.urlopen(req, timeout=timeout)
+        resp_cm = _make_opener(proxy).open(req, timeout=timeout)
     except Exception as exc:
         raise _groq_check_error(exc) from exc
     with resp_cm as resp:
@@ -201,6 +211,7 @@ def _groq_chat(
     max_tokens: int = 2048,
     temperature: float = 0.05,
     timeout: float = 60.0,
+    proxy: str = "",
 ) -> Dict[str, Any]:
     """Non-streaming Groq call (for tool-calling step). Returns our internal format."""
     payload: Dict[str, Any] = {
@@ -220,7 +231,7 @@ def _groq_chat(
         headers=_groq_headers(api_key),
     )
     try:
-        resp_cm = urllib.request.urlopen(req, timeout=timeout)
+        resp_cm = _make_opener(proxy).open(req, timeout=timeout)
     except Exception as exc:
         raise _groq_check_error(exc) from exc
     with resp_cm as resp:
@@ -483,6 +494,7 @@ def run_agent(
     fast_llm_model: str = "",
     groq_api_key: str = "",
     groq_model: str = GROQ_DEFAULT_MODEL,
+    http_proxy: str = "",
 ) -> Generator[AgentEvent, None, None]:
     """
     Three-tier routing:
@@ -507,7 +519,7 @@ def run_agent(
 
         yield AgentEvent(type="info", content=f"groq:{groq_model}")
         try:
-            for chunk in _groq_stream(groq_api_key, groq_model, messages):
+            for chunk in _groq_stream(groq_api_key, groq_model, messages, proxy=http_proxy):
                 yield AgentEvent(type="text", content=chunk)
         except GroqAuthError as exc:
             # Auth error — show clear message, DO NOT silently fall back
@@ -545,7 +557,7 @@ def run_agent(
         while steps < MAX_STEPS:
             steps += 1
             try:
-                raw_resp = _groq_chat(groq_api_key, groq_model, messages,
+                raw_resp = _groq_chat(groq_api_key, groq_model, messages, proxy=http_proxy,
                                       tools=relevant_tools)
             except GroqAuthError as exc:
                 yield AgentEvent(type="error", content=str(exc))
@@ -584,7 +596,7 @@ def run_agent(
                     yield AgentEvent(type="text", content=content[i:i+8])
             elif tool_calls_made:
                 try:
-                    for chunk in _groq_stream(groq_api_key, groq_model, messages, max_tokens=1024):
+                    for chunk in _groq_stream(groq_api_key, groq_model, messages, max_tokens=1024, proxy=http_proxy):
                         yield AgentEvent(type="text", content=chunk)
                 except Exception as exc:
                     yield AgentEvent(type="error", content=f"Groq stream: {exc}")

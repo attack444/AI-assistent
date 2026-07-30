@@ -586,6 +586,74 @@ def scan_for_projects(path: str, max_depth: int = 4) -> Dict[str, Any]:
     return r
 
 
+def github_create_pr(
+    title: str,
+    body: str = "",
+    base: str = "main",
+    repo_path: str = ".",
+    draft: bool = False,
+) -> Dict[str, Any]:
+    """
+    Создаёт Pull Request на GitHub через gh CLI.
+    Требует: gh CLI установлен и авторизован (gh auth login).
+    """
+    args_d = {"title": title, "base": base, "repo_path": repo_path}
+    try:
+        import shutil as _shutil
+        if not _shutil.which("gh"):
+            r: Dict[str, Any] = {
+                "ok": False,
+                "error": "gh CLI не найден. Установи: https://cli.github.com/",
+            }
+            _log("github_create_pr", args_d, r)
+            return r
+
+        p = Path(repo_path).expanduser().resolve()
+        cmd = f'gh pr create --title "{title}" --base {base}'
+        if body:
+            escaped_body = body.replace('"', '\\"')
+            cmd += f' --body "{escaped_body}"'
+        if draft:
+            cmd += " --draft"
+
+        code, out = _run(cmd, cwd=str(p), timeout=30)
+        r = {
+            "ok": code == 0,
+            "output": out,
+            "url": next((line for line in out.splitlines() if line.startswith("https://")), ""),
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("github_create_pr", args_d, r)
+    return r
+
+
+def github_pr_list(repo_path: str = ".") -> Dict[str, Any]:
+    """Список открытых Pull Requests через gh CLI."""
+    args_d = {"repo_path": repo_path}
+    try:
+        p = Path(repo_path).expanduser().resolve()
+        code, out = _run("gh pr list", cwd=str(p), timeout=15)
+        r: Dict[str, Any] = {"ok": code == 0, "output": out or "(нет открытых PR)"}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("github_pr_list", args_d, r)
+    return r
+
+
+def github_issue_list(repo_path: str = ".") -> Dict[str, Any]:
+    """Список открытых Issues через gh CLI."""
+    args_d = {"repo_path": repo_path}
+    try:
+        p = Path(repo_path).expanduser().resolve()
+        code, out = _run("gh issue list", cwd=str(p), timeout=15)
+        r: Dict[str, Any] = {"ok": code == 0, "output": out or "(нет открытых issues)"}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("github_issue_list", args_d, r)
+    return r
+
+
 def save_memory(content: str, type: str = "fact", project: str = "") -> Dict[str, Any]:
     """Сохраняет факт, правило или предпочтение в долгосрочную память."""
     r: Dict[str, Any] = {"ok": True, "saved": content[:200], "type": type}
@@ -1388,6 +1456,49 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    # ── GitHub ───────────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "github_create_pr",
+            "description": "Создаёт Pull Request на GitHub через gh CLI. Требует gh auth login.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title":     {"type": "string"},
+                    "body":      {"type": "string", "default": ""},
+                    "base":      {"type": "string", "default": "main"},
+                    "repo_path": {"type": "string"},
+                    "draft":     {"type": "boolean", "default": False},
+                },
+                "required": ["title", "repo_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "github_pr_list",
+            "description": "Список открытых Pull Requests на GitHub.",
+            "parameters": {
+                "type": "object",
+                "properties": {"repo_path": {"type": "string"}},
+                "required": ["repo_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "github_issue_list",
+            "description": "Список открытых Issues на GitHub.",
+            "parameters": {
+                "type": "object",
+                "properties": {"repo_path": {"type": "string"}},
+                "required": ["repo_path"],
+            },
+        },
+    },
     # ── Self-evolution ────────────────────────────────────────────────────────
     {
         "type": "function",
@@ -1488,6 +1599,9 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "scan_for_projects": scan_for_projects,
     "save_memory": save_memory,
     # new
+    "github_create_pr": github_create_pr,
+    "github_pr_list":   github_pr_list,
+    "github_issue_list": github_issue_list,
     "git_run": git_run,
     "diff_preview": diff_preview,
     "clipboard_get": clipboard_get,
