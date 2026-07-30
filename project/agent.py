@@ -125,6 +125,35 @@ def _groq_headers(api_key: str) -> Dict[str, str]:
     return {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
 
 
+class GroqAuthError(Exception):
+    """Raised when Groq returns 401/403 — key invalid or revoked."""
+
+
+def _groq_check_error(exc: Exception) -> Exception:
+    """Convert urllib HTTP errors to more helpful exceptions."""
+    import urllib.error as _ue
+    if isinstance(exc, _ue.HTTPError):
+        if exc.code == 401:
+            return GroqAuthError(
+                "Groq API: ключ недействителен (401). "
+                "Создай новый на console.groq.com и введи в настройках."
+            )
+        if exc.code == 403:
+            return GroqAuthError(
+                "Groq API: доступ запрещён (403). "
+                "Вероятно, ключ был скомпрометирован или отозван. "
+                "Создай новый на console.groq.com → API Keys."
+            )
+        if exc.code == 429:
+            return Exception(
+                "Groq API: превышен лимит запросов (429). "
+                "Подожди минуту или перейди на платный тариф."
+            )
+        if exc.code >= 500:
+            return Exception(f"Groq API: ошибка сервера ({exc.code}). Попробуй позже.")
+    return exc
+
+
 def _groq_stream(
     api_key: str,
     model: str,
@@ -145,7 +174,11 @@ def _groq_stream(
         GROQ_API_URL, data=body, method="POST",
         headers=_groq_headers(api_key),
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    try:
+        resp_cm = urllib.request.urlopen(req, timeout=timeout)
+    except Exception as exc:
+        raise _groq_check_error(exc) from exc
+    with resp_cm as resp:
         for raw_line in resp:
             line = raw_line.decode("utf-8").strip()
             if not line or line == "data: [DONE]":
@@ -186,7 +219,11 @@ def _groq_chat(
         GROQ_API_URL, data=body, method="POST",
         headers=_groq_headers(api_key),
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    try:
+        resp_cm = urllib.request.urlopen(req, timeout=timeout)
+    except Exception as exc:
+        raise _groq_check_error(exc) from exc
+    with resp_cm as resp:
         data = json.loads(resp.read().decode("utf-8"))
 
     choice = data["choices"][0]
@@ -472,8 +509,11 @@ def run_agent(
         try:
             for chunk in _groq_stream(groq_api_key, groq_model, messages):
                 yield AgentEvent(type="text", content=chunk)
+        except GroqAuthError as exc:
+            # Auth error — show clear message, DO NOT silently fall back
+            yield AgentEvent(type="error", content=str(exc))
         except Exception as exc:
-            # Groq failed → fall back to local fast model
+            # Other Groq error → fall back to local fast model silently
             yield AgentEvent(type="info", content=f"groq_fallback:{chat_model}")
             fast_opts = {"temperature": 0.1, "num_ctx": 4096, "num_predict": 768, "top_k": 20}
             sys_msg2  = _fast_prompt(profile, project_root, mem_ctx)
@@ -485,7 +525,7 @@ def run_agent(
                 for chunk in _stream_chat(ollama_host, chat_model, msgs2, fast_opts):
                     yield AgentEvent(type="text", content=chunk)
             except Exception as exc2:
-                yield AgentEvent(type="error", content=f"Groq: {exc}  |  Ollama: {exc2}")
+                yield AgentEvent(type="error", content=f"Groq недоступен: {exc} | Ollama: {exc2}")
         yield AgentEvent(type="done")
         return
 
@@ -507,8 +547,11 @@ def run_agent(
             try:
                 raw_resp = _groq_chat(groq_api_key, groq_model, messages,
                                       tools=relevant_tools)
+            except GroqAuthError as exc:
+                yield AgentEvent(type="error", content=str(exc))
+                return
             except Exception as exc:
-                yield AgentEvent(type="error", content=f"Groq: {exc}")
+                yield AgentEvent(type="error", content=f"Groq ошибка: {exc}")
                 return
 
             raw_msg    = raw_resp.get("message", {}) or {}
