@@ -313,17 +313,54 @@ def _extract_tool_calls(raw_msg: Dict[str, Any]) -> List[Dict[str, Any]]:
 # System prompts — short for fast mode, full for agent mode
 # ---------------------------------------------------------------------------
 
+_SKIP_DIRS = frozenset([
+    "node_modules", "__pycache__", ".venv", "venv", ".git",
+    "dist", "build", ".next", "out",
+])
+
+def _project_snapshot(project_root: Optional[Path], max_files: int = 40) -> str:
+    """
+    Compact snapshot of the project: file tree + recent content hints.
+    Injected into ALL prompts so the AI always knows the project structure.
+    """
+    if not project_root or not project_root.exists():
+        return ""
+    lines: List[str] = [f"Проект: {project_root.name}  ({project_root})"]
+    files_found: List[str] = []
+    try:
+        for item in sorted(project_root.rglob("*")):
+            if any(s in item.parts for s in _SKIP_DIRS):
+                continue
+            if item.is_file():
+                rel = str(item.relative_to(project_root)).replace("\\", "/")
+                try:
+                    sz = item.stat().st_size
+                    files_found.append(f"  {rel}  ({sz} B)")
+                except OSError:
+                    files_found.append(f"  {rel}")
+            if len(files_found) >= max_files:
+                files_found.append("  ...[ещё файлы]")
+                break
+    except Exception:
+        pass
+    if files_found:
+        lines.append("Файлы:")
+        lines.extend(files_found)
+    return "\n".join(lines)
+
+
 def _fast_prompt(
     profile: UserProfile,
     project_root: Optional[Path],
     mem_ctx: str,
 ) -> str:
-    proj = f"Проект: {project_root.name} ({project_root})" if project_root else "Без проекта"
-    return (
-        f"Ты — AI-ассистент программиста. Пользователь: {profile.name}. {proj}.\n"
-        f"Отвечай кратко, конкретно, по-русски. Форматируй код в ```блоках```."
-        + (f"\n{mem_ctx}" if mem_ctx.strip() else "")
-    ).strip()
+    snapshot = _project_snapshot(project_root)
+    return "\n".join(filter(None, [
+        f"Ты — AI-ассистент программиста. Пользователь: {profile.name}.",
+        "Отвечай кратко, конкретно, по-русски. Код — в ```блоках```.",
+        snapshot,
+        mem_ctx.strip() or "",
+    ])).strip()
 
 
 def build_system_prompt(

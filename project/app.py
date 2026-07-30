@@ -292,13 +292,43 @@ with st.sidebar:
                 r = git_run("branch -a", str(project_root))
                 st.code(r.get("output") or "", language="")
             commit_msg = st.text_input("Сообщение коммита", placeholder="fix: ...", key="git_commit_msg")
-            if st.button("Commit all", use_container_width=True, key="git_commit_btn"):
+            cm_cols = st.columns(2)
+            if cm_cols[0].button("Commit", use_container_width=True, key="git_commit_btn"):
                 if commit_msg.strip():
                     git_run("add -A", str(project_root))
                     r = git_run(f'commit -m "{commit_msg.strip()}"', str(project_root))
                     st.code(r.get("output") or "", language="")
                 else:
                     st.warning("Введи сообщение коммита")
+            if cm_cols[1].button("✨ AI commit", use_container_width=True, key="git_ai_commit"):
+                with st.spinner("AI генерирует сообщение..."):
+                    git_run("add -A", str(project_root))
+                    diff_r = git_run("diff --cached --stat", str(project_root))
+                    diff_text = diff_r.get("output", "изменений нет")
+                    from agent import run_agent as _run_agent
+                    _msg_parts: list[str] = []
+                    for _ev in _run_agent(
+                        user_message=(
+                            f"Сгенерируй одно git commit message (английский, "
+                            f"формат 'type: description') для:\n{diff_text[:2000]}\n"
+                            "Только сообщение, без объяснений."
+                        ),
+                        chat_history=[], project_root=project_root,
+                        profile=profile, memory=memory,
+                        llm_model=llm_model, ollama_host=ollama_host,
+                        context_window=settings.context_window,
+                        fast_llm_model=settings.fast_llm_model,
+                        groq_api_key=settings.groq_api_key,
+                        groq_model=settings.groq_model,
+                    ):
+                        if _ev.type == "text":
+                            _msg_parts.append(_ev.content)
+                    _auto_msg = "".join(_msg_parts).strip().split("\n")[0].strip('"').strip("'")
+                if _auto_msg:
+                    commit_r = git_run(f'commit -m "{_auto_msg}"', str(project_root))
+                    st.code(f"Коммит: {_auto_msg}\n{commit_r.get('output','')}", language="")
+                else:
+                    st.warning("Не удалось сгенерировать сообщение")
 
     # ── File tree ─────────────────────────────────────────────────────────────
     if project_root:

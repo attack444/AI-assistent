@@ -421,10 +421,31 @@ def ensure_models(host: str = DEFAULT_OLLAMA_HOST) -> None:
 # Streamlit
 # ---------------------------------------------------------------------------
 
+def start_api_server(python: Path) -> None:
+    """Start the REST API server in background (port 8502)."""
+    api_script = PROJECT_DIR / "api.py"
+    if not api_script.exists():
+        return
+    flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+    try:
+        subprocess.Popen(
+            [str(python), str(api_script)],
+            cwd=str(PROJECT_DIR),
+            env={**os.environ},
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+        )
+        log("[OK] API сервер запущен: http://localhost:8502")
+    except Exception as exc:
+        log(f"[!] API сервер не запустился: {exc}")
+
+
 def launch_streamlit(python: Path) -> int:
     log("")
     log("Запускаю AI Helper...")
-    log("   Браузер: http://localhost:8501")
+    log("   Чат:  http://localhost:8501")
+    log("   API:  http://localhost:8502")
     log("   Остановка: Ctrl+C")
     log("")
 
@@ -517,6 +538,9 @@ def main() -> int:
 
         # Pre-warm the main model in background so first chat request is instant
         warm_up_model(REQUIRED_MODELS[0])
+
+        # Start REST API server in background
+        start_api_server(python)
 
         return launch_streamlit(python)
 

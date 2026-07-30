@@ -31,4 +31,4 @@ build/
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+# .vscode/ — tracked (contains AI Helper tasks.json integration)

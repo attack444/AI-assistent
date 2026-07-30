@@ -1,0 +1,110 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "AI: Спросить про файл",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/../project/ask.py",
+                "--file", "${file}",
+                "--message", "${input:aiQuestion}"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new",
+                "focus": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Объяснить выделенный код",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/../project/ask.py",
+                "--file", "${file}",
+                "--message", "Объясни этот код подробно"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Найти баги в файле",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/../project/ask.py",
+                "--file", "${file}",
+                "--message", "Найди баги и проблемы в этом файле, предложи исправления"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Написать тесты",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/../project/ask.py",
+                "--file", "${file}",
+                "--message", "Напиши тесты pytest для этого файла"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Smart Git Commit",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/../project/ask.py",
+                "--commit",
+                "--project", "${workspaceFolder}"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AI: Smart Git Commit + Push",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/../project/ask.py",
+                "--commit",
+                "--push",
+                "--project", "${workspaceFolder}"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "focus": true
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "aiQuestion",
+            "type": "promptString",
+            "description": "Спроси AI Helper",
+            "default": "Что делает этот файл?"
+        }
+    ]
+}
