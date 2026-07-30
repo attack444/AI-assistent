@@ -57,7 +57,7 @@ def _run_agent_sync(
     settings: AppSettings,
     profile: UserProfile,
     memory: MemoryStore,
-    history: list[Dict] | None = None,
+    history: Optional[list] = None,
 ) -> str:
     """Run the agent loop and collect the full response text."""
     from agent import run_agent

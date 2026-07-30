@@ -1,128 +1,58 @@
 {
   "name": "ai-helper",
   "displayName": "AI Helper",
-  "description": "Local AI coding assistant (Ollama + Groq). Ask questions, fix bugs, write tests, auto-commit.",
-  "version": "1.0.0",
+  "description": "AI-ассистент прямо в VS Code — Ollama + Groq, редактирование кода из чата",
+  "version": "1.1.0",
   "publisher": "ai-helper-local",
   "engines": { "vscode": "^1.80.0" },
   "categories": ["AI", "Other"],
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
+  "repository": { "type": "git", "url": "https://github.com/attack444/AI-assistent" },
+  "license": "MIT",
   "contributes": {
-    "commands": [
-      {
-        "command": "aiHelper.ask",
-        "title": "AI Helper: Спросить про файл / выделение"
-      },
-      {
-        "command": "aiHelper.fixBugs",
-        "title": "AI Helper: Найти и исправить баги"
-      },
-      {
-        "command": "aiHelper.writeTests",
-        "title": "AI Helper: Написать тесты"
-      },
-      {
-        "command": "aiHelper.explain",
-        "title": "AI Helper: Объяснить код"
-      },
-      {
-        "command": "aiHelper.smartCommit",
-        "title": "AI Helper: Smart Git Commit"
-      },
-      {
-        "command": "aiHelper.smartCommitPush",
-        "title": "AI Helper: Smart Git Commit + Push"
-      },
-      {
-        "command": "aiHelper.openChat",
-        "title": "AI Helper: Открыть чат (браузер)"
-      },
-      {
-        "command": "aiHelper.status",
-        "title": "AI Helper: Статус"
-      }
-    ],
-    "menus": {
-      "editor/context": [
+    "viewsContainers": {
+      "activitybar": [
         {
-          "when": "editorTextFocus",
-          "command": "aiHelper.ask",
-          "group": "aiHelper@1"
-        },
-        {
-          "when": "editorTextFocus",
-          "command": "aiHelper.fixBugs",
-          "group": "aiHelper@2"
-        },
-        {
-          "when": "editorTextFocus",
-          "command": "aiHelper.explain",
-          "group": "aiHelper@3"
-        },
-        {
-          "when": "editorTextFocus",
-          "command": "aiHelper.writeTests",
-          "group": "aiHelper@4"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "aiHelper.ask",
-          "group": "aiHelper@1"
-        }
-      ],
-      "scm/title": [
-        {
-          "command": "aiHelper.smartCommit",
-          "group": "aiHelper@1"
-        },
-        {
-          "command": "aiHelper.smartCommitPush",
-          "group": "aiHelper@2"
+          "id": "aiHelperPanel",
+          "title": "AI Helper",
+          "icon": "$(hubot)"
         }
       ]
     },
+    "views": {
+      "aiHelperPanel": [
+        {
+          "type": "webview",
+          "id": "aiHelper.chat",
+          "name": "Чат"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "aiHelper.newChat",         "title": "AI Helper: Новый чат" },
+      { "command": "aiHelper.smartCommit",      "title": "AI Helper: Smart Commit" },
+      { "command": "aiHelper.smartCommitPush",  "title": "AI Helper: Smart Commit + Push" },
+      { "command": "aiHelper.applyLastCode",    "title": "AI Helper: Применить последний код" }
+    ],
+    "menus": {
+      "scm/title": [
+        { "command": "aiHelper.smartCommit",     "group": "aiHelper@1" },
+        { "command": "aiHelper.smartCommitPush", "group": "aiHelper@2" }
+      ]
+    },
     "keybindings": [
-      {
-        "command": "aiHelper.ask",
-        "key": "ctrl+alt+a",
-        "mac": "cmd+alt+a",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "aiHelper.fixBugs",
-        "key": "ctrl+alt+f",
-        "mac": "cmd+alt+f",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "aiHelper.smartCommit",
-        "key": "ctrl+alt+c",
-        "mac": "cmd+alt+c"
-      }
+      { "command": "aiHelper.newChat",      "key": "ctrl+alt+a", "mac": "cmd+alt+a" },
+      { "command": "aiHelper.smartCommit",  "key": "ctrl+alt+c", "mac": "cmd+alt+c" }
     ],
     "configuration": {
       "title": "AI Helper",
       "properties": {
-        "aiHelper.apiUrl": {
-          "type": "string",
-          "default": "http://localhost:8502",
-          "description": "URL API сервера AI Helper"
-        },
-        "aiHelper.chatUrl": {
-          "type": "string",
-          "default": "http://localhost:8501",
-          "description": "URL чата (Streamlit)"
-        }
+        "aiHelper.apiUrl":  { "type": "string", "default": "http://localhost:8502" },
+        "aiHelper.chatUrl": { "type": "string", "default": "http://localhost:8501" }
       }
     }
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/attack444/AI-assistent"
-  },
-  "license": "MIT",
   "scripts": {
     "package": "vsce package --no-dependencies --allow-missing-repository"
   },
