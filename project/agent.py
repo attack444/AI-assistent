@@ -16,7 +16,7 @@ from memory import MemoryStore
 from profile import UserProfile
 from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA
 
-MAX_STEPS = 12
+MAX_STEPS = 8
 
 # Directory of this file — used to tell agent where its own source code lives
 SELF_DIR = Path(__file__).resolve().parent
@@ -41,7 +41,7 @@ def _raw_chat(
     messages: List[Dict[str, Any]],
     options: Dict[str, Any],
     tools: Optional[List[Dict[str, Any]]] = None,
-    timeout: float = 300.0,
+    timeout: float = 180.0,
 ) -> Dict[str, Any]:
     """POST /api/chat (stream=False). Returns raw parsed JSON dict."""
     url = f"{host.rstrip('/')}/api/chat"
@@ -67,7 +67,7 @@ def _stream_chat(
     model: str,
     messages: List[Dict[str, Any]],
     options: Dict[str, Any],
-    timeout: float = 300.0,
+    timeout: float = 180.0,
 ) -> Generator[str, None, None]:
     """POST /api/chat (stream=True). Yields text chunks."""
     url = f"{host.rstrip('/')}/api/chat"
@@ -249,7 +249,7 @@ def run_agent(
     memory: MemoryStore,
     llm_model: str,
     ollama_host: str,
-    context_window: int = 64000,
+    context_window: int = 8192,
 ) -> Generator[AgentEvent, None, None]:
     """
     ReAct loop. Yields AgentEvent objects.

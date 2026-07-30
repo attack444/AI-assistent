@@ -891,7 +891,7 @@ if user_input := _effective_input:
             chat_msgs.append({"role": "assistant", "content": resp})
             st.rerun()
 
-        if True:  # always continue to agent (even after path_added)
+        else:
             # ── Auto-reindex if stale ─────────────────────────────────────────
             if project_root and profile.auto_index and needs_reindex(project_root):
                 try:
@@ -906,14 +906,17 @@ if user_input := _effective_input:
                     pass
 
             # ── Agent call ────────────────────────────────────────────────────
+            # FIX: do NOT use st.write_stream() — it holds a rendering lock
+            # that deadlocks when tool handlers call st.markdown() / st.code().
+            # Use st.empty() + manual .markdown() updates instead.
             with st.chat_message("assistant"):
-                tool_area = st.container()
-                text_slot = st.empty()
+                tool_area  = st.container()   # tool indicators rendered here
+                text_slot  = st.empty()       # streaming text rendered here
 
-                full_text = ""
+                full_text  = ""
                 tool_steps: List[Dict] = []
 
-                def _stream_agent() -> Generator[str, None, None]:
+                try:
                     for ev in run_agent(
                         user_message=full_user_msg,
                         chat_history=[m for m in chat_msgs[:-1]],
@@ -925,31 +928,30 @@ if user_input := _effective_input:
                         context_window=settings.context_window,
                     ):
                         if ev.type == "tool_call":
+                            tool_steps.append(
+                                {"name": ev.tool_name, "args": ev.tool_args, "result": {}}
+                            )
                             with tool_area:
                                 st.markdown(
                                     f'<div class="tc tc-run">→ <b>{ev.tool_name}</b>'
                                     f"({_fmt_args(ev.tool_args)})</div>",
                                     unsafe_allow_html=True,
                                 )
-                            tool_steps.append(
-                                {"name": ev.tool_name, "args": ev.tool_args, "result": {}}
-                            )
 
                         elif ev.type == "tool_result":
-                            ok = ev.tool_result.get("ok", False)
-                            css, icon = ("tc-ok", "✓") if ok else ("tc-err", "✗")
+                            ok   = ev.tool_result.get("ok", False)
+                            css  = "tc-ok" if ok else "tc-err"
+                            icon = "✓" if ok else "✗"
 
-                            # Build summary label
                             if ev.tool_name == "write_file" and ok:
-                                added   = ev.tool_result.get("added", 0)
+                                added  = ev.tool_result.get("added", 0)
                                 removed = ev.tool_result.get("removed", 0)
-                                is_new  = ev.tool_result.get("is_new", False)
-                                fname   = Path(ev.tool_result.get("path", "")).name
-                                action  = "создан" if is_new else f"+{added} -{removed} строк"
-                                label   = f"{icon} <b>write_file</b> {fname} ({action})"
+                                is_new = ev.tool_result.get("is_new", False)
+                                fname  = Path(ev.tool_result.get("path", "")).name
+                                action = "создан" if is_new else f"+{added} -{removed} строк"
+                                label  = f"{icon} <b>write_file</b> {fname} ({action})"
                             elif ev.tool_name == "git_run" and ok:
-                                cmd = ev.tool_args.get("command", "")
-                                label = f"{icon} <b>git</b> {cmd}"
+                                label = f"{icon} <b>git</b> {ev.tool_args.get('command','')}"
                             else:
                                 label = f"{icon} <b>{ev.tool_name}</b>"
 
@@ -958,37 +960,39 @@ if user_input := _effective_input:
                                     f'<div class="tc {css}">{label}</div>',
                                     unsafe_allow_html=True,
                                 )
-                                # Show diff inline for write_file
                                 diff_text = ev.tool_result.get("diff", "")
-                                if ev.tool_name == "write_file" and ok and diff_text and diff_text != "(файл не изменится)":
+                                if ev.tool_name == "write_file" and ok and diff_text:
                                     with st.expander(f"Diff {Path(ev.tool_result.get('path','')).name}"):
                                         st.code(diff_text, language="diff")
-                                # Show output for git/run_command/run_powershell
                                 if ev.tool_name in ("git_run", "run_command", "run_powershell") and ok:
                                     out = ev.tool_result.get("output", "").strip()
                                     if out:
                                         with st.expander("Вывод"):
                                             st.code(out, language="")
-                                # Show diff_preview
                                 if ev.tool_name == "diff_preview" and ok:
-                                    diff_text = ev.tool_result.get("diff", "")
-                                    if diff_text:
-                                        with st.expander("Предпросмотр изменений"):
-                                            st.code(diff_text, language="diff")
+                                    dp = ev.tool_result.get("diff", "")
+                                    if dp:
+                                        with st.expander("Предпросмотр"):
+                                            st.code(dp, language="diff")
 
                             if tool_steps:
                                 tool_steps[-1]["result"] = ev.tool_result
-                            # Mark reindex if FS changed
                             if ev.tool_name in ("write_file", "create_file", "delete_file"):
                                 st.session_state["_reindex"] = True
 
                         elif ev.type == "text":
-                            yield ev.content
+                            full_text += ev.content
+                            text_slot.markdown(full_text + "▌")  # streaming cursor
 
                         elif ev.type == "error":
-                            yield f"\n\n**Ошибка:** {ev.content}"
+                            full_text += f"\n\n**Ошибка:** {ev.content}"
+                            text_slot.markdown(full_text)
 
-                full_text = st.write_stream(_stream_agent())  # type: ignore[arg-type]
+                except Exception as exc:
+                    full_text += f"\n\n**Критическая ошибка:** {exc}"
+
+                # Final render: remove cursor, settle layout
+                text_slot.markdown(full_text or "_(нет ответа)_")
 
                 if tool_steps:
                     with st.expander(f"Шаги агента ({len(tool_steps)})"):

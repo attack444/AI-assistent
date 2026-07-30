@@ -98,7 +98,7 @@ class AppSettings:
     llm_model: str = DEFAULT_LLM_MODEL
     embed_model: str = DEFAULT_EMBED_MODEL
     ollama_host: str = DEFAULT_OLLAMA_HOST
-    context_window: int = 64000
+    context_window: int = 8192
     top_k: int = 5
     chunk_size: int = 1024
     chunk_overlap: int = 150
