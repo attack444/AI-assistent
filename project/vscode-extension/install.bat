@@ -5,8 +5,9 @@ cd /d "%~dp0"
 title AI Helper - Установка VS Code расширения
 
 echo.
-echo  Установка AI Helper расширения для VS Code
-echo  ============================================
+echo  =========================================
+echo   Установка AI Helper для VS Code
+echo  =========================================
 echo.
 
 REM Check npm
@@ -14,48 +15,58 @@ where npm >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo  [ОШИБКА] npm не найден.
     echo  Установи Node.js с https://nodejs.org/
+    echo  При установке отметь "Add to PATH"
     pause
     exit /b 1
 )
 
-REM Check VS Code
-where code >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo  [!] VS Code CLI не найден в PATH.
-    echo  После сборки установи VSIX вручную:
-    echo  Ctrl+Shift+P → Extensions: Install from VSIX
-    echo.
-)
-
 echo  [1/3] Устанавливаю зависимости...
-call npm install --silent
+call npm install --silent 2>nul
 if %ERRORLEVEL% NEQ 0 (
     echo  [ОШИБКА] npm install не удался
     pause
     exit /b 1
 )
+echo        OK
 
 echo  [2/3] Собираю VSIX пакет...
-call npx vsce package --no-dependencies
+call npx @vscode/vsce package --no-dependencies --allow-missing-repository --no-git-tag-version 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo  [ОШИБКА] Сборка не удалась
+    echo  [ОШИБКА] Сборка не удалась. Пробую без флагов...
+    call npx vsce package --no-dependencies --allow-missing-repository 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo  [ОШИБКА] Не удалось собрать пакет
+        pause
+        exit /b 1
+    )
+)
+echo        OK
+
+echo  [3/3] Устанавливаю в VS Code...
+set "VSIX="
+for %%f in (*.vsix) do set "VSIX=%%f"
+
+if not defined VSIX (
+    echo  [ОШИБКА] VSIX файл не найден
     pause
     exit /b 1
 )
 
-echo  [3/3] Устанавливаю в VS Code...
-for %%f in (*.vsix) do (
-    where code >nul 2>&1 && (
-        code --install-extension "%%f"
-        echo  [OK] Расширение установлено: %%f
-    ) || (
-        echo  [!] Установи вручную: %%f
-        echo      Ctrl+Shift+P → Extensions: Install from VSIX
-    )
+where code >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    code --install-extension "%VSIX%" --force
+    echo.
+    echo  [OK] Расширение установлено: %VSIX%
+    echo.
+    echo  Перезапусти VS Code.
+    echo  В статус-баре появится: [robot] AI Helper
+) else (
+    echo  [!] code CLI не найден. Установи вручную:
+    echo      1. Открой VS Code
+    echo      2. Ctrl+Shift+P
+    echo      3. Введи: Extensions: Install from VSIX
+    echo      4. Выбери файл: %CD%\%VSIX%
 )
 
-echo.
-echo  Готово! Перезапусти VS Code.
-echo  В статус-баре появится: [robot] AI Helper
 echo.
 pause

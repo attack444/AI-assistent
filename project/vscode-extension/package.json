@@ -6,7 +6,6 @@
   "publisher": "ai-helper-local",
   "engines": { "vscode": "^1.80.0" },
   "categories": ["AI", "Other"],
-  "icon": "icon.png",
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
   "contributes": {
@@ -119,8 +118,13 @@
       }
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/attack444/AI-assistent"
+  },
+  "license": "MIT",
   "scripts": {
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@vscode/vsce": "^2.19.0"
