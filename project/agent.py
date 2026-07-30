@@ -1,12 +1,9 @@
-# agent.py — ReAct agent loop
-# Uses raw HTTP for tool-calling to bypass Pydantic validation bug:
-# some Ollama versions return tool_call arguments as JSON string instead of dict,
-# which makes the ollama Python client crash before we can handle it.
+# agent.py — ReAct agent with smart routing for fast responses
+# Uses raw HTTP to bypass Pydantic validation bug in ollama client.
 from __future__ import annotations
 
 import inspect
 import json
-import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,22 +14,97 @@ from profile import UserProfile
 from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA
 
 MAX_STEPS = 8
+SELF_DIR  = Path(__file__).resolve().parent
 
-# Directory of this file — used to tell agent where its own source code lives
-SELF_DIR = Path(__file__).resolve().parent
+# ---------------------------------------------------------------------------
+# Smart query routing
+# ---------------------------------------------------------------------------
+
+# Keywords that indicate the agent MUST use tools
+_TOOL_TRIGGERS = frozenset([
+    "файл", "прочитай", "открой", "создай", "удали", "запиши", "папк",
+    "директор", "список файл", "покажи файл", "посмотри", "проверь",
+    "исправь", "измени", "что не так", "проблем",
+    "git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
+    "запусти", "команд", "powershell", "terminal", "тест", "pytest",
+    "процесс", "диск", "переменн", ".exe", "реестр",
+    "поиск", "найди в", "web search", "загугли",
+    "зависимост", "npm", "pip install", "requirements",
+    "сканир", "проект", "индекс",
+    "буфер", "clipboard", "скопируй в буфер",
+    "уведомлен",
+    "улучши себя", "обнови модель", "бэкап", "бекап",
+    "read_file", "write_file", "list_dir",
+])
+
+# Tool names grouped by category — only relevant ones sent per request
+_TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "create_file",
+                  "delete_file", "list_dir", "find_files"}
+_TOOLS_CODE    = {"search_code", "format_code"}
+_TOOLS_GIT     = {"git_run", "diff_preview"}
+_TOOLS_CMD     = {"run_command", "run_powershell", "run_tests"}
+_TOOLS_WIN     = {"get_env_var", "set_env_var", "get_windows_info",
+                  "get_processes", "kill_process", "open_in_explorer", "open_file"}
+_TOOLS_WEB     = {"web_search"}
+_TOOLS_PROJ    = {"scan_for_projects", "check_deps"}
+_TOOLS_MEM     = {"save_memory"}
+_TOOLS_CLIP    = {"clipboard_get", "clipboard_set"}
+_TOOLS_NOTIFY  = {"notify_windows"}
+_TOOLS_SELF    = {"apply_self_improvement", "self_update_check",
+                  "search_better_models", "self_code_analyze"}
+
+_CATEGORY_KEYWORDS: List[tuple[frozenset[str], frozenset[str]]] = [
+    (frozenset(["файл", "прочитай", "открой", "создай", "удали", "запиши",
+                "папк", "директор", "список", "дерев", "покажи файл"]), _TOOLS_FILE),
+    (frozenset(["код", "исправь", "найди в коде", "форматир", "pylint",
+                "ошибк в коде", "что не так"]),                          _TOOLS_CODE | _TOOLS_FILE),
+    (frozenset(["git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
+                "merge", "rebase"]),                                      _TOOLS_GIT),
+    (frozenset(["команд", "запусти", "powershell", "terminal",
+                "тест", "pytest", "npm run", "python "]),                _TOOLS_CMD),
+    (frozenset(["процесс", "диск", "переменн", "env", "реестр",
+                "windows", "sistema", "система"]),                       _TOOLS_WIN),
+    (frozenset(["поиск", "найди в инт", "web", "google", "что такое",
+                "загугли", "в интернете"]),                              _TOOLS_WEB),
+    (frozenset(["проект", "сканир", "зависимост", "npm", "pip",
+                "requirements", "package.json"]),                        _TOOLS_PROJ),
+    (frozenset(["запомни", "сохрани в память", "помни"]),               _TOOLS_MEM),
+    (frozenset(["буфер", "clipboard", "скопируй в буфер"]),             _TOOLS_CLIP),
+    (frozenset(["уведомлен", "notify"]),                                 _TOOLS_NOTIFY),
+    (frozenset(["улучши себя", "обнови модель", "бэкап кода",
+                "самообновл", "self_code"]),                             _TOOLS_SELF),
+]
+
+# Pre-build schema index for fast lookup
+_SCHEMA_BY_NAME: Dict[str, Dict] = {s["function"]["name"]: s for s in TOOLS_SCHEMA}
 
 
-@dataclass
-class AgentEvent:
-    type: str   # text | tool_call | tool_result | error | info | done
-    content: str = ""
-    tool_name: str = ""
-    tool_args: Dict[str, Any] = field(default_factory=dict)
-    tool_result: Dict[str, Any] = field(default_factory=dict)
+def _needs_tools(text: str) -> bool:
+    lower = text.lower()
+    return any(kw in lower for kw in _TOOL_TRIGGERS)
+
+
+def _select_tools(text: str) -> List[Dict[str, Any]]:
+    """Return only tools relevant to this query — fewer tokens = faster."""
+    lower = text.lower()
+    selected: set[str] = set()
+
+    for keywords, tool_names in _CATEGORY_KEYWORDS:
+        if any(kw in lower for kw in keywords):
+            selected |= tool_names
+
+    # Always include save_memory so agent can remember things
+    selected.add("save_memory")
+
+    if not selected:
+        # Fallback: minimal set for unknown complex queries
+        selected = _TOOLS_FILE | _TOOLS_CODE | {"web_search", "save_memory"}
+
+    return [_SCHEMA_BY_NAME[n] for n in selected if n in _SCHEMA_BY_NAME]
 
 
 # ---------------------------------------------------------------------------
-# Raw HTTP helpers — no Pydantic, no surprises
+# Raw HTTP helpers
 # ---------------------------------------------------------------------------
 
 def _raw_chat(
@@ -44,17 +116,15 @@ def _raw_chat(
     timeout: float = 180.0,
 ) -> Dict[str, Any]:
     """POST /api/chat (stream=False). Returns raw parsed JSON dict."""
-    url = f"{host.rstrip('/')}/api/chat"
+    url  = f"{host.rstrip('/')}/api/chat"
     body: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": options,
+        "model": model, "messages": messages,
+        "stream": False, "options": options,
     }
     if tools:
         body["tools"] = tools
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
+    req  = urllib.request.Request(
         url, data=data, method="POST",
         headers={"Content-Type": "application/json"},
     )
@@ -69,13 +139,13 @@ def _stream_chat(
     options: Dict[str, Any],
     timeout: float = 180.0,
 ) -> Generator[str, None, None]:
-    """POST /api/chat (stream=True). Yields text chunks."""
-    url = f"{host.rstrip('/')}/api/chat"
+    """POST /api/chat (stream=True). Yields text chunks as they arrive."""
+    url  = f"{host.rstrip('/')}/api/chat"
     body = json.dumps(
         {"model": model, "messages": messages, "stream": True, "options": options},
         ensure_ascii=False,
     ).encode("utf-8")
-    req = urllib.request.Request(
+    req  = urllib.request.Request(
         url, data=body, method="POST",
         headers={"Content-Type": "application/json"},
     )
@@ -86,7 +156,7 @@ def _stream_chat(
                 continue
             try:
                 chunk = json.loads(line)
-                txt = chunk.get("message", {}).get("content", "")
+                txt   = chunk.get("message", {}).get("content", "")
                 if txt:
                     yield txt
                 if chunk.get("done", False):
@@ -96,7 +166,6 @@ def _stream_chat(
 
 
 def _parse_args(raw: Any) -> Dict[str, Any]:
-    """Parse tool arguments — handle both dict and JSON-string forms."""
     if isinstance(raw, dict):
         return raw
     if isinstance(raw, str):
@@ -109,24 +178,36 @@ def _parse_args(raw: Any) -> Dict[str, Any]:
 
 
 def _extract_tool_calls(raw_msg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Extract tool calls from raw Ollama message dict."""
     calls = []
     for i, tc in enumerate(raw_msg.get("tool_calls", []) or []):
-        fn = tc.get("function", {})
+        fn   = tc.get("function", {})
         name = fn.get("name", "").strip()
         if not name:
             continue
         calls.append({
-            "id": tc.get("id", f"call_{i}"),
-            "name": name,
+            "id":        tc.get("id", f"call_{i}"),
+            "name":      name,
             "arguments": _parse_args(fn.get("arguments", {})),
         })
     return calls
 
 
 # ---------------------------------------------------------------------------
-# System prompt
+# System prompts — short for fast mode, full for agent mode
 # ---------------------------------------------------------------------------
+
+def _fast_prompt(
+    profile: UserProfile,
+    project_root: Optional[Path],
+    mem_ctx: str,
+) -> str:
+    proj = f"Проект: {project_root.name} ({project_root})" if project_root else "Без проекта"
+    return (
+        f"Ты — AI-ассистент программиста. Пользователь: {profile.name}. {proj}.\n"
+        f"Отвечай кратко, конкретно, по-русски. Форматируй код в ```блоках```."
+        + (f"\n{mem_ctx}" if mem_ctx.strip() else "")
+    ).strip()
+
 
 def build_system_prompt(
     profile: UserProfile,
@@ -142,60 +223,19 @@ def build_system_prompt(
     rules_txt = ("\nПравила:\n" + "\n".join(f"- {r}" for r in profile.rules)) if profile.rules else ""
 
     return f"""Ты — автономный AI-ассистент программиста на Windows. Пользователь: {profile.name}.
-Стиль: {profile.style} | Verbosity: {profile.verbosity} | Изменения: {confirm}
-Активный проект: {proj_name} ({proj_path})
-Языки: {langs}
+Стиль: {profile.style} | Изменения: {confirm}
+Активный проект: {proj_name} ({proj_path}) | Языки: {langs}
 {rules_txt}
 
-═══ ПРАВИЛА АВТОНОМНОСТИ (ОБЯЗАТЕЛЬНО) ═══
+ПРАВИЛА:
+- НИКОГДА не проси показать код — читай сам через read_file / list_dir
+- Действуй сразу: list_dir → read_file → write_file
+- Кратко: факт → действие → результат
+- Пиши по-русски
 
-НИКОГДА не проси пользователя показать код, файл, фрагмент или вывод — читай сам:
-  • Спрашивают «что не так с файлами?» → вызови list_dir(path, recursive=true), потом read_file
-  • Спрашивают «посмотри на мой код» → найди файл через list_dir/find_files, прочитай read_file
-  • Нужно проверить ошибку → прочитай лог/файл сам, не жди от пользователя
-  • Не знаешь путь → используй find_files или list_dir от корня проекта
-  • Нужна информация о системе → get_windows_info, get_env_var, get_processes
-
-АЛГОРИТМ при запросе «что не так / почему не работает»:
-  1. list_dir(project_path, recursive=true) — посмотреть всю структуру
-  2. read_file(file) — читать нужные файлы
-  3. Найти проблему → сразу write_file с исправлением
-  4. Ответить: что нашёл, что исправил, строка файла
-
-АЛГОРИТМ при запросе о Windows/системе:
-  1. get_windows_info() — диски, RAM, версия
-  2. get_env_var(name) — проверить переменные среды
-  3. run_powershell(script) — для системных операций (предпочти cmd)
-  4. get_processes(filter) — найти запущенные программы
-
-После write_file/create_file — ВСЕГДА одной строкой: «Исправил X в file.py:строка»
-При ошибке — причина + исправление сразу, без вопросов
-Замечаешь предпочтение пользователя → save_memory
-Пиши по-русски. Кратко: факт → действие → результат.
-
-═══ САМОЭВОЛЮЦИЯ И ОБНОВЛЕНИЕ ═══
-Исходный код: {SELF_DIR}
-Файлы: app.py, core.py, agent.py, tools.py, memory.py, profile.py, launcher.py, self_update.py
-
-АЛГОРИТМ самоулучшения (когда просят улучшить/оптимизировать себя):
-  1. self_code_analyze(aspect) — анализируй свой код (aspect: performance/reliability/features/ui/tools/windows)
-  2. Изучи результат, предложи конкретное изменение
-  3. diff_preview(file, new_content) — покажи diff до применения
-  4. apply_self_improvement(file, new_content, reason) — применяй ТОЛЬКО этим инструментом
-     (он делает бэкап всех файлов + откат при ошибке компиляции)
-  5. Сообщи что изменил и почему
-
-АЛГОРИТМ обновления модели:
-  1. self_update_check() — проверить обновления Ollama + зависимости
-  2. Если устарела — результат содержит updated=True / outdated packages
-  3. search_better_models(current_model) — найти лучшие модели в интернете
-  4. Предложить пользователю перейти если найдена лучшая модель
-
-ПРАВИЛА самомодификации:
-  - НИКОГДА не используй write_file для изменения собственных файлов ассистента
-  - ТОЛЬКО apply_self_improvement — он валидирует код и откатывает при ошибке
-  - Одно изменение за раз, проверяй компиляцию
-  - Сохраняй причину изменения в reason-параметре
+САМООБНОВЛЕНИЕ: {SELF_DIR}
+Файлы: app.py core.py agent.py tools.py memory.py profile.py launcher.py self_update.py
+Изменять: apply_self_improvement(file, new_content, reason) — backup+validate+rollback
 
 {mem_ctx}""".strip()
 
@@ -210,15 +250,14 @@ def _dispatch(
     project_root: Optional[Path],
     memory: MemoryStore,
 ) -> Dict[str, Any]:
-    # Fill implicit defaults
     if name == "search_code"    and "root"         not in args and project_root:
-        args["root"]          = str(project_root)
+        args["root"]         = str(project_root)
     if name == "run_tests"      and "project_root" not in args and project_root:
-        args["project_root"]  = str(project_root)
+        args["project_root"] = str(project_root)
     if name == "run_command"    and "cwd"          not in args and project_root:
-        args["cwd"]           = str(project_root)
+        args["cwd"]          = str(project_root)
     if name == "run_powershell" and "cwd"          not in args and project_root:
-        args["cwd"]           = str(project_root)
+        args["cwd"]          = str(project_root)
 
     if name == "save_memory":
         entry = memory.add(
@@ -232,13 +271,13 @@ def _dispatch(
     if fn is None:
         return {"ok": False, "error": f"Неизвестный инструмент: {name}"}
 
-    sig = inspect.signature(fn)
+    sig   = inspect.signature(fn)
     valid = set(sig.parameters.keys())
     return fn(**{k: v for k, v in args.items() if k in valid})
 
 
 # ---------------------------------------------------------------------------
-# Main agent loop
+# Main agent loop with smart routing
 # ---------------------------------------------------------------------------
 
 def run_agent(
@@ -252,51 +291,75 @@ def run_agent(
     context_window: int = 8192,
 ) -> Generator[AgentEvent, None, None]:
     """
-    ReAct loop. Yields AgentEvent objects.
-    Uses raw HTTP to avoid Pydantic validation errors on tool_call arguments.
-    """
-    system_prompt = build_system_prompt(profile, memory, project_root, user_message)
-    options       = {"temperature": 0.05, "num_ctx": context_window}
+    Smart-routing ReAct agent.
 
-    messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    for msg in chat_history[-20:]:
+    Fast path  (no tools): simple questions → direct stream, tiny prompt.
+                           Fastest possible response.
+    Agent path (tools):    complex tasks → only relevant tools sent,
+                           full ReAct loop.
+    """
+    options = {"temperature": 0.05, "num_ctx": context_window}
+
+    # ── Route: fast path vs agent path ──────────────────────────────────────
+    use_tools = _needs_tools(user_message)
+
+    if not use_tools:
+        # ── FAST PATH ────────────────────────────────────────────────────────
+        # No tool schema → model answers immediately without decision overhead.
+        # Minimal prompt, last 6 messages only.
+        mem_ctx  = memory.get_context(user_message, project=str(project_root) if project_root else "")
+        sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
+        for msg in chat_history[-6:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        try:
+            for chunk in _stream_chat(ollama_host, llm_model, messages, options):
+                yield AgentEvent(type="text", content=chunk)
+        except Exception as exc:
+            yield AgentEvent(type="error", content=f"Ollama: {exc}")
+        yield AgentEvent(type="done")
+        return
+
+    # ── AGENT PATH ──────────────────────────────────────────────────────────
+    # Select only tools relevant to this query (fewer tokens = faster).
+    relevant_tools = _select_tools(user_message)
+
+    system_prompt = build_system_prompt(profile, memory, project_root, user_message)
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in chat_history[-8:]:   # last 8 messages (was 20)
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": user_message})
 
-    steps = 0
+    steps           = 0
     tool_calls_made = False
 
     while steps < MAX_STEPS:
         steps += 1
 
-        # ── Tool-calling step: raw HTTP, handles string arguments ────────────
         try:
             raw_resp = _raw_chat(
-                host=ollama_host,
-                model=llm_model,
-                messages=messages,
-                options=options,
-                tools=TOOLS_SCHEMA,
+                host=ollama_host, model=llm_model,
+                messages=messages, options=options,
+                tools=relevant_tools,
             )
         except Exception as exc:
             yield AgentEvent(type="error", content=f"Ollama ({ollama_host}): {exc}")
             return
 
-        raw_msg     = raw_resp.get("message", {}) or {}
-        content     = (raw_msg.get("content") or "").strip()
-        tool_calls  = _extract_tool_calls(raw_msg)
+        raw_msg    = raw_resp.get("message", {}) or {}
+        content    = (raw_msg.get("content") or "").strip()
+        tool_calls = _extract_tool_calls(raw_msg)
 
         if tool_calls:
             tool_calls_made = True
-
-            # Add assistant turn with tool_calls to history
             messages.append({
                 "role": "assistant",
                 "content": content,
                 "tool_calls": [
                     {
-                        "id": tc["id"],
-                        "type": "function",
+                        "id": tc["id"], "type": "function",
                         "function": {
                             "name": tc["name"],
                             "arguments": json.dumps(tc["arguments"], ensure_ascii=False),
@@ -308,43 +371,26 @@ def run_agent(
 
             for tc in tool_calls:
                 yield AgentEvent(type="tool_call", tool_name=tc["name"], tool_args=tc["arguments"])
-
                 result = _dispatch(tc["name"], dict(tc["arguments"]), project_root, memory)
-
                 yield AgentEvent(type="tool_result", tool_name=tc["name"], tool_result=result)
-
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
                     "content": json.dumps(result, ensure_ascii=False)[:6000],
                 })
-
-            # Continue loop — let model decide next step
             continue
 
-        # ── Final text response ──────────────────────────────────────────────
-        if tool_calls_made and not content:
-            # Tools were used but model returned empty — stream a fresh summary
+        # ── Final answer ────────────────────────────────────────────────────
+        if content:
+            for i in range(0, len(content), 8):
+                yield AgentEvent(type="text", content=content[i:i+8])
+        elif tool_calls_made:
+            # Tools ran but no final text — stream a fresh summary
             try:
                 for chunk in _stream_chat(ollama_host, llm_model, messages, options):
                     yield AgentEvent(type="text", content=chunk)
             except Exception as exc:
                 yield AgentEvent(type="error", content=f"Stream error: {exc}")
-        elif tool_calls_made and content:
-            # Stream fresh answer so model uses tool results properly
-            messages.append({"role": "assistant", "content": ""})
-            messages.pop()  # remove temp
-            try:
-                for chunk in _stream_chat(ollama_host, llm_model, messages, options):
-                    yield AgentEvent(type="text", content=chunk)
-            except Exception:
-                # Fallback: use content from non-streaming call
-                for i in range(0, len(content), 6):
-                    yield AgentEvent(type="text", content=content[i:i+6])
-        else:
-            # No tools at all — fake-stream the content (avoids a second API call)
-            for i in range(0, len(content), 6):
-                yield AgentEvent(type="text", content=content[i:i+6])
 
         yield AgentEvent(type="done")
         return
