@@ -39,11 +39,15 @@ function httpPost(path_, body, timeoutMs = 300000) {
         const url  = new URL(apiBase());
         const req  = http.request({
             hostname: url.hostname,
-            port:     url.port || 80,
+            port:     parseInt(url.port) || 80,
             path:     path_,
             method:   'POST',
-            headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-            timeout:  timeoutMs,
+            headers:  {
+                'Content-Type':   'application/json',
+                'Content-Length': Buffer.byteLength(data),
+                'Connection':     'close',
+            },
+            timeout: timeoutMs,
         }, res => {
             let out = '';
             res.on('data', c => out += c);
@@ -58,43 +62,62 @@ function httpPost(path_, body, timeoutMs = 300000) {
 
 /** POST JSON, streams SSE events, calls callbacks */
 function httpStream(path_, body, { onText, onTool, onDone, onError }) {
-    const data = JSON.stringify(body);
-    const url  = new URL(apiBase());
-    let   buf  = '';
+    const data     = JSON.stringify(body);
+    const url      = new URL(apiBase());
+    let   buf      = '';
+    let   finished = false;  // guard: call onDone only once
+
+    function finish() {
+        if (!finished) { finished = true; onDone && onDone(); }
+    }
 
     const req = http.request({
         hostname: url.hostname,
-        port:     url.port || 80,
+        port:     parseInt(url.port) || 80,
         path:     path_,
         method:   'POST',
-        headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-        timeout:  300000,
+        headers:  {
+            'Content-Type':   'application/json',
+            'Content-Length': Buffer.byteLength(data),
+            'Connection':     'close',   // tell server to close after response
+        },
+        timeout: 300000,
     }, res => {
+        res.setEncoding('utf8');
+
         res.on('data', chunk => {
-            buf += chunk.toString();
-            // SSE events are separated by \n\n
+            buf += chunk;
+            // SSE events separated by blank lines (\n\n)
             const parts = buf.split('\n\n');
-            buf = parts.pop();
+            buf = parts.pop();   // keep possibly-incomplete last part
             for (const part of parts) {
                 for (const line of part.split('\n')) {
                     if (!line.startsWith('data: ')) continue;
                     try {
                         const ev = JSON.parse(line.slice(6));
-                        if (ev.type === 'text')      onText && onText(ev.content);
-                        if (ev.type === 'tool_call') onTool && onTool(ev.name, ev.args);
-                        if (ev.type === 'done')      onDone && onDone();
-                        if (ev.type === 'error')     onError && onError(ev.content);
+                        if      (ev.type === 'text')      onText && onText(ev.content);
+                        else if (ev.type === 'tool_call') onTool && onTool(ev.name, ev.args);
+                        else if (ev.type === 'error')     { onError && onError(ev.content); }
+                        else if (ev.type === 'done')      finish();
                     } catch (_) {}
                 }
             }
         });
-        res.on('end', () => onDone && onDone());
+
+        res.on('end', finish);
+        res.on('error', e => { onError && onError(e.message); finish(); });
     });
-    req.on('error',   e => onError && onError(e.message));
-    req.on('timeout', () => { req.destroy(); onError && onError('Timeout (5 мин)'); });
+
+    req.on('error',   e  => { onError && onError(
+        e.code === 'ECONNREFUSED'
+            ? 'AI Helper не запущен. Открой START.bat'
+            : e.message
+    ); finish(); });
+    req.on('timeout', () => { req.destroy(); onError && onError('Timeout (5 мин)'); finish(); });
+
     req.write(data);
     req.end();
-    return req; // caller can req.destroy() to cancel
+    return req;
 }
 
 // ── Extract code blocks from markdown ────────────────────────────────────────
@@ -164,14 +187,14 @@ class ChatViewProvider {
 
         const fullMsg = filePart + userText;
 
-        // Show user bubble
+        // Cancel previous request FIRST (before showing new loading state)
+        this._cancelStream();
+
+        // Show user bubble + start loading indicator
         this._post({ type: 'userMessage', text: userText, file: fileName });
 
-        // Start AI response
         let responseText = '';
         this._post({ type: 'startResponse' });
-
-        this._cancelStream(); // cancel previous if any
 
         this._currentRequest = httpStream('/chat/stream', { message: fullMsg }, {
             onText: text => {

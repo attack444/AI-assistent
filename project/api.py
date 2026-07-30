@@ -196,11 +196,22 @@ class APIHandler(BaseHTTPRequestHandler):
 
         settings, profile, memory, project_root = self._load_context(proj_name)
 
+        # CRITICAL: close connection when streaming ends so Node.js 'end' event fires
+        self.close_connection = True
         self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Content-Type",                "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control",               "no-cache")
+        self.send_header("Connection",                  "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
+
+        def _sse(obj: dict) -> None:
+            data = json.dumps(obj, ensure_ascii=False)
+            try:
+                self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
         try:
             for ev in run_agent(
@@ -215,23 +226,24 @@ class APIHandler(BaseHTTPRequestHandler):
                 fast_llm_model=settings.fast_llm_model,
                 groq_api_key=settings.groq_api_key,
                 groq_model=settings.groq_model,
+                http_proxy=settings.http_proxy,
             ):
-                if ev.type in ("text", "error"):
-                    data = json.dumps({"type": ev.type, "content": ev.content}, ensure_ascii=False)
-                    self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
-                    self.wfile.flush()
+                if ev.type == "text":
+                    _sse({"type": "text", "content": ev.content})
+                elif ev.type == "error":
+                    _sse({"type": "error", "content": ev.content})
+                    _sse({"type": "done"})
+                    return
                 elif ev.type == "tool_call":
-                    data = json.dumps({"type": "tool_call", "name": ev.tool_name,
-                                       "args": ev.tool_args}, ensure_ascii=False)
-                    self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
-                    self.wfile.flush()
+                    _sse({"type": "tool_call", "name": ev.tool_name, "args": ev.tool_args})
+                elif ev.type == "info":
+                    _sse({"type": "info", "content": ev.content})
                 elif ev.type == "done":
-                    self.wfile.write(b"data: {\"type\":\"done\"}\n\n")
-                    self.wfile.flush()
-                    break
+                    _sse({"type": "done"})
+                    return
         except Exception as exc:
-            err = json.dumps({"type": "error", "content": str(exc)}, ensure_ascii=False)
-            self.wfile.write(f"data: {err}\n\ndata: {{\"type\":\"done\"}}\n\n".encode())
+            _sse({"type": "error", "content": str(exc)})
+            _sse({"type": "done"})
 
     # ── POST /smart-commit ────────────────────────────────────────────────────
     def _post_smart_commit(self):
