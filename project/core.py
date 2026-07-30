@@ -105,6 +105,8 @@ class AppSettings:
     use_web: bool = False
     search_kind: str = "text"
     max_web_results: int = 5
+    # Fast model for simple chat queries (empty = same as llm_model)
+    fast_llm_model: str = ""
 
 
 class PatchItem(BaseModel):

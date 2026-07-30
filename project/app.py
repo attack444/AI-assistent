@@ -136,9 +136,16 @@ with st.sidebar:
 
     # ── Model ────────────────────────────────────────────────────────────────
     st.subheader("Модель")
-    llm_model   = st.text_input("LLM",        value=settings.llm_model,   key="sb_llm")
-    embed_model = st.text_input("Embeddings", value=settings.embed_model, key="sb_emb")
-    ollama_host = st.text_input("Ollama",     value=settings.ollama_host, key="sb_host")
+    llm_model       = st.text_input("Основная (агент)",  value=settings.llm_model,      key="sb_llm")
+    fast_llm_model  = st.text_input("Быстрая (чат) ⚡",  value=settings.fast_llm_model, key="sb_fast_llm",
+                                    help="Для простых вопросов. Оставь пустым = та же модель.")
+    embed_model     = st.text_input("Embeddings",         value=settings.embed_model,    key="sb_emb")
+    ollama_host     = st.text_input("Ollama",             value=settings.ollama_host,    key="sb_host")
+
+    if fast_llm_model.strip():
+        st.caption(f"⚡ Чат: `{fast_llm_model}` · 🤖 Агент: `{llm_model}`")
+    else:
+        st.caption(f"Одна модель для всего: `{llm_model}`")
 
     # Persist settings changes
     _new_s = AppSettings(
@@ -147,6 +154,7 @@ with st.sidebar:
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap,
         use_web=settings.use_web, search_kind=settings.search_kind,
         max_web_results=settings.max_web_results,
+        fast_llm_model=fast_llm_model,
     )
     if asdict(_new_s) != asdict(settings):
         save_settings(_new_s)
@@ -916,6 +924,7 @@ if user_input := _effective_input:
                 full_text  = ""
                 tool_steps: List[Dict] = []
 
+                mode_badge = st.empty()
                 try:
                     for ev in run_agent(
                         user_message=full_user_msg,
@@ -926,8 +935,16 @@ if user_input := _effective_input:
                         llm_model=llm_model,
                         ollama_host=ollama_host,
                         context_window=settings.context_window,
+                        fast_llm_model=settings.fast_llm_model,
                     ):
-                        if ev.type == "tool_call":
+                        if ev.type == "info":
+                            mode, mdl = (ev.content.split(":", 1) + [""])[:2]
+                            badge = "⚡ быстрый режим" if mode == "fast" else "🤖 агент"
+                            if mdl:
+                                badge += f" · `{mdl}`"
+                            mode_badge.caption(badge)
+
+                        elif ev.type == "tool_call":
                             tool_steps.append(
                                 {"name": ev.tool_name, "args": ev.tool_args, "result": {}}
                             )

@@ -337,6 +337,34 @@ def try_start_ollama(host: str = DEFAULT_OLLAMA_HOST, wait_seconds: int = 45) ->
     return ollama_reachable(host)
 
 
+def warm_up_model(model: str, host: str = DEFAULT_OLLAMA_HOST) -> None:
+    """
+    Send a tiny dummy request so the model is loaded into memory.
+    Subsequent real requests will skip the loading delay (~30s for 14b).
+    Runs in background — no blocking wait.
+    """
+    import threading
+    def _do():
+        try:
+            url  = f"{host.rstrip('/')}/api/generate"
+            body = json.dumps({
+                "model":       model,
+                "prompt":      "hi",
+                "stream":      False,
+                "options":     {"num_predict": 1},
+                "keep_alive":  "10m",   # keep loaded for 10 minutes
+            }).encode()
+            req  = urllib.request.Request(
+                url, data=body, method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=300)
+        except Exception:
+            pass
+    threading.Thread(target=_do, daemon=True).start()
+    log(f"[OK] Прогрев модели {model} запущен в фоне")
+
+
 def pull_model(model: str) -> bool:
     ollama_bin = shutil.which("ollama")
     if not ollama_bin:
@@ -486,6 +514,10 @@ def main() -> int:
             log(line)
 
         ensure_models()
+
+        # Pre-warm the main model in background so first chat request is instant
+        warm_up_model(REQUIRED_MODELS[0])
+
         return launch_streamlit(python)
 
     except KeyboardInterrupt:

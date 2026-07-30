@@ -299,24 +299,31 @@ def run_agent(
     llm_model: str,
     ollama_host: str,
     context_window: int = 8192,
+    fast_llm_model: str = "",
 ) -> Generator[AgentEvent, None, None]:
     """
     Smart-routing ReAct agent.
 
-    Fast path  (no tools): simple questions → direct stream, tiny prompt.
-                           Fastest possible response.
-    Agent path (tools):    complex tasks → only relevant tools sent,
-                           full ReAct loop.
+    Fast path  (no tools): simple questions → tiny prompt, small model, direct stream.
+    Agent path (tools):    complex tasks → only relevant tools, full model, ReAct loop.
     """
-    options = {"temperature": 0.05, "num_ctx": context_window}
+    # Determine which model to use for each path
+    agent_model = llm_model
+    chat_model  = fast_llm_model.strip() or llm_model   # fast model if set, else same
 
     # ── Route: fast path vs agent path ──────────────────────────────────────
     use_tools = _needs_tools(user_message)
 
     if not use_tools:
         # ── FAST PATH ────────────────────────────────────────────────────────
-        # No tool schema → model answers immediately without decision overhead.
-        # Minimal prompt, last 6 messages only.
+        # Minimal prompt + small context + limited output = fastest response.
+        fast_opts = {
+            "temperature": 0.1,
+            "num_ctx":     min(4096, context_window),   # smaller context = faster prefill
+            "num_predict": 768,                          # cap output tokens
+            "top_k":       20,                           # fewer candidates = faster sampling
+            "top_p":       0.9,
+        }
         mem_ctx  = memory.get_context(user_message, project=str(project_root) if project_root else "")
         sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
         messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
@@ -324,8 +331,9 @@ def run_agent(
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_message})
 
+        yield AgentEvent(type="info", content=f"fast:{chat_model}")
         try:
-            for chunk in _stream_chat(ollama_host, llm_model, messages, options):
+            for chunk in _stream_chat(ollama_host, chat_model, messages, fast_opts):
                 yield AgentEvent(type="text", content=chunk)
         except Exception as exc:
             yield AgentEvent(type="error", content=f"Ollama: {exc}")
@@ -333,12 +341,21 @@ def run_agent(
         return
 
     # ── AGENT PATH ──────────────────────────────────────────────────────────
+    agent_opts = {
+        "temperature": 0.05,
+        "num_ctx":     context_window,
+        "num_predict": 2048,
+        "top_k":       40,
+        "top_p":       0.95,
+    }
     # Select only tools relevant to this query (fewer tokens = faster).
     relevant_tools = _select_tools(user_message)
 
+    yield AgentEvent(type="info", content=f"agent:{agent_model}")
+
     system_prompt = build_system_prompt(profile, memory, project_root, user_message)
     messages = [{"role": "system", "content": system_prompt}]
-    for msg in chat_history[-8:]:   # last 8 messages (was 20)
+    for msg in chat_history[-8:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": user_message})
 
@@ -350,8 +367,8 @@ def run_agent(
 
         try:
             raw_resp = _raw_chat(
-                host=ollama_host, model=llm_model,
-                messages=messages, options=options,
+                host=ollama_host, model=agent_model,
+                messages=messages, options=agent_opts,
                 tools=relevant_tools,
             )
         except Exception as exc:
@@ -397,7 +414,7 @@ def run_agent(
         elif tool_calls_made:
             # Tools ran but no final text — stream a fresh summary
             try:
-                for chunk in _stream_chat(ollama_host, llm_model, messages, options):
+                for chunk in _stream_chat(ollama_host, agent_model, messages, agent_opts):
                     yield AgentEvent(type="text", content=chunk)
             except Exception as exc:
                 yield AgentEvent(type="error", content=f"Stream error: {exc}")
