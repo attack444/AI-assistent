@@ -74,6 +74,9 @@ def _run_agent_sync(
         fast_llm_model=settings.fast_llm_model,
         groq_api_key=settings.groq_api_key,
         groq_model=settings.groq_model,
+        deepseek_api_key=settings.deepseek_api_key,
+        deepseek_model=settings.deepseek_model,
+        http_proxy=settings.http_proxy,
     ):
         if ev.type == "text":
             text_parts.append(ev.content)
@@ -226,6 +229,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 fast_llm_model=settings.fast_llm_model,
                 groq_api_key=settings.groq_api_key,
                 groq_model=settings.groq_model,
+                deepseek_api_key=settings.deepseek_api_key,
+                deepseek_model=settings.deepseek_model,
                 http_proxy=settings.http_proxy,
             ):
                 if ev.type == "text":

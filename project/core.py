@@ -110,6 +110,9 @@ class AppSettings:
     # Groq cloud API (key stored in ~/.ai-helper/settings.json, NEVER in git)
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
+    # DeepSeek API (best for code, cheap, register at platform.deepseek.com)
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-coder"
     # HTTP proxy for cloud API calls (e.g. http://127.0.0.1:7890 for VPN/Russia)
     http_proxy: str = ""
 

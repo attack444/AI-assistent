@@ -143,6 +143,27 @@ with st.sidebar:
     ollama_host     = st.text_input("Ollama",             value=settings.ollama_host,    key="sb_host")
 
     st.divider()
+    st.caption("🚀 **DeepSeek** (лучший для кода)")
+    ds_key = st.text_input(
+        "DeepSeek API Key",
+        value=settings.deepseek_api_key,
+        type="password",
+        key="sb_ds_key",
+        help="platform.deepseek.com — 10M токенов бесплатно при регистрации",
+    )
+    ds_model_val = st.selectbox(
+        "DeepSeek модель",
+        options=["deepseek-coder", "deepseek-chat", "deepseek-reasoner"],
+        index=["deepseek-coder", "deepseek-chat", "deepseek-reasoner"].index(
+            settings.deepseek_model if settings.deepseek_model in
+            ["deepseek-coder", "deepseek-chat", "deepseek-reasoner"] else "deepseek-coder"
+        ),
+        key="sb_ds_model",
+    )
+    if ds_key.strip():
+        st.success("🚀 DeepSeek активен — топ для кода!")
+
+    st.divider()
     st.caption("☁️ **Groq** (мгновенные ответы)")
     groq_key = st.text_input(
         "Groq API Key",
@@ -199,6 +220,8 @@ with st.sidebar:
         fast_llm_model=fast_llm_model,
         groq_api_key=groq_key,
         groq_model=groq_model_val,
+        deepseek_api_key=ds_key,
+        deepseek_model=ds_model_val,
         http_proxy=http_proxy_val,
     )
     if asdict(_new_s) != asdict(settings):
@@ -331,6 +354,8 @@ with st.sidebar:
                         fast_llm_model=settings.fast_llm_model,
                         groq_api_key=settings.groq_api_key,
                         groq_model=settings.groq_model,
+                        deepseek_api_key=settings.deepseek_api_key,
+                        deepseek_model=settings.deepseek_model,
                         http_proxy=settings.http_proxy,
                     ):
                         if _ev.type == "text":
@@ -1045,6 +1070,8 @@ if user_input := _effective_input:
                         fast_llm_model=settings.fast_llm_model,
                         groq_api_key=settings.groq_api_key,
                         groq_model=settings.groq_model,
+                        deepseek_api_key=settings.deepseek_api_key,
+                        deepseek_model=settings.deepseek_model,
                         http_proxy=settings.http_proxy,
                     ):
                         if ev.type == "info":

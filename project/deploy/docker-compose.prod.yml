@@ -1,0 +1,60 @@
+services:
+
+  # ── AI Helper (Streamlit + API) ──────────────────────────────
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: ai-helper-app
+    restart: unless-stopped
+    ports:
+      - "8501:8501"   # Streamlit chat
+      - "8502:8502"   # REST API
+    volumes:
+      - ai_helper_data:/root/.ai-helper
+      - /var/ai-helper/sites:/opt/sites   # deployed user sites
+    env_file:
+      - ../.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
+    networks:
+      - ai-net
+
+  # ── PostgreSQL ────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: ai-helper-db
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aihelper}
+      POSTGRES_USER: ${POSTGRES_USER:-aihelper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+    networks:
+      - ai-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aihelper}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ai-helper-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-net
+
+volumes:
+  ai_helper_data:
+  postgres_data:
+  redis_data:
+
+networks:
+  ai-net:
+    driver: bridge

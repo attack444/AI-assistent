@@ -117,8 +117,31 @@ def _select_tools(text: str) -> List[Dict[str, Any]]:
 # Groq API helpers (OpenAI-compatible, blazing fast)
 # ---------------------------------------------------------------------------
 
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_API_URL    = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+
+# DeepSeek (OpenAI-compatible, best for code)
+DEEPSEEK_API_URL   = "https://api.deepseek.com/chat/completions"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-coder"
+
+# OpenAI-compatible providers — mapped by key prefix or explicit name
+_PROVIDER_URLS: Dict[str, str] = {
+    "groq":      GROQ_API_URL,
+    "deepseek":  DEEPSEEK_API_URL,
+    "together":  "https://api.together.xyz/v1/chat/completions",
+    "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+    "openai":    "https://api.openai.com/v1/chat/completions",
+}
+
+def _api_url_for_model(model: str, explicit_url: str = "") -> str:
+    """Return the correct API URL based on model name prefix."""
+    if explicit_url:
+        return explicit_url
+    m = model.lower()
+    if m.startswith("deepseek"):   return DEEPSEEK_API_URL
+    if m.startswith("gpt"):        return _PROVIDER_URLS["openai"]
+    if m.startswith("together"):   return _PROVIDER_URLS["together"]
+    return GROQ_API_URL   # default
 
 
 def _groq_headers(api_key: str) -> Dict[str, str]:
@@ -171,6 +194,7 @@ def _groq_stream(
     temperature: float = 0.1,
     timeout: float = 60.0,
     proxy: str = "",
+    _api_url: str = "",
 ) -> Generator[str, None, None]:
     """Stream text from Groq API. Much faster than local Ollama."""
     body = json.dumps({
@@ -180,8 +204,9 @@ def _groq_stream(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }, ensure_ascii=False).encode("utf-8")
+    url = _api_url or GROQ_API_URL
     req = urllib.request.Request(
-        GROQ_API_URL, data=body, method="POST",
+        url, data=body, method="POST",
         headers=_groq_headers(api_key),
     )
     try:
@@ -212,6 +237,7 @@ def _groq_chat(
     temperature: float = 0.05,
     timeout: float = 60.0,
     proxy: str = "",
+    _api_url: str = "",
 ) -> Dict[str, Any]:
     """Non-streaming Groq call (for tool-calling step). Returns our internal format."""
     payload: Dict[str, Any] = {
@@ -226,8 +252,9 @@ def _groq_chat(
         payload["tool_choice"] = "auto"
 
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    url  = _api_url or GROQ_API_URL
     req  = urllib.request.Request(
-        GROQ_API_URL, data=body, method="POST",
+        url, data=body, method="POST",
         headers=_groq_headers(api_key),
     )
     try:
@@ -494,18 +521,99 @@ def run_agent(
     fast_llm_model: str = "",
     groq_api_key: str = "",
     groq_model: str = GROQ_DEFAULT_MODEL,
+    deepseek_api_key: str = "",
+    deepseek_model: str = DEEPSEEK_DEFAULT_MODEL,
     http_proxy: str = "",
 ) -> Generator[AgentEvent, None, None]:
     """
-    Three-tier routing:
+    Four-tier routing (priority order):
 
-    ☁️ GROQ PATH  (if key set + simple query):  Groq API, ~300-800 tok/s, instant
-    ⚡ FAST PATH  (no tools):                   small local model, minimal prompt
-    🤖 AGENT PATH (tools needed):               full local model, ReAct loop
+    🚀 DEEPSEEK  (key set): best for code, cheap, OpenAI-compatible
+    ☁️ GROQ      (key set): fast, free tier, good for chat
+    ⚡ LOCAL FAST (no tools): small local model, minimal prompt
+    🤖 LOCAL AGENT (tools): full local model, ReAct loop
     """
     agent_model = llm_model
     chat_model  = fast_llm_model.strip() or llm_model
     use_tools   = _needs_tools(user_message)
+
+    # ── DeepSeek PATH (highest priority when key is set) ─────────────────────
+    if deepseek_api_key.strip():
+        mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
+        if not use_tools:
+            sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
+            messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
+            for msg in chat_history[-6:]:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": user_message})
+            yield AgentEvent(type="info", content=f"deepseek:{deepseek_model}")
+            try:
+                for chunk in _groq_stream(
+                    deepseek_api_key, deepseek_model, messages,
+                    proxy=http_proxy, _api_url=DEEPSEEK_API_URL
+                ):
+                    yield AgentEvent(type="text", content=chunk)
+            except GroqAuthError as exc:
+                yield AgentEvent(type="error", content=str(exc))
+            except Exception as exc:
+                yield AgentEvent(type="error", content=f"DeepSeek: {exc}")
+            yield AgentEvent(type="done")
+            return
+        else:
+            # DeepSeek agent path
+            relevant_tools = _select_tools(user_message)
+            system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
+            messages = [{"role": "system", "content": system_prompt}]
+            for msg in chat_history[-8:]:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": user_message})
+            yield AgentEvent(type="info", content=f"deepseek-agent:{deepseek_model}")
+            steps = 0
+            tool_calls_made = False
+            while steps < MAX_STEPS:
+                steps += 1
+                try:
+                    raw_resp = _groq_chat(
+                        deepseek_api_key, deepseek_model, messages,
+                        tools=relevant_tools, proxy=http_proxy, _api_url=DEEPSEEK_API_URL
+                    )
+                except GroqAuthError as exc:
+                    yield AgentEvent(type="error", content=str(exc)); return
+                except Exception as exc:
+                    yield AgentEvent(type="error", content=f"DeepSeek: {exc}"); return
+                raw_msg    = raw_resp.get("message", {}) or {}
+                content    = (raw_msg.get("content") or "").strip()
+                tool_calls = _extract_tool_calls(raw_msg)
+                if tool_calls:
+                    tool_calls_made = True
+                    messages.append({"role": "assistant", "content": content, "tool_calls": [
+                        {"id": tc["id"], "type": "function",
+                         "function": {"name": tc["name"],
+                                      "arguments": json.dumps(tc["arguments"], ensure_ascii=False)}}
+                        for tc in tool_calls
+                    ]})
+                    for tc in tool_calls:
+                        yield AgentEvent(type="tool_call", tool_name=tc["name"], tool_args=tc["arguments"])
+                        result = _dispatch(tc["name"], dict(tc["arguments"]), project_root, memory)
+                        yield AgentEvent(type="tool_result", tool_name=tc["name"], tool_result=result)
+                        messages.append({"role": "tool", "tool_call_id": tc["id"],
+                                         "content": json.dumps(result, ensure_ascii=False)[:6000]})
+                    continue
+                if content:
+                    for i in range(0, len(content), 8):
+                        yield AgentEvent(type="text", content=content[i:i+8])
+                elif tool_calls_made:
+                    try:
+                        for chunk in _groq_stream(deepseek_api_key, deepseek_model, messages,
+                                                  max_tokens=1024, proxy=http_proxy,
+                                                  _api_url=DEEPSEEK_API_URL):
+                            yield AgentEvent(type="text", content=chunk)
+                    except Exception as exc:
+                        yield AgentEvent(type="error", content=f"DeepSeek stream: {exc}")
+                yield AgentEvent(type="done")
+                return
+            yield AgentEvent(type="error", content=f"Превышен лимит шагов ({MAX_STEPS}).")
+            return
 
     mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
 
