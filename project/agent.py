@@ -114,7 +114,114 @@ def _select_tools(text: str) -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Raw HTTP helpers
+# Groq API helpers (OpenAI-compatible, blazing fast)
+# ---------------------------------------------------------------------------
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+
+
+def _groq_headers(api_key: str) -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+
+
+def _groq_stream(
+    api_key: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+    max_tokens: int = 768,
+    temperature: float = 0.1,
+    timeout: float = 60.0,
+) -> Generator[str, None, None]:
+    """Stream text from Groq API. Much faster than local Ollama."""
+    body = json.dumps({
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        GROQ_API_URL, data=body, method="POST",
+        headers=_groq_headers(api_key),
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw_line in resp:
+            line = raw_line.decode("utf-8").strip()
+            if not line or line == "data: [DONE]":
+                continue
+            if line.startswith("data: "):
+                try:
+                    chunk = json.loads(line[6:])
+                    txt = chunk["choices"][0].get("delta", {}).get("content") or ""
+                    if txt:
+                        yield txt
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
+def _groq_chat(
+    api_key: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+    tools: Optional[List[Dict[str, Any]]] = None,
+    max_tokens: int = 2048,
+    temperature: float = 0.05,
+    timeout: float = 60.0,
+) -> Dict[str, Any]:
+    """Non-streaming Groq call (for tool-calling step). Returns our internal format."""
+    payload: Dict[str, Any] = {
+        "model":       model,
+        "messages":    messages,
+        "stream":      False,
+        "temperature": temperature,
+        "max_tokens":  max_tokens,
+    }
+    if tools:
+        payload["tools"]       = tools
+        payload["tool_choice"] = "auto"
+
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req  = urllib.request.Request(
+        GROQ_API_URL, data=body, method="POST",
+        headers=_groq_headers(api_key),
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    choice = data["choices"][0]
+    msg    = choice.get("message", {})
+
+    # Normalise to our internal message format (same as Ollama response)
+    result: Dict[str, Any] = {
+        "message": {
+            "content":    msg.get("content") or "",
+            "tool_calls": [],
+        }
+    }
+    for tc in (msg.get("tool_calls") or []):
+        fn = tc.get("function", {})
+        result["message"]["tool_calls"].append({
+            "id":       tc.get("id", ""),
+            "function": {
+                "name":      fn.get("name", ""),
+                "arguments": fn.get("arguments", {}),
+            },
+        })
+    return result
+
+
+def _groq_stream_agent_summary(
+    api_key: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+) -> Generator[str, None, None]:
+    """Stream the final Groq response after tool calls."""
+    yield from _groq_stream(api_key, model, messages, max_tokens=1024)
+
+
+# ---------------------------------------------------------------------------
+# Ollama Raw HTTP helpers
 # ---------------------------------------------------------------------------
 
 def _raw_chat(
@@ -300,33 +407,124 @@ def run_agent(
     ollama_host: str,
     context_window: int = 8192,
     fast_llm_model: str = "",
+    groq_api_key: str = "",
+    groq_model: str = GROQ_DEFAULT_MODEL,
 ) -> Generator[AgentEvent, None, None]:
     """
-    Smart-routing ReAct agent.
+    Three-tier routing:
 
-    Fast path  (no tools): simple questions → tiny prompt, small model, direct stream.
-    Agent path (tools):    complex tasks → only relevant tools, full model, ReAct loop.
+    ☁️ GROQ PATH  (if key set + simple query):  Groq API, ~300-800 tok/s, instant
+    ⚡ FAST PATH  (no tools):                   small local model, minimal prompt
+    🤖 AGENT PATH (tools needed):               full local model, ReAct loop
     """
-    # Determine which model to use for each path
     agent_model = llm_model
-    chat_model  = fast_llm_model.strip() or llm_model   # fast model if set, else same
+    chat_model  = fast_llm_model.strip() or llm_model
+    use_tools   = _needs_tools(user_message)
 
-    # ── Route: fast path vs agent path ──────────────────────────────────────
-    use_tools = _needs_tools(user_message)
+    mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
 
-    if not use_tools:
-        # ── FAST PATH ────────────────────────────────────────────────────────
-        # Minimal prompt + small context + limited output = fastest response.
-        fast_opts = {
-            "temperature": 0.1,
-            "num_ctx":     min(4096, context_window),   # smaller context = faster prefill
-            "num_predict": 768,                          # cap output tokens
-            "top_k":       20,                           # fewer candidates = faster sampling
-            "top_p":       0.9,
-        }
-        mem_ctx  = memory.get_context(user_message, project=str(project_root) if project_root else "")
+    # ── GROQ PATH ────────────────────────────────────────────────────────────
+    if groq_api_key.strip() and not use_tools:
         sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
         messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
+        for msg in chat_history[-6:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        yield AgentEvent(type="info", content=f"groq:{groq_model}")
+        try:
+            for chunk in _groq_stream(groq_api_key, groq_model, messages):
+                yield AgentEvent(type="text", content=chunk)
+        except Exception as exc:
+            # Groq failed → fall back to local fast model
+            yield AgentEvent(type="info", content=f"groq_fallback:{chat_model}")
+            fast_opts = {"temperature": 0.1, "num_ctx": 4096, "num_predict": 768, "top_k": 20}
+            sys_msg2  = _fast_prompt(profile, project_root, mem_ctx)
+            msgs2: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg2}]
+            for m in chat_history[-6:]:
+                msgs2.append({"role": m["role"], "content": m["content"]})
+            msgs2.append({"role": "user", "content": user_message})
+            try:
+                for chunk in _stream_chat(ollama_host, chat_model, msgs2, fast_opts):
+                    yield AgentEvent(type="text", content=chunk)
+            except Exception as exc2:
+                yield AgentEvent(type="error", content=f"Groq: {exc}  |  Ollama: {exc2}")
+        yield AgentEvent(type="done")
+        return
+
+    # ── GROQ AGENT PATH (Groq key set + tools needed) ────────────────────────
+    if groq_api_key.strip() and use_tools:
+        relevant_tools = _select_tools(user_message)
+        system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in chat_history[-8:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        yield AgentEvent(type="info", content=f"groq-agent:{groq_model}")
+
+        steps = 0
+        tool_calls_made = False
+        while steps < MAX_STEPS:
+            steps += 1
+            try:
+                raw_resp = _groq_chat(groq_api_key, groq_model, messages,
+                                      tools=relevant_tools)
+            except Exception as exc:
+                yield AgentEvent(type="error", content=f"Groq: {exc}")
+                return
+
+            raw_msg    = raw_resp.get("message", {}) or {}
+            content    = (raw_msg.get("content") or "").strip()
+            tool_calls = _extract_tool_calls(raw_msg)
+
+            if tool_calls:
+                tool_calls_made = True
+                messages.append({
+                    "role": "assistant", "content": content,
+                    "tool_calls": [
+                        {"id": tc["id"], "type": "function",
+                         "function": {"name": tc["name"],
+                                      "arguments": json.dumps(tc["arguments"], ensure_ascii=False)}}
+                        for tc in tool_calls
+                    ],
+                })
+                for tc in tool_calls:
+                    yield AgentEvent(type="tool_call", tool_name=tc["name"], tool_args=tc["arguments"])
+                    result = _dispatch(tc["name"], dict(tc["arguments"]), project_root, memory)
+                    yield AgentEvent(type="tool_result", tool_name=tc["name"], tool_result=result)
+                    messages.append({
+                        "role": "tool", "tool_call_id": tc["id"],
+                        "content": json.dumps(result, ensure_ascii=False)[:6000],
+                    })
+                continue
+
+            if content:
+                for i in range(0, len(content), 8):
+                    yield AgentEvent(type="text", content=content[i:i+8])
+            elif tool_calls_made:
+                try:
+                    for chunk in _groq_stream(groq_api_key, groq_model, messages, max_tokens=1024):
+                        yield AgentEvent(type="text", content=chunk)
+                except Exception as exc:
+                    yield AgentEvent(type="error", content=f"Groq stream: {exc}")
+            yield AgentEvent(type="done")
+            return
+
+        yield AgentEvent(type="error", content=f"Превышен лимит шагов ({MAX_STEPS}).")
+        return
+
+    # ── LOCAL FAST PATH (no Groq, no tools) ──────────────────────────────────
+    if not use_tools:
+        fast_opts = {
+            "temperature": 0.1,
+            "num_ctx":     min(4096, context_window),
+            "num_predict": 768,
+            "top_k":       20,
+            "top_p":       0.9,
+        }
+        sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
+        messages = [{"role": "system", "content": sys_msg}]
         for msg in chat_history[-6:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_message})
@@ -340,7 +538,7 @@ def run_agent(
         yield AgentEvent(type="done")
         return
 
-    # ── AGENT PATH ──────────────────────────────────────────────────────────
+    # ── LOCAL AGENT PATH (tools needed, no Groq) ─────────────────────────────
     agent_opts = {
         "temperature": 0.05,
         "num_ctx":     context_window,
@@ -348,7 +546,6 @@ def run_agent(
         "top_k":       40,
         "top_p":       0.95,
     }
-    # Select only tools relevant to this query (fewer tokens = faster).
     relevant_tools = _select_tools(user_message)
 
     yield AgentEvent(type="info", content=f"agent:{agent_model}")

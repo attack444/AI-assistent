@@ -107,6 +107,9 @@ class AppSettings:
     max_web_results: int = 5
     # Fast model for simple chat queries (empty = same as llm_model)
     fast_llm_model: str = ""
+    # Groq cloud API (key stored in ~/.ai-helper/settings.json, NEVER in git)
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
 
 
 class PatchItem(BaseModel):

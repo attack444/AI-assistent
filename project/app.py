@@ -142,10 +142,42 @@ with st.sidebar:
     embed_model     = st.text_input("Embeddings",         value=settings.embed_model,    key="sb_emb")
     ollama_host     = st.text_input("Ollama",             value=settings.ollama_host,    key="sb_host")
 
-    if fast_llm_model.strip():
-        st.caption(f"⚡ Чат: `{fast_llm_model}` · 🤖 Агент: `{llm_model}`")
+    st.divider()
+    st.caption("☁️ **Groq** (мгновенные ответы)")
+    groq_key = st.text_input(
+        "Groq API Key",
+        value=settings.groq_api_key,
+        type="password",
+        key="sb_groq_key",
+        help="Бесплатный ключ на console.groq.com. Хранится только локально.",
+    )
+    groq_model_val = st.selectbox(
+        "Groq модель",
+        options=[
+            "llama-3.3-70b-versatile",
+            "llama3-groq-70b-8192-tool-use-preview",
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "gemma2-9b-it",
+            "mixtral-8x7b-32768",
+        ],
+        index=["llama-3.3-70b-versatile", "llama3-groq-70b-8192-tool-use-preview",
+               "llama-3.1-70b-versatile", "llama-3.1-8b-instant",
+               "gemma2-9b-it", "mixtral-8x7b-32768"].index(settings.groq_model)
+               if settings.groq_model in ["llama-3.3-70b-versatile",
+               "llama3-groq-70b-8192-tool-use-preview","llama-3.1-70b-versatile",
+               "llama-3.1-8b-instant","gemma2-9b-it","mixtral-8x7b-32768"] else 0,
+        key="sb_groq_model",
+    )
+    if groq_key.strip():
+        st.success("☁️ Groq активен — ответы мгновенные!")
     else:
-        st.caption(f"Одна модель для всего: `{llm_model}`")
+        st.caption("Без ключа — только локальные модели")
+
+    if fast_llm_model.strip():
+        st.caption(f"⚡ Локал чат: `{fast_llm_model}` · 🤖 Агент: `{llm_model}`")
+    else:
+        st.caption(f"Локальная модель: `{llm_model}`")
 
     # Persist settings changes
     _new_s = AppSettings(
@@ -155,6 +187,8 @@ with st.sidebar:
         use_web=settings.use_web, search_kind=settings.search_kind,
         max_web_results=settings.max_web_results,
         fast_llm_model=fast_llm_model,
+        groq_api_key=groq_key,
+        groq_model=groq_model_val,
     )
     if asdict(_new_s) != asdict(settings):
         save_settings(_new_s)
@@ -936,12 +970,17 @@ if user_input := _effective_input:
                         ollama_host=ollama_host,
                         context_window=settings.context_window,
                         fast_llm_model=settings.fast_llm_model,
+                        groq_api_key=settings.groq_api_key,
+                        groq_model=settings.groq_model,
                     ):
                         if ev.type == "info":
                             mode, mdl = (ev.content.split(":", 1) + [""])[:2]
-                            badge = "⚡ быстрый режим" if mode == "fast" else "🤖 агент"
-                            if mdl:
-                                badge += f" · `{mdl}`"
+                            if mode.startswith("groq"):
+                                badge = f"☁️ Groq · `{mdl}`"
+                            elif mode == "fast":
+                                badge = f"⚡ локальный · `{mdl}`"
+                            else:
+                                badge = f"🤖 агент · `{mdl}`"
                             mode_badge.caption(badge)
 
                         elif ev.type == "tool_call":
