@@ -72,14 +72,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+import time as _time
+
 # ---------------------------------------------------------------------------
-# Session-level singletons (loaded once per session)
+# Session-level singletons — loaded ONCE per session, never on rerun
 # ---------------------------------------------------------------------------
 if "settings" not in st.session_state:
     s = load_settings()
-    env_host = os.environ.get("OLLAMA_HOST", "")
-    if env_host:
-        s.ollama_host = env_host
+    if os.environ.get("OLLAMA_HOST"):
+        s.ollama_host = os.environ["OLLAMA_HOST"]
     st.session_state["settings"] = s
 
 if "profile" not in st.session_state:
@@ -88,23 +89,20 @@ if "profile" not in st.session_state:
 if "memory" not in st.session_state:
     st.session_state["memory"] = MemoryStore()
 
-# LlamaIndex is expensive to import — cache it per project
-# Key: "idx_cache_{project_name}" → VectorStoreIndex object
-# Invalidated when _reindex flag is set or index is rebuilt
-
-import time as _time
+# Projects cached per session — refresh only when explicitly needed
+if "projects" not in st.session_state:
+    st.session_state["projects"] = load_projects()
 
 settings: AppSettings = st.session_state["settings"]
 profile: UserProfile  = st.session_state["profile"]
 memory: MemoryStore   = st.session_state["memory"]
+projects              = st.session_state["projects"]
+pnames                = list(projects.keys())
 
 # ---------------------------------------------------------------------------
 # Compute project_root EARLY (before sidebar) from previous session state.
-# This prevents NameError when sidebar references project_root.
-# After the sidebar selectbox renders, project_root is recomputed below.
+# After sidebar selectbox renders, it is recomputed below with the new value.
 # ---------------------------------------------------------------------------
-projects = load_projects()
-pnames = list(projects.keys())
 _prev_sel: Optional[str] = st.session_state.get("sel_proj")
 project_root: Optional[Path] = None
 if _prev_sel and _prev_sel != "<нет>" and _prev_sel in projects:
@@ -133,6 +131,7 @@ with st.sidebar:
         if st.button("🗑 Удалить проект", use_container_width=True, key="del_proj"):
             delete_project(selected_project)
             st.session_state.pop(f"chat_{selected_project}", None)
+            st.session_state.pop("projects", None)  # invalidate cache
             st.rerun()
 
     # ── Model ────────────────────────────────────────────────────────────────
@@ -154,9 +153,11 @@ with st.sidebar:
         st.session_state["settings"] = _new_s
         settings = _new_s
 
-    # ── Ollama ───────────────────────────────────────────────────────────────
-    if "ost" not in st.session_state:
+    # ── Ollama — check at most once per 30 s ─────────────────────────────────
+    _ost_age = _time.time() - st.session_state.get("_ost_ts", 0)
+    if "ost" not in st.session_state or _ost_age > 30:
         st.session_state["ost"] = check_ollama_status(ollama_host)
+        st.session_state["_ost_ts"] = _time.time()
     ost = st.session_state["ost"]
 
     c1, c2 = st.columns(2)
@@ -553,6 +554,7 @@ def _cmd(raw: str) -> Optional[str]:
         if not p.exists():
             return f"Путь не существует: `{p}`"
         register_project(p.name, p)
+        st.session_state.pop("projects", None)  # invalidate cache
         return f"Проект **{p.name}** добавлен: `{p}`"
 
     elif name == "scan":
@@ -717,14 +719,13 @@ if chat_key not in st.session_state:
     st.session_state[chat_key] = []
 chat_msgs: List[Dict] = st.session_state[chat_key]
 
-# Welcome if no project
+# Welcome hint if no project (non-blocking — chat still works)
 if not project_root:
-    st.markdown("## AI Helper 🤖")
-    st.markdown(
-        "Добавь проект через боковую панель, либо напиши в чате:\n\n"
-        "`открой D:\\my-project`\n\n"
-        "или `/add D:\\my-project`\n\n"
-        "Используй `/help` для списка команд."
+    st.info(
+        "💡 **Проект не выбран** — можно общаться без проекта, "
+        "прикрепить файлы ниже, или добавить проект: "
+        "`открой D:\\my-project` / `/add D:\\путь`",
+        icon=None,
     )
 
 # ── Quick-prompt chips ────────────────────────────────────────────────────
@@ -871,6 +872,7 @@ if user_input := _effective_input:
         if path_added:
             pname = path_added.name
             register_project(pname, path_added)
+            st.session_state.pop("projects", None)  # invalidate cache
             resp = f"Проект **{pname}** добавлен: `{path_added}`"
             if profile.auto_index:
                 try:
@@ -881,15 +883,15 @@ if user_input := _effective_input:
                             chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap,
                             force=True, context_window=settings.context_window,
                         )
-                    resp += "  Индекс построен."
+                    resp += " Индекс построен."
                 except Exception as e:
-                    resp += f"  Ошибка индекса: {e}"
+                    resp += f" Ошибка индекса: {e}"
             with st.chat_message("assistant"):
                 st.markdown(resp)
             chat_msgs.append({"role": "assistant", "content": resp})
             st.rerun()
 
-        else:
+        if True:  # always continue to agent (even after path_added)
             # ── Auto-reindex if stale ─────────────────────────────────────────
             if project_root and profile.auto_index and needs_reindex(project_root):
                 try:
