@@ -16,6 +16,16 @@ from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA
 MAX_STEPS = 8
 SELF_DIR  = Path(__file__).resolve().parent
 
+
+@dataclass
+class AgentEvent:
+    type: str        # text | tool_call | tool_result | error | done
+    content: str = ""
+    tool_name: str = ""
+    tool_args: Dict[str, Any] = field(default_factory=dict)
+    tool_result: Dict[str, Any] = field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Smart query routing
 # ---------------------------------------------------------------------------
