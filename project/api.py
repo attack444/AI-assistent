@@ -597,7 +597,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "1.6",
+            "version": "1.7",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
