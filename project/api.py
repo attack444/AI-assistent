@@ -56,6 +56,7 @@ from core import (
 from memory import MemoryStore
 from profile import UserProfile, load_profile
 from tools import git_run, list_dir, read_file
+import chat_store as chats
 import panel_uploads as pup
 import wp_tools as wpt
 
@@ -630,7 +631,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.3",
+            "version": "2.4",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1684,6 +1685,68 @@ class APIHandler(BaseHTTPRequestHandler):
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
             self._send(code, _json({"error": str(exc)}))
 
+    # ── Chats (persistent) ───────────────────────────────────────
+    def _get_chats(self):
+        qs = self._qs()
+        site = (qs.get("site") or "").strip()
+        items = chats.list_chats(site_id=site)
+        self._send(200, _json({"ok": True, "chats": items}))
+
+    def _get_chat(self, chat_id: str):
+        chat = chats.get_chat(chat_id)
+        if not chat:
+            self._send(404, _json({"error": "Чат не найден"}))
+            return
+        self._send(200, _json({"ok": True, "chat": chat}))
+
+    def _post_chats(self):
+        body = self._read_body()
+        site = (body.get("site") or body.get("site_id") or "").strip()
+        title = (body.get("title") or "Новый чат").strip()
+        chat = chats.create_chat(site_id=site, title=title)
+        self._send(200, _json({"ok": True, "chat": chat}))
+
+    def _post_chat_rename(self):
+        body = self._read_body()
+        chat_id = (body.get("id") or body.get("chat_id") or "").strip()
+        title = (body.get("title") or "").strip()
+        if not chat_id:
+            self._send(400, _json({"error": "Нужен id чата"}))
+            return
+        chat = chats.rename_chat(chat_id, title)
+        if not chat:
+            self._send(404, _json({"error": "Чат не найден"}))
+            return
+        self._send(200, _json({"ok": True, "chat": chat}))
+
+    def _delete_chat(self, chat_id: str):
+        ok = chats.delete_chat(chat_id)
+        self._send(200 if ok else 404, _json({"ok": ok}))
+
+    def _get_context(self):
+        """Site/project snapshot for the panel chat UI."""
+        from agent import _project_snapshot
+
+        qs = self._qs()
+        site = (qs.get("site") or "").strip()
+        proj = (qs.get("project") or "").strip()
+        settings, profile, memory, project_root = self._load_context(proj, site)
+        snapshot = _project_snapshot(project_root, max_files=80) if project_root else ""
+        tree: List[str] = []
+        if project_root and project_root.is_dir():
+            r = list_dir(str(project_root), recursive=False)
+            if r.get("ok"):
+                tree = list(r.get("items") or [])[:80]
+        self._send(200, _json({
+            "ok": True,
+            "site": site or None,
+            "project": project_root.name if project_root else None,
+            "project_root": str(project_root) if project_root else None,
+            "snapshot": snapshot,
+            "tree": tree,
+            "can_edit": bool(project_root),
+        }))
+
     # ── POST /chat ───────────────────────────────────────────────
     def _post_chat(self):
         body = self._read_body()
@@ -1694,17 +1757,28 @@ class APIHandler(BaseHTTPRequestHandler):
         proj_name = body.get("project", "")
         site_name = (body.get("site") or "").strip()
         history = body.get("history", [])
+        chat_id = (body.get("chat_id") or "").strip()
         settings, profile, memory, project_root = self._load_context(proj_name, site_name)
+
+        if chat_id:
+            stored = chats.history_for_agent(chat_id)
+            if stored:
+                history = stored
+            chats.add_message(chat_id, "user", message)
 
         t0 = time.time()
         text = _run_agent_sync(message, project_root, settings, profile, memory, history)
         elapsed = round(time.time() - t0, 2)
+
+        if chat_id:
+            chats.add_message(chat_id, "assistant", text)
 
         self._send(200, _json({
             "ok": True,
             "response": text,
             "elapsed_sec": elapsed,
             "project": project_root.name if project_root else None,
+            "chat_id": chat_id or None,
         }))
 
     # ── POST /chat/stream (SSE) ──────────────────────────────────
@@ -1716,12 +1790,37 @@ class APIHandler(BaseHTTPRequestHandler):
         proj_name = body.get("project", "")
         site_name = (body.get("site") or "").strip()
         history = body.get("history", [])
+        chat_id = (body.get("chat_id") or "").strip()
 
         if not message:
             self._send(400, _json({"error": "Нужно поле 'message'"}))
             return
 
         settings, profile, memory, project_root = self._load_context(proj_name, site_name)
+
+        # Auto-create / bind persistent chat
+        if not chat_id:
+            chat = chats.create_chat(
+                site_id=site_name,
+                title=chats.auto_title_from_message(message),
+            )
+            chat_id = chat["id"]
+        else:
+            existing = chats.get_chat(chat_id)
+            if not existing:
+                chat = chats.create_chat(
+                    site_id=site_name,
+                    title=chats.auto_title_from_message(message),
+                )
+                chat_id = chat["id"]
+            else:
+                stored = chats.history_for_agent(chat_id)
+                if stored:
+                    history = stored
+                if existing.get("title") in ("", "Новый чат") and message:
+                    chats.rename_chat(chat_id, chats.auto_title_from_message(message))
+
+        chats.add_message(chat_id, "user", message)
 
         self.close_connection = True
         self.send_response(200)
@@ -1738,6 +1837,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass
+
+        assistant_parts: List[str] = []
+        tool_events: List[Dict[str, Any]] = []
+        _sse({"type": "chat", "chat_id": chat_id, "site": site_name or None,
+              "project": project_root.name if project_root else None,
+              "project_root": str(project_root) if project_root else None})
 
         try:
             for ev in run_agent(
@@ -1757,21 +1862,56 @@ class APIHandler(BaseHTTPRequestHandler):
                 http_proxy=settings.http_proxy,
             ):
                 if ev.type == "text":
+                    assistant_parts.append(ev.content)
                     _sse({"type": "text", "content": ev.content})
                 elif ev.type == "error":
                     _sse({"type": "error", "content": ev.content})
-                    _sse({"type": "done"})
+                    if assistant_parts or tool_events:
+                        chats.add_message(
+                            chat_id, "assistant", "".join(assistant_parts),
+                            meta={"tools": tool_events, "error": ev.content},
+                        )
+                    _sse({"type": "done", "chat_id": chat_id})
                     return
                 elif ev.type == "tool_call":
+                    tool_events.append({"name": ev.tool_name, "args": ev.tool_args})
                     _sse({"type": "tool_call", "name": ev.tool_name, "args": ev.tool_args})
+                elif ev.type == "tool_result":
+                    summary = {
+                        "name": ev.tool_name,
+                        "ok": bool((ev.tool_result or {}).get("ok")),
+                        "path": (ev.tool_result or {}).get("path")
+                            or (ev.tool_result or {}).get("deleted"),
+                        "edited": bool((ev.tool_result or {}).get("edited")),
+                        "added": (ev.tool_result or {}).get("added"),
+                        "removed": (ev.tool_result or {}).get("removed"),
+                        "error": (ev.tool_result or {}).get("error"),
+                        "diff": ((ev.tool_result or {}).get("diff") or "")[:1200],
+                    }
+                    tool_events.append({"result": summary})
+                    chats.add_message(
+                        chat_id, "tool",
+                        f"{ev.tool_name}: {'ok' if summary['ok'] else 'fail'}"
+                        + (f" → {summary['path']}" if summary.get("path") else ""),
+                        meta=summary,
+                    )
+                    _sse({"type": "tool_result", "name": ev.tool_name, "result": summary})
                 elif ev.type == "info":
                     _sse({"type": "info", "content": ev.content})
                 elif ev.type == "done":
-                    _sse({"type": "done"})
+                    chats.add_message(
+                        chat_id, "assistant", "".join(assistant_parts),
+                        meta={"tools": tool_events} if tool_events else {},
+                    )
+                    _sse({"type": "done", "chat_id": chat_id})
                     return
         except Exception as exc:
             _sse({"type": "error", "content": str(exc)})
-            _sse({"type": "done"})
+            chats.add_message(
+                chat_id, "assistant", "".join(assistant_parts),
+                meta={"error": str(exc), "tools": tool_events},
+            )
+            _sse({"type": "done", "chat_id": chat_id})
 
     # ── POST /smart-commit ───────────────────────────────────────
     def _post_smart_commit(self):
@@ -1843,6 +1983,12 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_wp_status()
         elif path == "/wp/db-test":
             self._get_wp_db_test()
+        elif path == "/chats":
+            self._get_chats()
+        elif path.startswith("/chats/"):
+            self._get_chat(path[len("/chats/"):])
+        elif path == "/context":
+            self._get_context()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
@@ -1895,6 +2041,8 @@ class APIHandler(BaseHTTPRequestHandler):
         routes = {
             "/chat": self._post_chat,
             "/chat/stream": self._post_chat_stream,
+            "/chats": self._post_chats,
+            "/chats/rename": self._post_chat_rename,
             "/smart-commit": self._post_smart_commit,
             "/project/read": self._post_project_read,
             "/fs/read": self._post_fs_read,
@@ -1932,6 +2080,8 @@ class APIHandler(BaseHTTPRequestHandler):
         if path.startswith("/sites/"):
             name = path[len("/sites/"):]
             self._delete_site(name)
+        elif path.startswith("/chats/"):
+            self._delete_chat(path[len("/chats/"):])
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 

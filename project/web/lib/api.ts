@@ -506,19 +506,97 @@ async function uploadBinary<T>(path: string, file: File): Promise<T> {
   return data as T;
 }
 
+export type ChatSummary = {
+  id: string;
+  title: string;
+  site_id?: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type ChatMessage = {
+  id: number | string;
+  role: "user" | "assistant" | "tool" | string;
+  content: string;
+  meta?: Record<string, unknown>;
+  created_at?: number;
+};
+
+export type ChatDetail = ChatSummary & {
+  messages: ChatMessage[];
+};
+
+export type SiteContext = {
+  ok: boolean;
+  site?: string | null;
+  project?: string | null;
+  project_root?: string | null;
+  snapshot?: string;
+  tree?: string[];
+  can_edit?: boolean;
+};
+
 export type ChatEvent =
   | { type: "text"; content: string }
   | { type: "error"; content: string }
   | { type: "tool_call"; name: string; args?: unknown }
+  | {
+      type: "tool_result";
+      name: string;
+      result?: {
+        ok?: boolean;
+        path?: string;
+        edited?: boolean;
+        added?: number;
+        removed?: number;
+        error?: string;
+        diff?: string;
+      };
+    }
   | { type: "info"; content: string }
-  | { type: "done" };
+  | { type: "chat"; chat_id: string; site?: string | null; project?: string | null; project_root?: string | null }
+  | { type: "done"; chat_id?: string };
+
+export function listChats(site?: string) {
+  const q = site ? `?site=${encodeURIComponent(site)}` : "";
+  return request<{ ok: boolean; chats: ChatSummary[] }>(`/chats${q}`);
+}
+
+export function getChat(id: string) {
+  return request<{ ok: boolean; chat: ChatDetail }>(`/chats/${encodeURIComponent(id)}`);
+}
+
+export function createChat(site?: string, title?: string) {
+  return request<{ ok: boolean; chat: ChatDetail }>("/chats", {
+    method: "POST",
+    body: JSON.stringify({ site: site || "", title: title || "Новый чат" }),
+  });
+}
+
+export function renameChat(id: string, title: string) {
+  return request<{ ok: boolean; chat: ChatDetail }>("/chats/rename", {
+    method: "POST",
+    body: JSON.stringify({ id, title }),
+  });
+}
+
+export function deleteChat(id: string) {
+  return request<{ ok: boolean }>(`/chats/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function getSiteContext(site?: string) {
+  const q = site ? `?site=${encodeURIComponent(site)}` : "";
+  return request<SiteContext>(`/context${q}`);
+}
 
 export async function streamChat(
   message: string,
   history: { role: string; content: string }[],
   onEvent: (ev: ChatEvent) => void,
   signal?: AbortSignal,
-  opts?: { site?: string; project?: string },
+  opts?: { site?: string; project?: string; chat_id?: string },
 ) {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
@@ -531,6 +609,7 @@ export async function streamChat(
       history,
       ...(opts?.site ? { site: opts.site } : {}),
       ...(opts?.project ? { project: opts.project } : {}),
+      ...(opts?.chat_id ? { chat_id: opts.chat_id } : {}),
     }),
     signal,
   });

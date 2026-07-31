@@ -67,6 +67,46 @@ def _run(cmd: str | list, cwd: str | None = None, timeout: int = 60,
 
 
 # ---------------------------------------------------------------------------
+# Path sandbox (relative paths → project root)
+# ---------------------------------------------------------------------------
+
+def resolve_workspace_path(
+    path: str,
+    project_root: Optional[Path] = None,
+    *,
+    default_to_root: bool = False,
+) -> Path:
+    """
+    Resolve a path for agent file tools.
+    Relative paths are rooted at project_root (site workspace).
+    Absolute paths must stay under project_root when it is set.
+    """
+    raw = (path or "").strip()
+    if not raw:
+        if default_to_root and project_root is not None:
+            return project_root.resolve()
+        raise ValueError("Пустой путь")
+
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        base = project_root if project_root is not None else Path.cwd()
+        p = (base / p).resolve()
+    else:
+        p = p.resolve()
+
+    if project_root is not None:
+        root = project_root.resolve()
+        try:
+            p.relative_to(root)
+        except ValueError:
+            if p != root:
+                raise PermissionError(
+                    f"Путь вне рабочей папки сайта ({root}): {raw}"
+                )
+    return p
+
+
+# ---------------------------------------------------------------------------
 # File tools
 # ---------------------------------------------------------------------------
 
@@ -140,10 +180,88 @@ def write_file(path: str, content: str) -> Dict[str, Any]:
             "ok": True, "path": str(p), "bytes": len(content.encode()),
             "diff": diff, "added": added, "removed": removed,
             "is_new": old_text == "",
+            "edited": True,
         }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("write_file", args, r)
+    return r
+
+
+def str_replace(
+    path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool = False,
+) -> Dict[str, Any]:
+    """
+    Точечная правка файла: заменяет old_string на new_string.
+    Предпочтительнее write_file для частичных правок.
+    """
+    args = {"path": path, "replace_all": replace_all}
+    try:
+        import difflib
+        p = Path(path).expanduser().resolve()
+        if not p.is_file():
+            r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
+            _log("str_replace", args, r)
+            return r
+        if not old_string:
+            r = {"ok": False, "error": "old_string пустой"}
+            _log("str_replace", args, r)
+            return r
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        count = text.count(old_string)
+        if count == 0:
+            r = {
+                "ok": False,
+                "error": "old_string не найден в файле — прочитай файл и повтори с точным фрагментом",
+                "path": str(p),
+            }
+            _log("str_replace", args, r)
+            return r
+        if count > 1 and not replace_all:
+            r = {
+                "ok": False,
+                "error": (
+                    f"old_string встречается {count} раз — уточни контекст "
+                    "или поставь replace_all=true"
+                ),
+                "path": str(p),
+                "matches": count,
+            }
+            _log("str_replace", args, r)
+            return r
+        _backup(p)
+        if replace_all:
+            new_text = text.replace(old_string, new_string)
+            replaced = count
+        else:
+            new_text = text.replace(old_string, new_string, 1)
+            replaced = 1
+        p.write_text(new_text, encoding="utf-8")
+        diff_lines = list(difflib.unified_diff(
+            text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"{p.name} (до)",
+            tofile=f"{p.name} (после)",
+            n=3,
+        ))
+        diff = "".join(diff_lines[:200])
+        added = sum(1 for l in diff_lines if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in diff_lines if l.startswith("-") and not l.startswith("---"))
+        r = {
+            "ok": True,
+            "path": str(p),
+            "replaced": replaced,
+            "diff": diff,
+            "added": added,
+            "removed": removed,
+            "edited": True,
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("str_replace", args, r)
     return r
 
 
@@ -157,7 +275,7 @@ def create_file(path: str, content: str = "") -> Dict[str, Any]:
         else:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
-            r = {"ok": True, "path": str(p), "created": True}
+            r = {"ok": True, "path": str(p), "created": True, "edited": True}
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("create_file", args, r)
@@ -177,7 +295,7 @@ def delete_file(path: str) -> Dict[str, Any]:
                 shutil.rmtree(p)
             else:
                 p.unlink()
-            r = {"ok": True, "deleted": str(p), "backup": backup}
+            r = {"ok": True, "deleted": str(p), "backup": backup, "edited": True}
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("delete_file", args, r)
@@ -1041,11 +1159,17 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "name": "read_file",
             "description": (
                 "Читает содержимое файла. "
-                "ВСЕГДА используй этот инструмент вместо того чтобы просить пользователя показать код."
+                "Путь относительный к корню сайта/проекта (например index.html, wp-config.php). "
+                "ВСЕГДА используй вместо просьбы показать код."
             ),
             "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string", "description": "Абсолютный путь к файлу"}},
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Относительный путь от корня сайта или абсолютный внутри workspace",
+                    }
+                },
                 "required": ["path"],
             },
         },
@@ -1058,7 +1182,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
                     "start": {"type": "integer", "description": "Первая строка (1-based)", "default": 1},
                     "end": {"type": "integer", "description": "Последняя строка", "default": 200},
                 },
@@ -1070,14 +1194,41 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Перезаписывает файл. Автоматический бэкап перед записью.",
+            "description": (
+                "Полностью перезаписывает файл на сервере. Автобэкап + diff. "
+                "Для точечных правок предпочитай str_replace."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
                     "content": {"type": "string", "description": "Полное содержимое файла"},
                 },
                 "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "str_replace",
+            "description": (
+                "Точечная правка файла на сервере: заменяет точный фрагмент old_string на new_string. "
+                "Сначала прочитай файл через read_file. Это основной способ редактирования."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
+                    "old_string": {"type": "string", "description": "Точный существующий фрагмент"},
+                    "new_string": {"type": "string", "description": "На что заменить"},
+                    "replace_all": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "true — заменить все вхождения",
+                    },
+                },
+                "required": ["path", "old_string", "new_string"],
             },
         },
     },
@@ -1089,7 +1240,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
                     "content": {"type": "string", "default": ""},
                 },
                 "required": ["path"],
@@ -1103,7 +1254,9 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "description": "Удаляет файл или папку. Автобэкап перед удалением.",
             "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
+                "properties": {
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
+                },
                 "required": ["path"],
             },
         },
@@ -1113,20 +1266,23 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "function": {
             "name": "list_dir",
             "description": (
-                "Список файлов и папок. "
-                "Используй recursive=true для полного сканирования проекта. "
-                "ВСЕГДА вызывай этот инструмент когда пользователь спрашивает о файлах в папке."
+                "Список файлов и папок сайта/проекта. "
+                "Путь '.' или пустой = корень сайта. recursive=true для полного дерева."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {
+                        "type": "string",
+                        "description": "Относительный путь ('.' = корень сайта)",
+                        "default": ".",
+                    },
                     "recursive": {"type": "boolean", "default": False,
                                   "description": "true — рекурсивно по всем подпапкам"},
                     "extensions": {"type": "string", "default": "",
                                    "description": "Фильтр по расширениям через запятую: '.py,.js'"},
                 },
-                "required": ["path"],
+                "required": [],
             },
         },
     },
@@ -1139,10 +1295,14 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "pattern": {"type": "string", "description": "Glob-маска: '*.py', '*.env', 'README*'"},
-                    "root": {"type": "string", "description": "Папка для поиска"},
+                    "root": {
+                        "type": "string",
+                        "description": "Папка для поиска (по умолчанию корень сайта)",
+                        "default": ".",
+                    },
                     "max_depth": {"type": "integer", "default": 6},
                 },
-                "required": ["pattern", "root"],
+                "required": ["pattern"],
             },
         },
     },
@@ -1155,9 +1315,13 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "root": {"type": "string", "description": "Корневая папка проекта"},
+                    "root": {
+                        "type": "string",
+                        "description": "Корневая папка (по умолчанию корень сайта)",
+                        "default": ".",
+                    },
                 },
-                "required": ["query", "root"],
+                "required": ["query"],
             },
         },
     },
@@ -1580,6 +1744,7 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "read_file": read_file,
     "read_file_lines": read_file_lines,
     "write_file": write_file,
+    "str_replace": str_replace,
     "create_file": create_file,
     "delete_file": delete_file,
     "list_dir": list_dir,

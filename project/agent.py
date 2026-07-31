@@ -11,7 +11,7 @@ from typing import Any, Dict, Generator, List, Optional
 
 from memory import MemoryStore
 from profile import UserProfile
-from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA
+from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA, resolve_workspace_path
 
 MAX_STEPS = 8
 SELF_DIR  = Path(__file__).resolve().parent
@@ -34,7 +34,9 @@ class AgentEvent:
 _TOOL_TRIGGERS = frozenset([
     "файл", "прочитай", "открой", "создай", "удали", "запиши", "папк",
     "директор", "список файл", "покажи файл", "посмотри", "проверь",
-    "исправь", "измени", "что не так", "проблем",
+    "исправь", "измени", "замени", "отредактируй", "редактир", "поправ",
+    "добавь", "вставь", "убери", "html", "css", "php", "js", "index.",
+    "что не так", "проблем", "сайт", "wordpress", "wp-",
     "git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
     "запусти", "команд", "powershell", "terminal", "тест", "pytest",
     "процесс", "диск", "переменн", ".exe", "реестр",
@@ -44,13 +46,13 @@ _TOOL_TRIGGERS = frozenset([
     "буфер", "clipboard", "скопируй в буфер",
     "уведомлен",
     "улучши себя", "обнови модель", "бэкап", "бекап",
-    "read_file", "write_file", "list_dir",
+    "read_file", "write_file", "list_dir", "str_replace",
 ])
 
 # Tool names grouped by category — only relevant ones sent per request
-_TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "create_file",
-                  "delete_file", "list_dir", "find_files"}
-_TOOLS_CODE    = {"search_code", "format_code"}
+_TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "str_replace",
+                  "create_file", "delete_file", "list_dir", "find_files"}
+_TOOLS_CODE    = {"search_code", "format_code", "str_replace", "diff_preview"}
 _TOOLS_GIT     = {"git_run", "diff_preview"}
 _TOOLS_CMD     = {"run_command", "run_powershell", "run_tests"}
 _TOOLS_WIN     = {"get_env_var", "set_env_var", "get_windows_info",
@@ -65,9 +67,11 @@ _TOOLS_SELF    = {"apply_self_improvement", "self_update_check",
 
 _CATEGORY_KEYWORDS: List[tuple[frozenset[str], frozenset[str]]] = [
     (frozenset(["файл", "прочитай", "открой", "создай", "удали", "запиши",
-                "папк", "директор", "список", "дерев", "покажи файл"]), _TOOLS_FILE),
+                "папк", "директор", "список", "дерев", "покажи файл",
+                "измени", "замени", "редактир", "поправ", "добавь",
+                "html", "css", "php", "сайт", "wordpress"]), _TOOLS_FILE | _TOOLS_CODE),
     (frozenset(["код", "исправь", "найди в коде", "форматир", "pylint",
-                "ошибк в коде", "что не так"]),                          _TOOLS_CODE | _TOOLS_FILE),
+                "ошибк в коде", "что не так", "str_replace"]),           _TOOLS_CODE | _TOOLS_FILE),
     (frozenset(["git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
                 "merge", "rebase"]),                                      _TOOLS_GIT),
     (frozenset(["команд", "запусти", "powershell", "terminal",
@@ -94,7 +98,7 @@ def _needs_tools(text: str) -> bool:
     return any(kw in lower for kw in _TOOL_TRIGGERS)
 
 
-def _select_tools(text: str) -> List[Dict[str, Any]]:
+def _select_tools(text: str, *, force_workspace: bool = False) -> List[Dict[str, Any]]:
     """Return only tools relevant to this query — fewer tokens = faster."""
     lower = text.lower()
     selected: set[str] = set()
@@ -105,6 +109,10 @@ def _select_tools(text: str) -> List[Dict[str, Any]]:
 
     # Always include save_memory so agent can remember things
     selected.add("save_memory")
+
+    if force_workspace:
+        # Site/project chat: file tools always available for server edits
+        selected |= _TOOLS_FILE | _TOOLS_CODE | {"run_command"}
 
     if not selected:
         # Fallback: minimal set for unknown complex queries
@@ -450,21 +458,33 @@ def build_system_prompt(
     langs     = ", ".join(profile.preferred_languages) if profile.preferred_languages else "любые"
     confirm   = "без подтверждения" if not profile.confirm_before_apply else "с подтверждением"
     rules_txt = ("\nПравила:\n" + "\n".join(f"- {r}" for r in profile.rules)) if profile.rules else ""
+    snapshot  = _project_snapshot(project_root, max_files=60)
 
-    return f"""Ты — автономный AI-ассистент программиста на Windows. Пользователь: {profile.name}.
+    workspace_rules = ""
+    if project_root:
+        workspace_rules = f"""
+РАБОЧАЯ ПАПКА САЙТА (на сервере): {proj_path}
+- Все пути относительные к этой папке: index.html, css/style.css, wp-config.php
+- Редактирование на сервере РЕАЛЬНОЕ: str_replace / write_file / create_file пишут на диск
+- Алгоритм правки: list_dir('.') → read_file → str_replace (точечно) или write_file (целиком)
+- После правки кратко скажи что изменил и путь файла
+- Не выходи за пределы рабочей папки
+"""
+
+    return f"""Ты — автономный AI-ассистент владельца сервера. Пользователь: {profile.name}.
 Стиль: {profile.style} | Изменения: {confirm}
-Активный проект: {proj_name} ({proj_path}) | Языки: {langs}
+Активный сайт/проект: {proj_name} ({proj_path}) | Языки: {langs}
 {rules_txt}
+{workspace_rules}
 
 ПРАВИЛА:
 - НИКОГДА не проси показать код — читай сам через read_file / list_dir
-- Действуй сразу: list_dir → read_file → write_file
+- Действуй сразу инструментами, не описывай план вместо действия
+- Для частичных правок — str_replace; для новых файлов — create_file/write_file
 - Кратко: факт → действие → результат
 - Пиши по-русски
 
-САМООБНОВЛЕНИЕ: {SELF_DIR}
-Файлы: app.py core.py agent.py tools.py memory.py profile.py launcher.py self_update.py
-Изменять: apply_self_improvement(file, new_content, reason) — backup+validate+rollback
+{snapshot}
 
 {mem_ctx}""".strip()
 
@@ -473,20 +493,75 @@ def build_system_prompt(
 # Tool dispatch
 # ---------------------------------------------------------------------------
 
+_PATH_ARG_KEYS: Dict[str, tuple[str, ...]] = {
+    "read_file": ("path",),
+    "read_file_lines": ("path",),
+    "write_file": ("path",),
+    "str_replace": ("path",),
+    "create_file": ("path",),
+    "delete_file": ("path",),
+    "list_dir": ("path",),
+    "find_files": ("root",),
+    "search_code": ("root",),
+    "diff_preview": ("path",),
+    "format_code": ("path",),
+    "git_run": ("repo_path",),
+    "run_tests": ("project_root",),
+    "check_deps": ("project_path",),
+    "github_create_pr": ("repo_path",),
+    "github_pr_list": ("repo_path",),
+    "github_issue_list": ("repo_path",),
+}
+
+
 def _dispatch(
     name: str,
     args: Dict[str, Any],
     project_root: Optional[Path],
     memory: MemoryStore,
 ) -> Dict[str, Any]:
-    if name == "search_code"    and "root"         not in args and project_root:
-        args["root"]         = str(project_root)
-    if name == "run_tests"      and "project_root" not in args and project_root:
+    args = dict(args or {})
+
+    if name == "list_dir" and not str(args.get("path") or "").strip() and project_root:
+        args["path"] = "."
+    if name == "find_files" and not str(args.get("root") or "").strip() and project_root:
+        args["root"] = "."
+    if name == "search_code" and not str(args.get("root") or "").strip() and project_root:
+        args["root"] = str(project_root)
+    if name == "run_tests" and not str(args.get("project_root") or "").strip() and project_root:
         args["project_root"] = str(project_root)
-    if name == "run_command"    and "cwd"          not in args and project_root:
-        args["cwd"]          = str(project_root)
-    if name == "run_powershell" and "cwd"          not in args and project_root:
-        args["cwd"]          = str(project_root)
+    if name == "run_command" and not str(args.get("cwd") or "").strip() and project_root:
+        args["cwd"] = str(project_root)
+    if name == "run_powershell" and not str(args.get("cwd") or "").strip() and project_root:
+        args["cwd"] = str(project_root)
+    if name == "git_run" and not str(args.get("repo_path") or "").strip() and project_root:
+        args["repo_path"] = str(project_root)
+    if name == "check_deps" and not str(args.get("project_path") or "").strip() and project_root:
+        args["project_path"] = str(project_root)
+
+    # Sandbox + resolve relative paths into the site workspace
+    for key in _PATH_ARG_KEYS.get(name, ()):
+        raw = args.get(key)
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            if name == "list_dir" and project_root and key == "path":
+                raw = "."
+            else:
+                continue
+        try:
+            resolved = resolve_workspace_path(
+                str(raw),
+                project_root,
+                default_to_root=(name == "list_dir"),
+            )
+            args[key] = str(resolved)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "tool": name, "path": str(raw)}
+
+    if name == "run_command" and project_root and args.get("cwd"):
+        try:
+            args["cwd"] = str(resolve_workspace_path(str(args["cwd"]), project_root))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     if name == "save_memory":
         entry = memory.add(
@@ -535,7 +610,9 @@ def run_agent(
     """
     agent_model = llm_model
     chat_model  = fast_llm_model.strip() or llm_model
-    use_tools   = _needs_tools(user_message)
+    # With an active site/project workspace — always enable file tools
+    use_tools   = _needs_tools(user_message) or bool(project_root)
+    force_ws    = bool(project_root)
 
     # ── FREE LOCAL (Ollama) first — когда LLM_PREFER_FREE=1 ──────────────────
     skip_cloud = False
@@ -598,7 +675,7 @@ def run_agent(
             return
         else:
             # DeepSeek agent path
-            relevant_tools = _select_tools(user_message)
+            relevant_tools = _select_tools(user_message, force_workspace=force_ws)
             system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
             messages = [{"role": "system", "content": system_prompt}]
             for msg in chat_history[-8:]:
@@ -688,7 +765,7 @@ def run_agent(
 
     # ── GROQ AGENT PATH (Groq key set + tools needed) ────────────────────────
     if groq_api_key.strip() and use_tools and not skip_cloud:
-        relevant_tools = _select_tools(user_message)
+        relevant_tools = _select_tools(user_message, force_workspace=force_ws)
         system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
         messages = [{"role": "system", "content": system_prompt}]
         for msg in chat_history[-8:]:
@@ -783,7 +860,7 @@ def run_agent(
         "top_k":       40,
         "top_p":       0.95,
     }
-    relevant_tools = _select_tools(user_message)
+    relevant_tools = _select_tools(user_message, force_workspace=force_ws)
 
     yield AgentEvent(type="info", content=f"agent:{agent_model}")
 
