@@ -131,6 +131,10 @@ def status(sites_root: Path, upload_id: str) -> Dict[str, Any]:
 
 def assemble(sites_root: Path, upload_id: str) -> Path:
     upload_dir, meta = load_meta(sites_root, upload_id)
+    if meta.get("assembled") and meta.get("assembled_path"):
+        existing = Path(meta["assembled_path"])
+        if existing.is_file():
+            return existing
     total = int(meta["total_chunks"])
     received = set(meta.get("received") or [])
     missing = [i for i in range(total) if i not in received]

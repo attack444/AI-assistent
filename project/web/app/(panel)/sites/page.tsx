@@ -6,8 +6,8 @@ export default function SitesPage() {
       <div className="page-head">
         <h1>Сайты</h1>
         <p>
-          Перенеси сайт со старого хостинга: скачай ZIP → мастер ниже → открой{" "}
-          <span className="mono">/sites/имя/</span>. Потом можно привязать домен.
+          Хостинг на VPS: большие ZIP (WordPress) грузятся чанками. Файлы лежат в{" "}
+          <span className="mono">/var/ai-helper/sites/имя/</span>. Если пусто — «Найти файлы».
         </p>
       </div>
       <SitesPanel />

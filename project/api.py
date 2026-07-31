@@ -57,6 +57,7 @@ from memory import MemoryStore
 from profile import UserProfile, load_profile
 from tools import git_run, list_dir, read_file
 import panel_uploads as pup
+import wp_tools as wpt
 
 DATA_DIR = Path.home() / ".ai-helper"
 PORT = int(os.environ.get("AI_HELPER_API_PORT", os.environ.get("API_PORT", "8502")))
@@ -1077,6 +1078,113 @@ class APIHandler(BaseHTTPRequestHandler):
         )
         self._send(200, _json({"ok": True, "site": info}))
 
+    # ── WordPress ────────────────────────────────────────────────
+    def _get_wp_status(self):
+        qs = self._qs()
+        name = (qs.get("name") or "").strip()
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Нужен ?name= сайта"}))
+            return
+        root = _ensure_sites_root() / name
+        if not root.is_dir():
+            self._send(404, _json({"error": "Сайт не найден"}))
+            return
+        status = wpt.wp_status(root)
+        status["site"] = _site_info(name)
+        status["public_url"] = f"/sites/{name}/"
+        status["defaults"] = {
+            "db_name": os.environ.get("MYSQL_DATABASE", "wordpress"),
+            "db_user": os.environ.get("MYSQL_USER", "wp"),
+            "db_host": os.environ.get("MYSQL_HOST", "mysql"),
+            "suggested_site_url": f"http://SERVER_IP/sites/{name}",
+        }
+        self._send(200, _json(status))
+
+    def _post_wp_config(self):
+        try:
+            body = self._read_body()
+            name = (body.get("name") or "").strip()
+            if not _SAFE_NAME.match(name):
+                self._send(400, _json({"error": "Некорректное имя сайта"}))
+                return
+            root = _ensure_sites_root() / name
+            if not root.is_dir():
+                self._send(404, _json({"error": "Сайт не найден"}))
+                return
+            result = wpt.patch_wp_config(
+                root,
+                db_name=body.get("db_name") or os.environ.get("MYSQL_DATABASE", "wordpress"),
+                db_user=body.get("db_user") or os.environ.get("MYSQL_USER", "wp"),
+                db_password=body.get("db_password")
+                if body.get("db_password") is not None
+                else os.environ.get("MYSQL_PASSWORD", ""),
+                db_host=body.get("db_host") or os.environ.get("MYSQL_HOST", "mysql"),
+                table_prefix=body.get("table_prefix"),
+            )
+            _fix_site_perms(root)
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_wp_import_sql(self):
+        """Import SQL: prefer upload_id from chunked upload, or path under sites."""
+        try:
+            body = self._read_body()
+            name = (body.get("name") or "").strip()
+            upload_id = (body.get("upload_id") or "").strip()
+            sql_path_str = (body.get("path") or "").strip()
+            if not _SAFE_NAME.match(name):
+                self._send(400, _json({"error": "Некорректное имя сайта"}))
+                return
+            sql_path: Optional[Path] = None
+            if upload_id:
+                assembled = pup.assemble(SITES_ROOT, upload_id)
+                sql_path = assembled
+            elif sql_path_str:
+                sql_path = _resolve_safe(sql_path_str, must_exist=True)
+            else:
+                self._send(400, _json({"error": "Нужен upload_id (chunked .sql) или path"}))
+                return
+            if not str(sql_path).lower().endswith((".sql", ".txt")) and sql_path.suffix.lower() not in {".sql", ".txt", ""}:
+                # still try — some dumps have no extension
+                pass
+            result = wpt.import_sql_file(sql_path)
+            result["site"] = name
+            self._send(200 if result.get("ok") else 400, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_wp_replace_url(self):
+        try:
+            body = self._read_body()
+            name = (body.get("name") or "").strip()
+            old_url = (body.get("old_url") or "").strip()
+            new_url = (body.get("new_url") or "").strip()
+            prefix = (body.get("table_prefix") or "wp_").strip() or "wp_"
+            if name and _SAFE_NAME.match(name):
+                defines = wpt.read_wp_defines(_ensure_sites_root() / name)
+                prefix = defines.get("table_prefix", prefix)
+            if not new_url:
+                if name and _SAFE_NAME.match(name):
+                    # best-effort public path; user should pass full URL with IP/domain
+                    new_url = body.get("new_url") or f"/sites/{name}"
+                else:
+                    self._send(400, _json({"error": "Нужен new_url (http://IP/sites/mysite)"}))
+                    return
+            if not old_url:
+                urls = wpt.get_site_urls(prefix)
+                old_url = (urls.get("urls") or {}).get("siteurl") or ""
+            if not old_url:
+                self._send(400, _json({"error": "Не удалось определить old_url — укажи вручную"}))
+                return
+            result = wpt.replace_site_url(old_url, new_url, prefix)
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _get_wp_db_test(self):
+        self._send(200, _json(wpt.test_db()))
+
     # ── POST /chat ───────────────────────────────────────────────
     def _post_chat(self):
         body = self._read_body()
@@ -1221,6 +1329,10 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_sites_inspect()
         elif path == "/upload/status":
             self._get_upload_status()
+        elif path == "/wp/status":
+            self._get_wp_status()
+        elif path == "/wp/db-test":
+            self._get_wp_db_test()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
@@ -1249,6 +1361,9 @@ class APIHandler(BaseHTTPRequestHandler):
             "/upload/init": self._post_upload_init,
             "/upload/chunk": self._post_upload_chunk,
             "/upload/complete": self._post_upload_complete,
+            "/wp/config": self._post_wp_config,
+            "/wp/import-sql": self._post_wp_import_sql,
+            "/wp/replace-url": self._post_wp_replace_url,
         }
         handler = routes.get(path)
         if handler:

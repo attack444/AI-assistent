@@ -27,6 +27,12 @@ services:
       - PANEL_PASSWORD=${PANEL_PASSWORD:-}
       - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}
+      - MYSQL_USER=${MYSQL_USER:-wp}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-смени_wp_пароль}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-смени_root_пароль}
     networks:
       - ai-net
 

@@ -204,7 +204,147 @@ export function inspectSites(name?: string) {
   }>(`/sites/inspect${q}`);
 }
 
+export function getWpStatus(name: string) {
+  return request<{
+    ok: boolean;
+    has_wp_config?: boolean;
+    wp_config?: string | null;
+    defines?: Record<string, string>;
+    db?: { ok: boolean; tables?: number; error?: string; sample_tables?: string[] };
+    urls?: { ok?: boolean; urls?: Record<string, string>; error?: string };
+    defaults?: { db_name?: string; db_user?: string; db_host?: string; suggested_site_url?: string };
+    site?: SiteInfo;
+  }>(`/wp/status?name=${encodeURIComponent(name)}`);
+}
+
+export function testWpDb() {
+  return request<{ ok: boolean; tables?: number; error?: string; host?: string }>("/wp/db-test");
+}
+
+export function patchWpConfig(opts: {
+  name: string;
+  db_name: string;
+  db_user: string;
+  db_password: string;
+  db_host: string;
+  table_prefix?: string;
+}) {
+  return request<{ ok: boolean; path: string; backup: string; changed: string[] }>("/wp/config", {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
+export function importWpSql(opts: { name: string; upload_id: string }) {
+  return request<{ ok: boolean; statements: number; errors?: string[]; path?: string }>(
+    "/wp/import-sql",
+    {
+      method: "POST",
+      body: JSON.stringify(opts),
+    },
+  );
+}
+
+export function replaceWpUrl(opts: {
+  name: string;
+  old_url?: string;
+  new_url: string;
+  table_prefix?: string;
+}) {
+  return request<{
+    ok: boolean;
+    old_url: string;
+    new_url: string;
+    updated?: Record<string, unknown>;
+    warning?: string;
+  }>("/wp/replace-url", {
+    method: "POST",
+    body: JSON.stringify(opts),
+  });
+}
+
 const DEFAULT_CHUNK = 4 * 1024 * 1024;
+
+/** Upload any large file in chunks; returns upload_id (assembled on server). */
+export async function chunkedUploadFile(opts: {
+  file: File;
+  siteName?: string;
+  onProgress?: (pct: number, label: string) => void;
+}) {
+  const { file, siteName, onProgress } = opts;
+  const chunkSize = DEFAULT_CHUNK;
+  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+
+  onProgress?.(1, "Инициализация…");
+  const init = await request<{
+    ok: boolean;
+    upload_id: string;
+    chunk_size: number;
+    total_chunks: number;
+  }>("/upload/init", {
+    method: "POST",
+    body: JSON.stringify({
+      filename: file.name,
+      size: file.size,
+      site_name: siteName || "",
+      chunk_size: chunkSize,
+      total_chunks: totalChunks,
+    }),
+  });
+
+  const uploadId = init.upload_id;
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(file.size, start + chunkSize);
+    const blob = file.slice(start, end);
+    const pct = Math.round(((i + 1) / totalChunks) * 95);
+    onProgress?.(pct, `Чанк ${i + 1}/${totalChunks}`);
+
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      try {
+        const res = await fetch(
+          `${API_BASE}/upload/chunk?id=${encodeURIComponent(uploadId)}&index=${i}`,
+          {
+            method: "POST",
+            headers: {
+              ...authHeaders(),
+              "Content-Type": "application/octet-stream",
+              "X-Filename": file.name,
+            },
+            body: blob,
+          },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          clearToken();
+          throw new Error("Нужен вход");
+        }
+        if (!res.ok) {
+          throw new Error((data as { error?: string }).error || `Чанк ${i}: HTTP ${res.status}`);
+        }
+        break;
+      } catch (err) {
+        if (attempt >= 3) throw err;
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
+  }
+
+  // Assemble without extracting (for SQL dumps etc.)
+  onProgress?.(97, "Сборка файла на сервере…");
+  await request("/upload/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      upload_id: uploadId,
+      name: siteName || "tmp",
+      action: "keep",
+    }),
+  });
+  onProgress?.(100, "Файл на сервере");
+  return { upload_id: uploadId };
+}
 
 async function chunkedMigrate(opts: {
   name: string;

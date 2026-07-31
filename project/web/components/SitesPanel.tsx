@@ -12,6 +12,7 @@ import {
   migrateSite,
   SiteInfo,
 } from "@/lib/api";
+import { WordpressSetup } from "@/components/WordpressSetup";
 
 function formatSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -33,6 +34,7 @@ export function SitesPanel() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
+  const [wpOpen, setWpOpen] = useState<string | null>(null);
 
   async function refresh() {
     setBusy(true);
@@ -355,7 +357,8 @@ export function SitesPanel() {
           </div>
         ) : (
           sites.map((site) => (
-            <div key={site.name} className="panel site-row">
+            <div key={site.name}>
+            <div className="panel site-row">
               <div>
                 <h3>
                   {site.name}
@@ -383,6 +386,15 @@ export function SitesPanel() {
                 <a className="btn ghost small" href={site.url} target="_blank" rel="noreferrer">
                   Открыть
                 </a>
+                {site.is_wordpress ? (
+                  <button
+                    className="btn small"
+                    type="button"
+                    onClick={() => setWpOpen(wpOpen === site.name ? null : site.name)}
+                  >
+                    {wpOpen === site.name ? "Скрыть WP" : "Настроить WP"}
+                  </button>
+                ) : null}
                 <button className="btn ghost small" type="button" onClick={() => onInspect(site.name)}>
                   Где файлы
                 </button>
@@ -405,6 +417,8 @@ export function SitesPanel() {
                   Удалить
                 </button>
               </div>
+            </div>
+            {wpOpen === site.name ? <WordpressSetup siteName={site.name} /> : null}
             </div>
           ))
         )}

@@ -1,0 +1,249 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import {
+  chunkedUploadFile,
+  getWpStatus,
+  importWpSql,
+  patchWpConfig,
+  replaceWpUrl,
+  testWpDb,
+} from "@/lib/api";
+
+type Props = {
+  siteName: string;
+  serverIpHint?: string;
+};
+
+export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP" }: Props) {
+  const [status, setStatus] = useState<string>("");
+  const [error, setError] = useState("");
+  const [okMsg, setOkMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [dbHost, setDbHost] = useState("mysql");
+  const [dbName, setDbName] = useState("wordpress");
+  const [dbUser, setDbUser] = useState("wp");
+  const [dbPassword, setDbPassword] = useState("");
+  const [oldUrl, setOldUrl] = useState("");
+  const [newUrl, setNewUrl] = useState(`http://${serverIpHint}/sites/${siteName}`);
+  const [sqlFile, setSqlFile] = useState<File | null>(null);
+
+  async function refresh() {
+    try {
+      const s = await getWpStatus(siteName);
+      const dbOk = s.db?.ok ? `БД ок (${s.db.tables} таблиц)` : `БД: ${s.db?.error || "нет связи"}`;
+      const urls = s.urls?.urls
+        ? `siteurl=${s.urls.urls.siteurl || "—"}`
+        : "URL в БД ещё нет";
+      setStatus(
+        [
+          s.has_wp_config ? `wp-config: ${s.wp_config}` : "wp-config не найден",
+          dbOk,
+          urls,
+          s.defines?.DB_HOST ? `DB_HOST=${s.defines.DB_HOST}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      if (s.defaults?.db_name) setDbName(s.defaults.db_name);
+      if (s.defaults?.db_user) setDbUser(s.defaults.db_user);
+      if (s.defaults?.db_host) setDbHost(s.defaults.db_host);
+      if (s.urls?.urls?.siteurl) setOldUrl(String(s.urls.urls.siteurl));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteName]);
+
+  async function onPatchConfig(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setOkMsg("");
+    try {
+      const res = await patchWpConfig({
+        name: siteName,
+        db_name: dbName,
+        db_user: dbUser,
+        db_password: dbPassword,
+        db_host: dbHost,
+      });
+      setOkMsg(`wp-config обновлён: ${(res.changed || []).join(", ")}. Бэкап: ${res.backup}`);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onImportSql(e: FormEvent) {
+    e.preventDefault();
+    if (!sqlFile) {
+      setError("Выбери .sql дамп с старого хостинга");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setOkMsg("");
+    setProgress(0);
+    try {
+      const up = await chunkedUploadFile({
+        file: sqlFile,
+        siteName,
+        onProgress: (pct, label) => {
+          setProgress(pct);
+          setOkMsg(label);
+        },
+      });
+      setOkMsg("Импорт SQL в MySQL…");
+      const res = await importWpSql({ name: siteName, upload_id: up.upload_id });
+      setOkMsg(
+        `SQL импортирован: ${res.statements} запросов` +
+          (res.errors?.length ? `. Предупреждения: ${res.errors[0]}` : ""),
+      );
+      setSqlFile(null);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+      setProgress(0);
+    }
+  }
+
+  async function onReplaceUrl(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setOkMsg("");
+    try {
+      const res = await replaceWpUrl({
+        name: siteName,
+        old_url: oldUrl,
+        new_url: newUrl,
+      });
+      setOkMsg(`URL заменён: ${res.old_url} → ${res.new_url}. ${res.warning || ""}`);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onTestDb() {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await testWpDb();
+      setOkMsg(res.ok ? `MySQL OK · таблиц: ${res.tables}` : `MySQL ошибка: ${res.error}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel create-site" style={{ marginTop: 12 }}>
+      <div>
+        <strong>WordPress · {siteName}</strong>
+        <p className="muted" style={{ margin: "4px 0 0" }}>
+          1) wp-config → 2) импорт .sql → 3) заменить URL. Пароль БД — из{" "}
+          <span className="mono">MYSQL_PASSWORD</span> в `.env`.
+        </p>
+      </div>
+
+      {error ? <div className="error-banner">{error}</div> : null}
+      {okMsg ? (
+        <div
+          className="error-banner"
+          style={{
+            background: "rgba(26, 127, 75, 0.1)",
+            color: "var(--ok)",
+            borderColor: "rgba(26, 127, 75, 0.25)",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {okMsg}
+        </div>
+      ) : null}
+
+      {status ? (
+        <pre className="mono muted" style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.82rem" }}>
+          {status}
+        </pre>
+      ) : null}
+
+      {busy && progress > 0 ? (
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+      ) : null}
+
+      <form onSubmit={onPatchConfig} className="migrate-form">
+        <div className="muted">Шаг 1 — записать доступ к MySQL в wp-config.php</div>
+        <input className="input" value={dbHost} onChange={(e) => setDbHost(e.target.value)} placeholder="DB_HOST (mysql)" />
+        <input className="input" value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="DB_NAME" />
+        <input className="input" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="DB_USER" />
+        <input
+          className="input"
+          type="password"
+          value={dbPassword}
+          onChange={(e) => setDbPassword(e.target.value)}
+          placeholder="DB_PASSWORD из .env"
+          required
+        />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn" type="submit" disabled={busy}>
+            Сохранить wp-config
+          </button>
+          <button className="btn ghost" type="button" disabled={busy} onClick={onTestDb}>
+            Проверить MySQL
+          </button>
+        </div>
+      </form>
+
+      <form onSubmit={onImportSql} className="migrate-form">
+        <div className="muted">Шаг 2 — импорт дампа .sql со старого хостинга</div>
+        <label className="btn ghost" style={{ justifyContent: "flex-start" }}>
+          {sqlFile ? sqlFile.name : "Выбрать dump.sql"}
+          <input
+            type="file"
+            accept=".sql,application/sql,text/plain"
+            hidden
+            onChange={(e) => setSqlFile(e.target.files?.[0] || null)}
+          />
+        </label>
+        <button className="btn" type="submit" disabled={busy || !sqlFile}>
+          Загрузить и импортировать SQL
+        </button>
+      </form>
+
+      <form onSubmit={onReplaceUrl} className="migrate-form">
+        <div className="muted">Шаг 3 — заменить старый домен на адрес VPS</div>
+        <input
+          className="input"
+          value={oldUrl}
+          onChange={(e) => setOldUrl(e.target.value)}
+          placeholder="старый URL (https://old-site.ru)"
+        />
+        <input
+          className="input"
+          value={newUrl}
+          onChange={(e) => setNewUrl(e.target.value)}
+          placeholder={`http://${serverIpHint}/sites/${siteName}`}
+        />
+        <button className="btn" type="submit" disabled={busy || !newUrl.trim()}>
+          Заменить URL в БД
+        </button>
+      </form>
+    </div>
+  );
+}
