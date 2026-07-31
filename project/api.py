@@ -1891,17 +1891,23 @@ class APIHandler(BaseHTTPRequestHandler):
                     tool_events.append({"name": ev.tool_name, "args": ev.tool_args})
                     _sse({"type": "tool_call", "name": ev.tool_name, "args": ev.tool_args})
                 elif ev.type == "tool_result":
+                    tr = ev.tool_result or {}
                     summary = {
                         "name": ev.tool_name,
-                        "ok": bool((ev.tool_result or {}).get("ok")),
-                        "path": (ev.tool_result or {}).get("path")
-                            or (ev.tool_result or {}).get("deleted"),
-                        "edited": bool((ev.tool_result or {}).get("edited")),
-                        "added": (ev.tool_result or {}).get("added"),
-                        "removed": (ev.tool_result or {}).get("removed"),
-                        "error": (ev.tool_result or {}).get("error"),
-                        "diff": ((ev.tool_result or {}).get("diff") or "")[:1200],
+                        "ok": bool(tr.get("ok")),
+                        "path": tr.get("path") or tr.get("deleted") or tr.get("dst"),
+                        "edited": bool(tr.get("edited")),
+                        "added": tr.get("added"),
+                        "removed": tr.get("removed"),
+                        "applied": tr.get("applied"),
+                        "total": tr.get("total"),
+                        "error": tr.get("error"),
+                        "diff": (tr.get("diff") or "")[:1200],
                     }
+                    if ev.tool_name == "apply_edits" and tr.get("results"):
+                        summary["paths"] = [
+                            x.get("path") for x in tr["results"] if x.get("path")
+                        ][:20]
                     tool_events.append({"result": summary})
                     chats.add_message(
                         chat_id, "tool",
