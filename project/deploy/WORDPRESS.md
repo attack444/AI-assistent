@@ -45,42 +45,18 @@ PANEL_PASSWORD=пароль_панели
 
 `http://IP/sites` → мастер → имя `mysite` → ZIP → загрузка с прогрессом.
 
-### 3. Импорт БД
+### 3–5. В панели: кнопка «Настроить WP»
+
+1. **Сохранить wp-config** (DB_HOST=`mysql`, пароль из `.env`)
+2. **Загрузить и импортировать SQL** (дамп со старого хостинга)
+3. **Заменить URL** на `http://IP/sites/mysite`
+
+Альтернатива SQL с VPS:
 
 ```bash
-# с ПК
 scp dump.sql root@IP:/tmp/dump.sql
-
-# на VPS
-docker exec -i ai-helper-mysql mysql -uwp -p'надежный_wp' wordpress < /tmp/dump.sql
+bash /opt/ai-helper/project/deploy/import-wp-sql.sh /tmp/dump.sql
 ```
-
-### 4. wp-config.php
-
-В панели **Файлы** открой `/opt/sites/mysite/wp-config.php` (или на хосте):
-
-```php
-define('DB_NAME', 'wordpress');
-define('DB_USER', 'wp');
-define('DB_PASSWORD', 'надежный_wp');
-define('DB_HOST', 'mysql');  // имя сервиса Docker, не localhost!
-```
-
-Если PHP на хосте через `127.0.0.1:9000`, а MySQL проброшен на 3306:
-
-```php
-define('DB_HOST', '127.0.0.1');
-```
-
-### 5. URL WordPress
-
-В БД или через WP-CLI замени старый домен:
-
-```sql
-UPDATE wp_options SET option_value='http://IP/sites/mysite' WHERE option_name IN ('siteurl','home');
-```
-
-Или плагин Better Search Replace после входа.
 
 ### 6. Права
 
