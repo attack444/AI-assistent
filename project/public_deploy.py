@@ -187,7 +187,12 @@ def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
     return {"files_kept": kept, "files_skipped": skipped, "bytes": total_bytes}
 
 
-def create_deployment(zip_path: Path, ip: str = "") -> Dict[str, Any]:
+def create_deployment(
+    zip_path: Path,
+    ip: str = "",
+    user_id: str = "",
+    user_email: str = "",
+) -> Dict[str, Any]:
     if zip_path.stat().st_size > MAX_ZIP:
         raise ValueError(f"ZIP больше {MAX_ZIP // (1024*1024)} МБ")
     if not zipfile.is_zipfile(zip_path):
@@ -206,8 +211,17 @@ def create_deployment(zip_path: Path, ip: str = "") -> Dict[str, Any]:
         "expires_at": now + TTL_DAYS * 86400,
         "ip": ip,
         "kind": "public_static",
+        "user_id": user_id or "",
+        "user_email": user_email or "",
     }
     save_meta(name, meta)
+
+    if user_email:
+        try:
+            import public_users as pu
+            pu.attach_site(user_email, name)
+        except Exception:
+            pass
 
     return {
         "ok": True,
@@ -216,6 +230,7 @@ def create_deployment(zip_path: Path, ip: str = "") -> Dict[str, Any]:
         "url": f"/sites/{name}/",
         "expires_days": TTL_DAYS,
         "stats": stats,
+        "owner": user_email or None,
         "message": "Сайт опубликован. Сохрани token — им можно править файлы.",
     }
 

@@ -84,6 +84,11 @@ _PUBLIC_PATHS = {
     "/public/files",
     "/public/fs/read",
     "/public/fs/write",
+    "/public/auth/register",
+    "/public/auth/login",
+    "/public/auth/logout",
+    "/public/auth/me",
+    "/public/me/sites",
 }
 
 
@@ -614,7 +619,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.0",
+            "version": "2.1",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1363,9 +1368,98 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send(200, _json(wpt.test_db()))
 
     # ── POST /public/* (витрина ai — без панели / без чужих файлов) ─
+    def _public_ip(self) -> str:
+        import public_chat as pch
+        return pch.client_ip(self)
+
+    def _require_public_user(self):
+        """Return user dict or send 401 and None."""
+        import public_users as pu
+
+        user = pu.user_from_token(pu.bearer_token(self))
+        if user:
+            return user
+        if not pu.AUTH_REQUIRED:
+            return {"id": "", "email": "", "name": "guest"}
+        self._send(401, _json({
+            "error": "Нужен вход",
+            "auth_required": True,
+            "hint": "Зарегистрируйся или войди на витрине AI Helper",
+        }))
+        return None
+
+    def _post_public_auth_register(self):
+        import public_users as pu
+
+        body = self._read_body()
+        try:
+            result = pu.register(
+                body.get("email") or "",
+                body.get("password") or "",
+                name=body.get("name") or "",
+                ip=self._public_ip(),
+            )
+            self._send(200, _json(result))
+        except PermissionError as exc:
+            self._send(429, _json({"error": str(exc)}))
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_public_auth_login(self):
+        import public_users as pu
+
+        body = self._read_body()
+        try:
+            result = pu.login(body.get("email") or "", body.get("password") or "")
+            self._send(200, _json(result))
+        except PermissionError as exc:
+            self._send(401, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_public_auth_logout(self):
+        import public_users as pu
+
+        self._send(200, _json(pu.logout(pu.bearer_token(self))))
+
+    def _get_public_auth_me(self):
+        import public_users as pu
+
+        user = pu.user_from_token(pu.bearer_token(self))
+        if not user:
+            self._send(401, _json({"error": "Нужен вход", "auth_required": True}))
+            return
+        self._send(200, _json({"ok": True, "user": user, "auth_required": pu.AUTH_REQUIRED}))
+
+    def _post_public_me_sites(self):
+        import public_users as pu
+        import public_deploy as pd
+
+        user = self._require_public_user()
+        if not user or not user.get("email"):
+            if user is not None and not user.get("email"):
+                self._send(200, _json({"ok": True, "sites": []}))
+            return
+        names = pu.list_sites(user["email"])
+        sites = []
+        for name in names:
+            meta = pd.load_meta(name) or {}
+            sites.append({
+                "name": name,
+                "url": f"/sites/{name}/",
+                "expires_at": meta.get("expires_at"),
+                "created_at": meta.get("created_at"),
+            })
+        self._send(200, _json({"ok": True, "sites": sites}))
+
     def _post_public_chat(self):
         import public_chat as pch
 
+        user = self._require_public_user()
+        if user is None:
+            return
         body = self._read_body()
         message = (body.get("message") or "").strip()
         history = body.get("history") or []
@@ -1386,11 +1480,19 @@ class APIHandler(BaseHTTPRequestHandler):
         if err and not parts:
             self._send(400, _json({"error": err}))
             return
-        self._send(200, _json({"ok": True, "response": "".join(parts), "model": "deepseek"}))
+        self._send(200, _json({
+            "ok": True,
+            "response": "".join(parts),
+            "model": "deepseek",
+            "user": user.get("email") or None,
+        }))
 
     def _post_public_chat_stream(self):
         import public_chat as pch
 
+        user = self._require_public_user()
+        if user is None:
+            return
         body = self._read_body()
         message = (body.get("message") or "").strip()
         history = body.get("history") or []
@@ -1420,13 +1522,12 @@ class APIHandler(BaseHTTPRequestHandler):
         for ev in pch.stream_public_chat(message, history):
             _sse(ev)
 
-    def _public_ip(self) -> str:
-        import public_chat as pch
-        return pch.client_ip(self)
-
     def _post_public_deploy(self):
         import public_deploy as pd
 
+        user = self._require_public_user()
+        if user is None:
+            return
         tmp: Optional[Path] = None
         try:
             ok, why = pd.check_rate_limit(self._public_ip())
@@ -1447,7 +1548,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 tmp.write_bytes(raw)
             else:
                 self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
-            result = pd.create_deployment(tmp, ip=self._public_ip())
+            result = pd.create_deployment(
+                tmp,
+                ip=self._public_ip(),
+                user_id=user.get("id") or "",
+                user_email=user.get("email") or "",
+            )
             self._send(200, _json(result))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
@@ -1665,6 +1771,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/auth/check":
             self._get_auth_check()
             return
+        if path == "/public/auth/me":
+            self._get_public_auth_me()
+            return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
         if path == "/project/files":
@@ -1691,6 +1800,18 @@ class APIHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/auth/login":
             self._post_auth_login()
+            return
+        if path == "/public/auth/register":
+            self._post_public_auth_register()
+            return
+        if path == "/public/auth/login":
+            self._post_public_auth_login()
+            return
+        if path == "/public/auth/logout":
+            self._post_public_auth_logout()
+            return
+        if path == "/public/me/sites":
+            self._post_public_me_sites()
             return
         if path == "/public/chat":
             self._post_public_chat()

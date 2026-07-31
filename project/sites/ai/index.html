@@ -324,6 +324,69 @@
       color: var(--muted);
     }
 
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px clamp(16px, 4vw, 40px);
+      background: rgba(233, 241, 239, 0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-mini {
+      font-family: var(--font-display);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .top-btn { padding: 8px 14px; font-size: 0.9rem; }
+    .auth-user { font-size: 0.9rem; color: var(--muted); font-weight: 600; }
+
+    .auth-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(12, 26, 22, 0.45);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .auth-modal[hidden] { display: none !important; }
+
+    .auth-card {
+      width: min(420px, 100%);
+      background: #f7fbf9;
+      border-radius: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 60px rgba(12, 26, 22, 0.2);
+    }
+
+    .auth-card h3 {
+      font-family: var(--font-display);
+      margin: 0 0 6px;
+      letter-spacing: -0.02em;
+    }
+
+    .auth-input {
+      width: 100%;
+      margin: 8px 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font: inherit;
+      background: #fff;
+    }
+
+    .auth-error { color: #b42318; font-size: 0.9rem; margin: 6px 0 0; }
+
     .deploy-box {
       border: 1px solid var(--line);
       border-radius: 18px;
@@ -452,12 +515,39 @@
   </style>
 </head>
 <body>
+  <div class="topbar">
+    <a href="#" class="brand-mini">AI Helper</a>
+    <div class="topbar-actions">
+      <span id="auth-user" class="auth-user" hidden></span>
+      <button type="button" class="btn btn-ghost top-btn" id="btn-login">Войти</button>
+      <button type="button" class="btn btn-primary top-btn" id="btn-register">Регистрация</button>
+      <button type="button" class="btn btn-ghost top-btn" id="btn-logout" hidden>Выйти</button>
+    </div>
+  </div>
+
+  <div class="auth-modal" id="auth-modal" hidden>
+    <div class="auth-card">
+      <h3 id="auth-title">Вход</h3>
+      <p class="hint" id="auth-hint">Нужен аккаунт для чата и деплоя</p>
+      <form id="auth-form">
+        <input class="auth-input" id="auth-name" type="text" placeholder="Имя (необязательно)" autocomplete="name" hidden />
+        <input class="auth-input" id="auth-email" type="email" placeholder="Email" required autocomplete="email" />
+        <input class="auth-input" id="auth-password" type="password" placeholder="Пароль (от 8 символов)" required minlength="8" autocomplete="current-password" />
+        <p class="auth-error" id="auth-error" hidden></p>
+        <div class="cta-row">
+          <button class="btn btn-primary" type="submit" id="auth-submit">Войти</button>
+          <button class="btn btn-ghost" type="button" id="auth-cancel">Отмена</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <header class="hero">
     <div class="hero-visual" aria-hidden="true"></div>
     <div class="hero-inner">
       <p class="brand"><span>platform</span>AI Helper</p>
       <h1>Деплой сайта и проверка кода с AI</h1>
-      <p class="hero-lead">Публичная среда: залил проект — посмотрел результат — спросил модель. Платно, по делу.</p>
+      <p class="hero-lead">Публичная среда: аккаунт → деплой → превью → чат с моделью. Платно, по делу.</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="#deploy">Задеплоить ZIP</a>
         <a class="btn btn-ghost" href="#models">Чат с AI</a>
@@ -497,7 +587,7 @@
         <button type="submit" id="chat-send">Отправить</button>
       </form>
     </div>
-    <p class="hint">Лимит: до 30 сообщений в час с одного IP. Админ-панель и чужие файлы здесь недоступны.</p>
+    <p class="hint">Нужен аккаунт. Лимит: до 30 сообщений / час с IP. Панель сервера и чужие файлы недоступны.</p>
   </section>
 
   <section class="section" id="deploy">
@@ -534,7 +624,7 @@
         </div>
       </div>
     </div>
-    <p class="hint">Лимит: 8 деплоев / час с IP · хранение ~14 дней · только статика</p>
+    <p class="hint">Нужен аккаунт · 8 деплоев / час · ~14 дней · только статика</p>
   </section>
 
   <section class="section" id="start">
@@ -557,7 +647,7 @@
   </footer>
 
   <script>
-    // Soft reveal for sections below the fold
+    // Soft reveal
     const els = document.querySelectorAll(".section, footer");
     const io = new IntersectionObserver((entries) => {
       entries.forEach((e) => {
@@ -572,7 +662,137 @@
       io.observe(el);
     });
 
-    // Public DeepSeek chat (no panel auth, no server tools)
+    // —— Auth ——
+    const AUTH_KEY = "aihelper-user-token";
+    let userToken = localStorage.getItem(AUTH_KEY) || "";
+    let currentUser = null;
+    let authMode = "login";
+
+    const modal = document.getElementById("auth-modal");
+    const authForm = document.getElementById("auth-form");
+    const authTitle = document.getElementById("auth-title");
+    const authHint = document.getElementById("auth-hint");
+    const authName = document.getElementById("auth-name");
+    const authEmail = document.getElementById("auth-email");
+    const authPassword = document.getElementById("auth-password");
+    const authError = document.getElementById("auth-error");
+    const authUserEl = document.getElementById("auth-user");
+    const btnLogin = document.getElementById("btn-login");
+    const btnRegister = document.getElementById("btn-register");
+    const btnLogout = document.getElementById("btn-logout");
+
+    function authHeaders(extra) {
+      const h = Object.assign({ "Content-Type": "application/json" }, extra || {});
+      if (userToken) h.Authorization = "Bearer " + userToken;
+      return h;
+    }
+
+    function setAuthUI() {
+      if (currentUser && currentUser.email) {
+        authUserEl.hidden = false;
+        authUserEl.textContent = currentUser.email;
+        btnLogin.hidden = true;
+        btnRegister.hidden = true;
+        btnLogout.hidden = false;
+      } else {
+        authUserEl.hidden = true;
+        btnLogin.hidden = false;
+        btnRegister.hidden = false;
+        btnLogout.hidden = true;
+      }
+    }
+
+    function openAuth(mode) {
+      authMode = mode;
+      authError.hidden = true;
+      authError.textContent = "";
+      authTitle.textContent = mode === "register" ? "Регистрация" : "Вход";
+      authHint.textContent = mode === "register"
+        ? "Создай аккаунт — чат и деплой только для пользователей"
+        : "Войди, чтобы пользоваться чатом и деплоем";
+      authName.hidden = mode !== "register";
+      authPassword.autocomplete = mode === "register" ? "new-password" : "current-password";
+      modal.hidden = false;
+      authEmail.focus();
+    }
+
+    function closeAuth() { modal.hidden = true; }
+
+    async function refreshMe() {
+      if (!userToken) {
+        currentUser = null;
+        setAuthUI();
+        return;
+      }
+      try {
+        const res = await fetch("/api/public/auth/me", { headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          userToken = "";
+          localStorage.removeItem(AUTH_KEY);
+          currentUser = null;
+        } else {
+          currentUser = data.user;
+        }
+      } catch (_) {
+        currentUser = null;
+      }
+      setAuthUI();
+    }
+
+    function ensureAuth() {
+      if (currentUser && userToken) return true;
+      openAuth("login");
+      return false;
+    }
+
+    btnLogin.addEventListener("click", () => openAuth("login"));
+    btnRegister.addEventListener("click", () => openAuth("register"));
+    document.getElementById("auth-cancel").addEventListener("click", closeAuth);
+    modal.addEventListener("click", (e) => { if (e.target === modal) closeAuth(); });
+
+    btnLogout.addEventListener("click", async () => {
+      try {
+        await fetch("/api/public/auth/logout", { method: "POST", headers: authHeaders() });
+      } catch (_) {}
+      userToken = "";
+      currentUser = null;
+      localStorage.removeItem(AUTH_KEY);
+      setAuthUI();
+    });
+
+    authForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      authError.hidden = true;
+      const path = authMode === "register" ? "/api/public/auth/register" : "/api/public/auth/login";
+      const body = {
+        email: authEmail.value.trim(),
+        password: authPassword.value,
+      };
+      if (authMode === "register") body.name = authName.value.trim();
+      try {
+        const res = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        userToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem(AUTH_KEY, userToken);
+        closeAuth();
+        setAuthUI();
+        authPassword.value = "";
+      } catch (err) {
+        authError.hidden = false;
+        authError.textContent = err.message || "Ошибка";
+      }
+    });
+
+    void refreshMe();
+
+    // —— Chat ——
     const chatEl = document.getElementById("demo-chat");
     const form = document.getElementById("demo-form");
     const input = document.getElementById("chat-input");
@@ -591,6 +811,7 @@
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!ensureAuth()) return;
       const text = (input.value || "").trim();
       if (!text || sendBtn.disabled) return;
       input.value = "";
@@ -604,9 +825,17 @@
       try {
         const res = await fetch("/api/public/chat/stream", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders(),
           body: JSON.stringify({ message: text, history: history.slice(0, -1) }),
         });
+        if (res.status === 401) {
+          userToken = "";
+          localStorage.removeItem(AUTH_KEY);
+          currentUser = null;
+          setAuthUI();
+          openAuth("login");
+          throw new Error("Нужен вход");
+        }
         if (!res.ok || !res.body) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || ("HTTP " + res.status));
@@ -634,7 +863,7 @@
             }
           }
         }
-        if (!full) throw new Error("Пустой ответ — обнови API на сервере (bootstrap-update)");
+        if (!full) throw new Error("Пустой ответ — обнови API (bootstrap-update)");
         history.push({ role: "assistant", content: full });
         statusEl.textContent = "";
       } catch (err) {
@@ -646,7 +875,7 @@
       }
     });
 
-    // Public static deploy
+    // —— Deploy ——
     const fileInput = document.getElementById("deploy-file");
     const fnameEl = document.getElementById("deploy-filename");
     const progEl = document.getElementById("deploy-progress");
@@ -674,19 +903,22 @@
 
     async function deployZip(file) {
       if (!file) return;
+      if (!ensureAuth()) return;
       fnameEl.textContent = file.name + " · " + Math.round(file.size / 1024) + " КБ";
       progEl.style.display = "block";
       progEl.textContent = "Загружаю…";
       try {
-        const res = await fetch("/api/public/deploy", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/zip",
-            "X-Filename": file.name.replace(/[^\x20-\x7E]/g, "_"),
-          },
-          body: file,
-        });
+        const headers = {
+          "Content-Type": "application/zip",
+          "X-Filename": file.name.replace(/[^\x20-\x7E]/g, "_"),
+        };
+        if (userToken) headers.Authorization = "Bearer " + userToken;
+        const res = await fetch("/api/public/deploy", { method: "POST", headers, body: file });
         const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          openAuth("login");
+          throw new Error("Нужен вход");
+        }
         if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
         pub = { name: data.name, token: data.token, url: data.url, path: "" };
         localStorage.setItem("aihelper-public-deploy", JSON.stringify(pub));
