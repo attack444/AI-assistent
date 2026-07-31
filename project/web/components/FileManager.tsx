@@ -130,14 +130,7 @@ export function FileManager() {
     setBusy(true);
     setError("");
     try {
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      await uploadFs(path, btoa(binary), file.name);
+      await uploadFs(path, file);
       await load(path);
     } catch (err) {
       setError((err as Error).message);

@@ -6,7 +6,6 @@ import {
   createSite,
   deleteSite,
   deploySiteZip,
-  fileToBase64,
   listSites,
   migrateSite,
   SiteInfo,
@@ -53,16 +52,18 @@ export function SitesPanel() {
       setError("Укажи имя сайта и выбери ZIP с хостинга");
       return;
     }
+    if (zip.size > 180 * 1024 * 1024) {
+      setError("ZIP больше 180 МБ — сожми или залей через SCP");
+      return;
+    }
     setBusy(true);
     setError("");
     setOkMsg("");
     try {
-      const content_b64 = await fileToBase64(zip);
       const res = await migrateSite({
         name: name.trim(),
         domain: domain.trim() || undefined,
-        content_b64,
-        filename: zip.name,
+        file: zip,
       });
       setOkMsg(
         `Готово: ${res.site.url}` +
@@ -113,7 +114,7 @@ export function SitesPanel() {
     setBusy(true);
     setError("");
     try {
-      await deploySiteZip(siteName, await fileToBase64(file), file.name);
+      await deploySiteZip(siteName, file);
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -158,9 +159,9 @@ export function SitesPanel() {
         <div>
           <strong>Перенос с хостинга</strong>
           <p className="muted" style={{ margin: "4px 0 0" }}>
-            Скачай ZIP с старого хостинга (public_html / www) → залей сюда. Файлы:
-            {" "}
-            <span className="mono">{sitesRoot || "/opt/sites"}</span>
+            Скачай ZIP со старого хостинга (public_html / www) → залей сюда.
+            Большие архивы лучше без лишних бэкапов. Альтернатива:{" "}
+            <span className="mono">scp site.zip root@IP:/var/ai-helper/sites/имя/</span>
           </p>
         </div>
 
@@ -202,6 +203,7 @@ export function SitesPanel() {
             <>
               <label className="btn ghost" style={{ justifyContent: "flex-start" }}>
                 {zip ? zip.name : "Выбрать ZIP с хостинга"}
+                {zip ? ` (${formatSize(zip.size)})` : ""}
                 <input
                   type="file"
                   accept=".zip,application/zip"

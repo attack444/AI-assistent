@@ -128,11 +128,15 @@ export function deleteFs(path: string) {
   });
 }
 
-export function uploadFs(path: string, content_b64: string, filename: string) {
-  return request<{ ok: boolean; path: string }>("/fs/upload", {
-    method: "POST",
-    body: JSON.stringify({ path, content_b64, filename }),
+export function uploadFs(path: string, file: File) {
+  const q = new URLSearchParams({
+    path: path || "",
+    filename: file.name,
   });
+  return uploadBinary<{ ok: boolean; path: string; bytes: number }>(
+    `/fs/upload?${q}`,
+    file,
+  );
 }
 
 export function listSites() {
@@ -152,25 +156,26 @@ export function deleteSite(name: string) {
   });
 }
 
-export function deploySiteZip(name: string, content_b64: string, filename: string) {
-  return request<{ ok: boolean; site: SiteInfo }>("/sites/deploy", {
-    method: "POST",
-    body: JSON.stringify({ name, content_b64, filename }),
-  });
+export function deploySiteZip(name: string, file: File) {
+  const q = new URLSearchParams({ name, filename: file.name });
+  return uploadBinary<{ ok: boolean; site: SiteInfo }>(`/sites/deploy?${q}`, file);
 }
 
 export function migrateSite(opts: {
   name: string;
   domain?: string;
-  content_b64: string;
-  filename: string;
+  file: File;
 }) {
-  return request<{ ok: boolean; site: SiteInfo & { nginx_conf?: string; created?: boolean } }>(
-    "/sites/migrate",
-    {
-      method: "POST",
-      body: JSON.stringify(opts),
-    },
+  if (opts.file.size > 180 * 1024 * 1024) {
+    return Promise.reject(
+      new Error("ZIP больше 180 МБ — сожми архив или залей через SCP на сервер"),
+    );
+  }
+  const q = new URLSearchParams({ name: opts.name, filename: opts.file.name });
+  if (opts.domain) q.set("domain", opts.domain);
+  return uploadBinary<{ ok: boolean; site: SiteInfo & { nginx_conf?: string; created?: boolean } }>(
+    `/sites/migrate?${q}`,
+    opts.file,
   );
 }
 
@@ -181,15 +186,27 @@ export function bindSiteDomain(name: string, domain: string) {
   });
 }
 
-export async function fileToBase64(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+/** Stream File as raw body — no base64, low browser memory. */
+async function uploadBinary<T>(path: string, file: File): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+      "Content-Type": file.type || "application/octet-stream",
+      "X-Filename": file.name,
+    },
+    body: file,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Нужен вход");
   }
-  return btoa(binary);
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  return data as T;
 }
 
 export type ChatEvent =

@@ -36,6 +36,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -64,6 +65,7 @@ SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))  # 200 MB
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
 _PUBLIC_PATHS = {"/status", "/auth/login", "/auth/check"}
@@ -320,6 +322,43 @@ class APIHandler(BaseHTTPRequestHandler):
             return json.loads(self.rfile.read(length).decode("utf-8"))
         return {}
 
+    def _stream_body_to_file(self, dest: Path, max_bytes: int = MAX_UPLOAD_BYTES) -> int:
+        """Stream raw request body to disk in chunks (no full in-memory buffer)."""
+        length = int(self.headers.get("Content-Length", 0))
+        if length <= 0:
+            raise ValueError("Пустое тело запроса (нужен файл)")
+        if length > max_bytes:
+            raise ValueError(
+                f"Файл слишком большой: {length // (1024 * 1024)} МБ "
+                f"(лимит {max_bytes // (1024 * 1024)} МБ). "
+                f"Залей через SCP или разбей архив."
+            )
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        written = 0
+        remaining = length
+        chunk_size = 1024 * 1024  # 1 MB
+        with dest.open("wb") as out:
+            while remaining > 0:
+                data = self.rfile.read(min(chunk_size, remaining))
+                if not data:
+                    break
+                out.write(data)
+                written += len(data)
+                remaining -= len(data)
+        return written
+
+    def _extract_zip_file(self, zip_path: Path, root: Path) -> None:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for member in zf.infolist():
+                target = (root / member.filename).resolve()
+                if not _is_under(target, root) and target != root.resolve():
+                    raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
+            zf.extractall(root)
+        _flatten_hosting_layout(root)
+
+    def _qs(self) -> Dict[str, str]:
+        return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
+
     def _load_context(self, project_name: str = "") -> tuple:
         settings = load_settings()
         profile = load_profile()
@@ -530,23 +569,45 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send(400, _json({"error": str(exc)}))
 
     def _post_fs_upload(self):
-        body = self._read_body()
+        """Upload a file. Prefer raw body + ?path=&filename= (memory-safe).
+        Legacy JSON {path, filename, content_b64} still works for tiny files.
+        """
         try:
-            dest_dir = _resolve_safe(body.get("path", "") or str(SITES_ROOT))
-            if dest_dir.is_file():
-                dest_dir = dest_dir.parent
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            filename = Path(body.get("filename", "upload.bin")).name
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            qs = self._qs()
+            if "application/json" in ctype:
+                body = self._read_body()
+                dest_dir = _resolve_safe(body.get("path", "") or str(SITES_ROOT))
+                if dest_dir.is_file():
+                    dest_dir = dest_dir.parent
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                filename = Path(body.get("filename", "upload.bin")).name
+                raw = base64.b64decode(body.get("content_b64", ""))
+                if len(raw) > MAX_UPLOAD_BYTES:
+                    raise ValueError("Файл слишком большой")
+                out = (dest_dir / filename).resolve()
+                _resolve_safe(str(out))
+                out.write_bytes(raw)
+                self._send(200, _json({"ok": True, "path": str(out), "bytes": len(raw)}))
+                return
+
+            path_str = qs.get("path", "") or str(SITES_ROOT)
+            filename = Path(
+                qs.get("filename")
+                or self.headers.get("X-Filename")
+                or "upload.bin"
+            ).name
             if not filename or filename in {".", ".."}:
                 self._send(400, _json({"error": "Некорректное имя файла"}))
                 return
-            raw = base64.b64decode(body.get("content_b64", ""))
+            dest_dir = _resolve_safe(path_str)
+            if dest_dir.is_file():
+                dest_dir = dest_dir.parent
+            dest_dir.mkdir(parents=True, exist_ok=True)
             out = (dest_dir / filename).resolve()
-            if not _is_under(out, dest_dir) and out.parent != dest_dir:
-                # still must be under allowed roots
-                _resolve_safe(str(out))
-            out.write_bytes(raw)
-            self._send(200, _json({"ok": True, "path": str(out), "bytes": len(raw)}))
+            _resolve_safe(str(out))
+            nbytes = self._stream_body_to_file(out)
+            self._send(200, _json({"ok": True, "path": str(out), "bytes": nbytes}))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
@@ -624,62 +685,95 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send(200, _json({"ok": True, "deleted": name}))
 
     def _post_sites_deploy(self):
-        body = self._read_body()
-        name = (body.get("name") or "").strip()
-        filename = body.get("filename") or "site.zip"
-        if not _SAFE_NAME.match(name):
-            self._send(400, _json({"error": "Некорректное имя сайта"}))
-            return
-        root = _ensure_sites_root() / name
-        root.mkdir(parents=True, exist_ok=True)
+        """Deploy ZIP. Prefer raw body + ?name= (memory-safe)."""
+        tmp: Optional[Path] = None
         try:
-            raw = base64.b64decode(body.get("content_b64", ""))
-            if filename.lower().endswith(".zip") or raw[:2] == b"PK":
-                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                    for member in zf.infolist():
-                        target = (root / member.filename).resolve()
-                        if not _is_under(target, root) and target != root.resolve():
-                            raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
-                    zf.extractall(root)
-                _flatten_hosting_layout(root)
+            qs = self._qs()
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            name = (qs.get("name") or "").strip()
+            filename = qs.get("filename") or self.headers.get("X-Filename") or "site.zip"
+
+            if "json" in ctype:
+                body = self._read_body()
+                name = (body.get("name") or name or "").strip()
+                filename = body.get("filename") or filename
+                if not _SAFE_NAME.match(name):
+                    self._send(400, _json({"error": "Некорректное имя сайта"}))
+                    return
+                root = _ensure_sites_root() / name
+                root.mkdir(parents=True, exist_ok=True)
+                raw = base64.b64decode(body.get("content_b64", ""))
+                if len(raw) > MAX_UPLOAD_BYTES:
+                    raise ValueError("Файл слишком большой")
+                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp.write_bytes(raw)
             else:
-                out = root / Path(filename).name
-                out.write_bytes(raw)
+                if not _SAFE_NAME.match(name):
+                    self._send(400, _json({"error": "Некорректное имя сайта (?name=)"}))
+                    return
+                root = _ensure_sites_root() / name
+                root.mkdir(parents=True, exist_ok=True)
+                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                self._stream_body_to_file(tmp)
+
+            if str(filename).lower().endswith(".zip") or zipfile.is_zipfile(tmp):
+                self._extract_zip_file(tmp, root)
+            else:
+                out = root / Path(str(filename)).name
+                shutil.copyfile(tmp, out)
             self._send(200, _json({"ok": True, "site": _site_info(name)}))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
+        finally:
+            if tmp and tmp.exists():
+                tmp.unlink(missing_ok=True)
 
     def _post_sites_migrate(self):
-        """One-shot: create site (if needed) + upload ZIP + optional domain."""
-        body = self._read_body()
-        name = (body.get("name") or "").strip()
-        domain = (body.get("domain") or "").strip()
-        filename = body.get("filename") or "site.zip"
-        if not _SAFE_NAME.match(name):
-            self._send(400, _json({"error": "Имя: латиница, цифры, _ и -"}))
-            return
-        if not body.get("content_b64"):
-            self._send(400, _json({"error": "Нужен ZIP (content_b64)"}))
-            return
-        root = _ensure_sites_root() / name
-        created = False
-        if not root.exists():
-            root.mkdir(parents=True, exist_ok=False)
-            created = True
+        """One-shot migrate: create site + stream ZIP to disk + extract + optional domain.
+        Memory-safe: POST /sites/migrate?name=&domain= with raw ZIP body.
+        """
+        tmp: Optional[Path] = None
         try:
-            raw = base64.b64decode(body.get("content_b64", ""))
-            # Clear placeholder index if we're replacing with a real site
-            for stale in ("index.html", "index.htm"):
-                p = root / stale
-                if p.is_file() and created is False:
-                    pass
-            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                for member in zf.infolist():
-                    target = (root / member.filename).resolve()
-                    if not _is_under(target, root) and target != root.resolve():
-                        raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
-                zf.extractall(root)
-            _flatten_hosting_layout(root)
+            qs = self._qs()
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            name = (qs.get("name") or "").strip()
+            domain = (qs.get("domain") or "").strip()
+            filename = qs.get("filename") or self.headers.get("X-Filename") or "site.zip"
+            created = False
+
+            if "json" in ctype:
+                body = self._read_body()
+                name = (body.get("name") or name or "").strip()
+                domain = (body.get("domain") or domain or "").strip()
+                filename = body.get("filename") or filename
+                if not _SAFE_NAME.match(name):
+                    self._send(400, _json({"error": "Имя: латиница, цифры, _ и -"}))
+                    return
+                if not body.get("content_b64"):
+                    self._send(400, _json({"error": "Нужен ZIP"}))
+                    return
+                raw = base64.b64decode(body.get("content_b64", ""))
+                if len(raw) > MAX_UPLOAD_BYTES:
+                    raise ValueError(
+                        f"Файл слишком большой (лимит {MAX_UPLOAD_BYTES // (1024 * 1024)} МБ)"
+                    )
+                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp.write_bytes(raw)
+            else:
+                if not _SAFE_NAME.match(name):
+                    self._send(400, _json({"error": "Имя: латиница, цифры, _ и - (?name=)"}))
+                    return
+                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                self._stream_body_to_file(tmp)
+
+            root = _ensure_sites_root() / name
+            if not root.exists():
+                root.mkdir(parents=True, exist_ok=False)
+                created = True
+            else:
+                root.mkdir(parents=True, exist_ok=True)
+
+            self._extract_zip_file(tmp, root)
             nginx_path = _write_nginx_vhost(name, domain) if domain else None
             info = _site_info(name)
             if nginx_path:
@@ -689,6 +783,9 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send(200, _json({"ok": True, "site": info}))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
+        finally:
+            if tmp and tmp.exists():
+                tmp.unlink(missing_ok=True)
 
     def _post_sites_domain(self):
         body = self._read_body()
