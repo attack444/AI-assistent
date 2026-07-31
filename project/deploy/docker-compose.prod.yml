@@ -26,13 +26,30 @@ services:
       - MAX_UPLOAD_BYTES=2147483648
       - PANEL_PASSWORD=${PANEL_PASSWORD:-}
       - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
+      - LLM_PREFER_FREE=${LLM_PREFER_FREE:-1}
+      - FAST_LLM_MODEL=${FAST_LLM_MODEL:-qwen2.5:1.5b}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}
       - MYSQL_USER=${MYSQL_USER:-wp}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-wp_change_me}
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_change_me}
+    depends_on:
+      - ollama
+    networks:
+      - ai-net
+
+  # ── Ollama: бесплатная локальная модель ─────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-helper-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
     networks:
       - ai-net
 
@@ -124,6 +141,7 @@ volumes:
   postgres_data:
   redis_data:
   mysql_data:
+  ollama_data:
 
 networks:
   ai-net:

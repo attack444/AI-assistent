@@ -401,6 +401,12 @@ def load_settings() -> AppSettings:
         s.groq_model = os.environ["GROQ_MODEL"].strip()
     if os.environ.get("LLM_MODEL", "").strip():
         s.llm_model = os.environ["LLM_MODEL"].strip()
+    if os.environ.get("OLLAMA_HOST", "").strip():
+        s.ollama_host = os.environ["OLLAMA_HOST"].strip()
+    if os.environ.get("FAST_LLM_MODEL", "").strip():
+        s.fast_llm_model = os.environ["FAST_LLM_MODEL"].strip()
+    elif os.environ.get("FREE_LLM_MODEL", "").strip():
+        s.fast_llm_model = os.environ["FREE_LLM_MODEL"].strip()
     proxy = (
         os.environ.get("AI_HELPER_HTTP_PROXY")
         or os.environ.get("HTTPS_PROXY")

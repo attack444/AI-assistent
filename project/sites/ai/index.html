@@ -609,9 +609,9 @@
     <h2>Чат здесь — про среду</h2>
     <p>На этом сайте ассистент помогает с деплоем и кодом. На клиентских сайтах (например 5mb2) — отдельный чат-бот под их задачи.</p>
     <div class="chat-preview" role="group" aria-label="Чат AI Helper">
-      <div class="chat-preview-head">AI Helper · DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
+      <div class="chat-preview-head">AI Helper · бесплатная модель <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
       <div class="chat-preview-body" id="demo-chat">
-        <div class="bubble bot">Привет! Я публичный ассистент AI Helper. Спрошу про деплой, код или как устроена платформа — без доступа к файлам сервера.</div>
+        <div class="bubble bot">Привет! Отвечаю на бесплатной модели на сервере (Ollama). Спроси про деплой и код — без доступа к файлам сервера.</div>
       </div>
       <form class="chat-preview form" id="demo-form">
         <input id="chat-input" type="text" placeholder="Напиши вопрос…" autocomplete="off" maxlength="2000" required />
@@ -931,6 +931,8 @@
               full += ev.content || "";
               bot.textContent = full;
               chatEl.scrollTop = chatEl.scrollHeight;
+            } else if (ev.type === "info" && ev.content) {
+              statusEl.textContent = "· " + ev.content;
             } else if (ev.type === "error") {
               throw new Error(ev.content || "Ошибка чата");
             }

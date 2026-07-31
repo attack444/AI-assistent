@@ -597,12 +597,18 @@ class APIHandler(BaseHTTPRequestHandler):
 
     # ── GET /status ──────────────────────────────────────────────
     def _get_status(self):
+        import free_llm as fl
+
         settings = load_settings()
         ost = check_ollama_status(settings.ollama_host)
         projects = load_projects()
         deepseek = bool(
             settings.deepseek_api_key
             or os.environ.get("DEEPSEEK_API_KEY", "").strip()
+        )
+        free_st = fl.check_ollama(
+            settings.ollama_host,
+            fl.free_model(settings.fast_llm_model, settings.llm_model),
         )
         self._send(200, _json({
             "ok": True,
@@ -612,6 +618,9 @@ class APIHandler(BaseHTTPRequestHandler):
             "groq_model": settings.groq_model,
             "deepseek": deepseek,
             "deepseek_model": settings.deepseek_model,
+            "free_llm": bool(free_st.get("reachable") and free_st.get("has_model")),
+            "free_model": free_st.get("model") or fl.free_model(),
+            "llm_prefer_free": fl.prefer_free(),
             "llm_model": settings.llm_model,
             "fast_model": settings.fast_llm_model,
             "projects": list(projects.keys()),
@@ -621,7 +630,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.2",
+            "version": "2.3",
         }))
 
     # ── GET /project/files ───────────────────────────────────────

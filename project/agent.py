@@ -537,8 +537,45 @@ def run_agent(
     chat_model  = fast_llm_model.strip() or llm_model
     use_tools   = _needs_tools(user_message)
 
-    # ── DeepSeek PATH (highest priority when key is set) ─────────────────────
-    if deepseek_api_key.strip():
+    # ── FREE LOCAL (Ollama) first — когда LLM_PREFER_FREE=1 ──────────────────
+    skip_cloud = False
+    try:
+        import free_llm as _free
+        if _free.prefer_free():
+            free_name = _free.free_model(fast_llm_model, llm_model)
+            st = _free.check_ollama(ollama_host, free_name)
+            if st.get("reachable") and st.get("has_model"):
+                used_model = st.get("model") or free_name
+                mem_ctx0 = memory.get_context(
+                    user_message, project=str(project_root) if project_root else ""
+                )
+                if not use_tools:
+                    sys_msg0 = _fast_prompt(profile, project_root, mem_ctx0)
+                    messages0: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg0}]
+                    for msg in chat_history[-6:]:
+                        messages0.append({"role": msg["role"], "content": msg["content"]})
+                    messages0.append({"role": "user", "content": user_message})
+                    yield AgentEvent(type="info", content=f"free:{used_model}")
+                    try:
+                        for chunk in _free.stream_ollama(
+                            messages0, host=ollama_host, model=used_model
+                        ):
+                            yield AgentEvent(type="text", content=chunk)
+                        yield AgentEvent(type="done")
+                        return
+                    except Exception as exc:
+                        yield AgentEvent(type="info", content=f"free_fallback:{exc}")
+                else:
+                    # tools → локальный agent на бесплатной модели
+                    chat_model = used_model
+                    agent_model = used_model
+                    skip_cloud = True
+                    yield AgentEvent(type="info", content=f"free-agent:{used_model}")
+    except Exception:
+        skip_cloud = False
+
+    # ── DeepSeek PATH (paid / fallback) ──────────────────────────────────────
+    if deepseek_api_key.strip() and not skip_cloud:
         mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
         if not use_tools:
             sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
@@ -618,7 +655,7 @@ def run_agent(
     mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
 
     # ── GROQ PATH ────────────────────────────────────────────────────────────
-    if groq_api_key.strip() and not use_tools:
+    if groq_api_key.strip() and not use_tools and not skip_cloud:
         sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
         messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
         for msg in chat_history[-6:]:
@@ -650,7 +687,7 @@ def run_agent(
         return
 
     # ── GROQ AGENT PATH (Groq key set + tools needed) ────────────────────────
-    if groq_api_key.strip() and use_tools:
+    if groq_api_key.strip() and use_tools and not skip_cloud:
         relevant_tools = _select_tools(user_message)
         system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
         messages = [{"role": "system", "content": system_prompt}]
