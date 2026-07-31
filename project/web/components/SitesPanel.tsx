@@ -191,13 +191,16 @@ export function SitesPanel() {
   }
 
   async function onBindDomain(siteName: string) {
-    const d = window.prompt("Домен (например site.ru)", "");
+    const d = window.prompt("Домен сайта (останется как основной URL)", "5mb2.ru");
     if (!d) return;
     setBusy(true);
     setError("");
     try {
       const res = await bindSiteDomain(siteName, d.trim());
-      setOkMsg(res.hint || `Домен ${d} привязан`);
+      setOkMsg(
+        (res.hint || `Домен ${d} привязан`) +
+          `\n\nНа VPS выполни:\nbash /opt/ai-helper/project/deploy/setup-domain.sh ${siteName} ${d.trim()} --ssl`,
+      );
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -425,7 +428,12 @@ export function SitesPanel() {
                 </button>
               </div>
             </div>
-            {wpOpen === site.name ? <WordpressSetup siteName={site.name} /> : null}
+            {wpOpen === site.name ? (
+              <WordpressSetup
+                siteName={site.name}
+                domainHint={site.domain || "5mb2.ru"}
+              />
+            ) : null}
             </div>
           ))}
           </>

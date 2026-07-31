@@ -285,28 +285,55 @@ def _fix_site_perms(root: Path) -> None:
 
 
 def _write_nginx_vhost(name: str, domain: str = "") -> Optional[str]:
-    """Write optional nginx vhost snippet for a custom domain (best-effort)."""
+    """Write nginx vhost so domain serves the site at / (like shared hosting)."""
     if not domain.strip():
         return None
     domain = domain.strip().lower()
+    domain = domain.replace("https://", "").replace("http://", "").split("/")[0]
     # Prefer host path when sites are bind-mounted
-    host_root = Path("/var/ai-helper/sites") / name
+    host_root = Path(HOST_SITES_PATH) / name
     root_path = host_root if host_root.parent.exists() else (SITES_ROOT / name)
-    conf = f"""# AI Helper site: {name}
+    conf = f"""# AI Helper site: {name} → https://{domain}
+# Generated automatically. Panel stays on server IP; this domain is the site.
 server {{
     listen 80;
+    listen [::]:80;
     server_name {domain} www.{domain};
+
     root {root_path};
-    index index.html index.htm index.php;
+    index index.php index.html index.htm;
+    client_max_body_size 200M;
 
     location / {{
-        try_files $uri $uri/ =404;
+        try_files $uri $uri/ /index.php?$args;
+    }}
+
+    location ~ \\.php$ {{
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_read_timeout 300s;
+    }}
+
+    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?)$ {{
+        expires 7d;
+        access_log off;
+        try_files $uri =404;
+    }}
+
+    location ~* /(?:uploads|files)/.*\\.php$ {{
+        deny all;
     }}
 }}
 """
     site_meta = SITES_ROOT / name / ".ai-helper-domain"
     site_meta.parent.mkdir(parents=True, exist_ok=True)
     site_meta.write_text(domain, encoding="utf-8")
+
+    # Always keep a copy next to the site (works inside Docker)
+    site_copy = SITES_ROOT / name / "nginx.vhost.conf"
+    site_copy.parent.mkdir(parents=True, exist_ok=True)
+    site_copy.write_text(conf, encoding="utf-8")
 
     try:
         NGINX_SITES_DIR.mkdir(parents=True, exist_ok=True)
@@ -322,10 +349,7 @@ server {{
                 pass
         return str(out)
     except Exception:
-        out = SITES_ROOT / name / "nginx.vhost.conf"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(conf, encoding="utf-8")
-        return str(out)
+        return str(site_copy)
 
 
 def _run_agent_sync(
@@ -1069,12 +1093,13 @@ class APIHandler(BaseHTTPRequestHandler):
         nginx_path = _write_nginx_vhost(name, domain)
         info = _site_info(name)
         info["nginx_conf"] = nginx_path
+        info["domain"] = domain.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
         info["hint"] = (
-            f"Пропиши A-запись домена на IP сервера. "
-            f"Если nginx.vhost.conf лежит в папке сайта — скопируй на хост:\n"
-            f"sudo cp {nginx_path} /etc/nginx/sites-available/ai-helper-{name}.conf && "
-            f"sudo ln -sf /etc/nginx/sites-available/ai-helper-{name}.conf "
-            f"/etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+            f"Домен {info['domain']} → сайт {name} (корень /, не /sites/{name}/).\n"
+            f"1) DNS: A @ и www → IP VPS\n"
+            f"2) На VPS: bash /opt/ai-helper/project/deploy/setup-domain.sh {name} {info['domain']}\n"
+            f"3) SSL: тот же скрипт с --ssl\n"
+            f"Конфиг: {nginx_path}"
         )
         self._send(200, _json({"ok": True, "site": info}))
 
@@ -1092,11 +1117,18 @@ class APIHandler(BaseHTTPRequestHandler):
         status = wpt.wp_status(root)
         status["site"] = _site_info(name)
         status["public_url"] = f"/sites/{name}/"
+        domain = ""
+        domain_file = root / ".ai-helper-domain"
+        if domain_file.is_file():
+            domain = domain_file.read_text(encoding="utf-8").strip()
         status["defaults"] = {
             "db_name": os.environ.get("MYSQL_DATABASE", "wordpress"),
             "db_user": os.environ.get("MYSQL_USER", "wp"),
             "db_host": os.environ.get("MYSQL_HOST", "mysql"),
-            "suggested_site_url": f"http://SERVER_IP/sites/{name}",
+            "suggested_site_url": (
+                f"https://{domain}" if domain else f"http://SERVER_IP/sites/{name}"
+            ),
+            "domain": domain or None,
         }
         self._send(200, _json(status))
 

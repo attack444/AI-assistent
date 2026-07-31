@@ -212,7 +212,13 @@ export function getWpStatus(name: string) {
     defines?: Record<string, string>;
     db?: { ok: boolean; tables?: number; error?: string; sample_tables?: string[] };
     urls?: { ok?: boolean; urls?: Record<string, string>; error?: string };
-    defaults?: { db_name?: string; db_user?: string; db_host?: string; suggested_site_url?: string };
+    defaults?: {
+      db_name?: string;
+      db_user?: string;
+      db_host?: string;
+      suggested_site_url?: string;
+      domain?: string;
+    };
     site?: SiteInfo;
   }>(`/wp/status?name=${encodeURIComponent(name)}`);
 }

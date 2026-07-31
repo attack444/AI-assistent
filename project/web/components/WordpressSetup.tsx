@@ -13,9 +13,13 @@ import {
 type Props = {
   siteName: string;
   serverIpHint?: string;
+  domainHint?: string;
 };
 
-export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP" }: Props) {
+export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainHint }: Props) {
+  const defaultUrl = domainHint
+    ? `https://${domainHint.replace(/^https?:\/\//, "").split("/")[0]}`
+    : `http://${serverIpHint}/sites/${siteName}`;
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -26,7 +30,7 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP" }: Props
   const [dbUser, setDbUser] = useState("wp");
   const [dbPassword, setDbPassword] = useState("");
   const [oldUrl, setOldUrl] = useState("");
-  const [newUrl, setNewUrl] = useState(`http://${serverIpHint}/sites/${siteName}`);
+  const [newUrl, setNewUrl] = useState(defaultUrl);
   const [sqlFile, setSqlFile] = useState<File | null>(null);
 
   async function refresh() {
@@ -49,6 +53,7 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP" }: Props
       if (s.defaults?.db_name) setDbName(s.defaults.db_name);
       if (s.defaults?.db_user) setDbUser(s.defaults.db_user);
       if (s.defaults?.db_host) setDbHost(s.defaults.db_host);
+      if (s.defaults?.suggested_site_url) setNewUrl(s.defaults.suggested_site_url);
       if (s.urls?.urls?.siteurl) setOldUrl(String(s.urls.urls.siteurl));
     } catch (err) {
       setError((err as Error).message);
