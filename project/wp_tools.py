@@ -244,12 +244,22 @@ def _sql_quote(value: str) -> str:
     return "'" + str(value).replace("\\", "\\\\").replace("'", "''") + "'"
 
 
-def ensure_mysql_user(*, force: bool = False) -> Dict[str, Any]:
-    """Make sure MYSQL_USER can login with MYSQL_PASSWORD. Fix 1045 via root if needed."""
+def ensure_mysql_user(
+    *,
+    force: bool = False,
+    password: Optional[str] = None,
+    root_password: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Make sure MYSQL_USER can login with MYSQL_PASSWORD (or overrides). Fix 1045 via root."""
     params = mysql_connect_params()
     user = params["user"]
-    password = params["password"] or "wp_change_me"
+    password = password if password is not None else (params["password"] or "wp_change_me")
     database = params["database"]
+    if root_password:
+        # temporarily prefer provided root password
+        os.environ["MYSQL_ROOT_PASSWORD"] = root_password
+        params = mysql_connect_params()
+        params["root_password"] = root_password
 
     # Fast path
     if not force:
@@ -275,8 +285,11 @@ def ensure_mysql_user(*, force: bool = False) -> Dict[str, Any]:
     root_errors: List[str] = []
     root_conn = None
     used_root_pass = None
-    env_root = params.get("root_password") or ""
-    for root_pass in _root_password_candidates():
+    env_root = root_password or params.get("root_password") or ""
+    candidates = _root_password_candidates()
+    if root_password:
+        candidates = [root_password] + [c for c in candidates if c != root_password]
+    for root_pass in candidates:
         conn, err = _try_login("root", root_pass, None)
         if conn is not None:
             root_conn = conn
@@ -292,13 +305,10 @@ def ensure_mysql_user(*, force: bool = False) -> Dict[str, Any]:
             "database": database,
             "error": (
                 "1045: не удалось войти ни как wp, ни как root. "
-                "Пароль в томе MySQL не совпадает с .env. "
                 "На VPS: bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit"
             ),
             "root_errors": root_errors[:5],
-            "hint": (
-                "bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit"
-            ),
+            "hint": "bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit",
         }
 
     try:
@@ -315,7 +325,6 @@ def ensure_mysql_user(*, force: bool = False) -> Dict[str, Any]:
             f"GRANT ALL PRIVILEGES ON {db_ident}.* TO {uq}@'localhost'",
             "FLUSH PRIVILEGES",
         ]
-        # Also align root with current .env if we logged in with a fallback password
         if env_root and used_root_pass != env_root:
             rq = _sql_quote(env_root)
             stmts.extend(
@@ -365,7 +374,7 @@ def ensure_mysql_user(*, force: bool = False) -> Dict[str, Any]:
         "healed": True,
         "user": user,
         "database": database,
-        "message": f"MySQL починен: пользователь {user} → пароль из .env",
+        "message": f"MySQL починен: пользователь {user} синхронизирован",
         "root_synced": bool(env_root and used_root_pass != env_root),
     }
 
@@ -459,7 +468,19 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
             "path": str(sql_path),
         }
 
-    size = sql_path.stat().st_size
+    if size < 2048:
+        return {
+            "ok": False,
+            "statements": 0,
+            "errors": [
+                f"SQL-файл слишком маленький ({size} байт). "
+                "Это не полный дамп — в phpMyAdmin Export выбери базу "
+                "со всеми таблицами (у тебя на старом хостинге была "
+                "u3406909_default), формат SQL, не только структуру."
+            ],
+            "path": str(sql_path),
+            "size_bytes": size,
+        }
     raw = sql_path.read_bytes()
     text = None
     used_encoding = "utf-8"
@@ -484,6 +505,26 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
     text = re.sub(
         r"DEFINER\s*=\s*'[^']+'@'[^']+'",
         "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Old hosting DB name (e.g. u3406909_default) → our MYSQL_DATABASE
+    target_db = database or mysql_connect_params()["database"]
+    text = re.sub(
+        r"CREATE\s+DATABASE\s+.*?;",
+        f"CREATE DATABASE IF NOT EXISTS `{target_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    text = re.sub(
+        r"USE\s+`[^`]+`\s*;",
+        f"USE `{target_db}`;",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"USE\s+[a-zA-Z0-9_]+\s*;",
+        f"USE `{target_db}`;",
         text,
         flags=re.IGNORECASE,
     )

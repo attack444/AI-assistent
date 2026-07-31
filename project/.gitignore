@@ -18,6 +18,11 @@ dist/
 build/
 *.egg-info/
 
+# Secrets / local deploy
+project/.env
+project/deploy/site.env
+project/deploy/*.local.sh
+
 # Streamlit (config.toml коммитим, локальные credentials — нет)
 .streamlit/*
 !.streamlit/config.toml

@@ -202,13 +202,11 @@ def _site_info(name: str) -> Dict[str, Any]:
 
 
 def _flatten_hosting_layout(root: Path) -> None:
-    """Unwrap common hosting ZIP layouts: public_html, www, wordpress, single folder."""
-    if (
-        (root / "index.html").exists()
-        or (root / "index.htm").exists()
-        or (root / "index.php").exists()
-        or pup.detect_wordpress(root)
-    ):
+    """Unwrap common hosting ZIP layouts: public_html, www, wordpress, domain folder."""
+    # Already flat WordPress at site root — do not touch
+    if (root / "wp-config.php").is_file() or (root / "wp-load.php").is_file():
+        return
+    if (root / "index.php").is_file() and (root / "wp-content").is_dir():
         return
     # Prefer known web roots nested inside the archive
     found = pup.find_wp_or_public(root)
@@ -1218,10 +1216,13 @@ class APIHandler(BaseHTTPRequestHandler):
             db_password = (body.get("db_password") or "").strip() or os.environ.get(
                 "MYSQL_PASSWORD", ""
             )
-            # Heal MySQL user before writing config
-            heal = wpt.ensure_mysql_user(force=False)
-            if not heal.get("ok"):
-                heal = wpt.ensure_mysql_user(force=True)
+            root_password = (body.get("root_password") or "").strip() or None
+            # Heal MySQL user to the SAME password we write into wp-config
+            heal = wpt.ensure_mysql_user(
+                force=True,
+                password=db_password,
+                root_password=root_password,
+            )
             result = wpt.patch_wp_config(
                 root,
                 db_name=body.get("db_name") or os.environ.get("MYSQL_DATABASE", "wordpress"),
@@ -1239,12 +1240,48 @@ class APIHandler(BaseHTTPRequestHandler):
     def _post_wp_fix_db(self):
         try:
             body = self._read_body() if int(self.headers.get("Content-Length", 0) or 0) else {}
-            force = bool((body or {}).get("force", True))
-            result = wpt.ensure_mysql_user(force=force)
+            body = body or {}
+            force = bool(body.get("force", True))
+            password = (body.get("password") or body.get("db_password") or "").strip() or None
+            root_password = (body.get("root_password") or "").strip() or None
+            result = wpt.ensure_mysql_user(
+                force=force,
+                password=password,
+                root_password=root_password,
+            )
             if result.get("ok"):
-                # verify with full test
                 result["db"] = wpt.test_db()
             self._send(200 if result.get("ok") else 400, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_sites_normalize(self):
+        """Flatten nested hosting layout (e.g. 5mb2/5mb2.ru/ → 5mb2/)."""
+        try:
+            body = self._read_body()
+            name = (body.get("name") or "").strip()
+            if not _SAFE_NAME.match(name):
+                self._send(400, _json({"error": "Некорректное имя сайта"}))
+                return
+            root = _ensure_sites_root() / name
+            if not root.is_dir():
+                self._send(404, _json({"error": "Сайт не найден"}))
+                return
+            before = pup.find_wp_or_public(root)
+            _flatten_hosting_layout(root)
+            _fix_site_perms(root)
+            info = _site_info(name)
+            self._send(
+                200,
+                _json(
+                    {
+                        "ok": True,
+                        "site": info,
+                        "webroot_before": str(before) if before else None,
+                        "message": "Структура выровнена (wp-config должен быть в корне сайта)",
+                    }
+                ),
+            )
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
@@ -1486,6 +1523,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/sites/migrate": self._post_sites_migrate,
             "/sites/domain": self._post_sites_domain,
             "/sites/fix-perms": self._post_sites_fix_perms,
+            "/sites/normalize": self._post_sites_normalize,
             "/upload/init": self._post_upload_init,
             "/upload/chunk": self._post_upload_chunk,
             "/upload/complete": self._post_upload_complete,

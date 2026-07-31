@@ -15,6 +15,22 @@ DOMAIN="$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
 
 SITES_DIR="${SITES_DIR:-/var/ai-helper/sites}"
 SITE_ROOT="$SITES_DIR/$SITE_NAME"
+# Nested hosting webroot (e.g. .../5mb2/5mb2.ru)
+WEBROOT="$SITE_ROOT"
+if [ -f "$SITE_ROOT/wp-config.php" ] || [ -f "$SITE_ROOT/index.php" ]; then
+  WEBROOT="$SITE_ROOT"
+elif [ -d "$SITE_ROOT/$DOMAIN" ] && { [ -f "$SITE_ROOT/$DOMAIN/wp-config.php" ] || [ -f "$SITE_ROOT/$DOMAIN/index.php" ]; }; then
+  WEBROOT="$SITE_ROOT/$DOMAIN"
+else
+  for d in "$SITE_ROOT"/*/; do
+    [ -d "$d" ] || continue
+    if [ -f "${d}wp-config.php" ] || [ -f "${d}index.php" ]; then
+      WEBROOT="${d%/}"
+      break
+    fi
+  done
+fi
+
 REPO="${REPO_DIR:-/opt/ai-helper}"
 
 if [ ! -d "$SITE_ROOT" ]; then
@@ -28,6 +44,7 @@ IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $
 echo "[>>] Сайт: $SITE_NAME"
 echo "[>>] Домен: $DOMAIN (www.$DOMAIN)"
 echo "[>>] Root: $SITE_ROOT"
+echo "[>>] Webroot: $WEBROOT"
 echo "[>>] IP сервера: $IP"
 echo ""
 echo "DNS у регистратора должен быть:"
@@ -49,7 +66,7 @@ server {
     listen [::]:80;
     server_name ${DOMAIN} www.${DOMAIN};
 
-    root ${SITE_ROOT};
+    root ${WEBROOT};
     index index.php index.html index.htm;
     client_max_body_size 200M;
 

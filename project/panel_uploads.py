@@ -265,6 +265,19 @@ def find_wp_or_public(root: Path) -> Optional[Path]:
             or (c / "wp-content").is_dir()
         ):
             return c
+    # Domain-style folder from shared hosting (e.g. 5mb2.ru/)
+    try:
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if (
+                (child / "wp-config.php").is_file()
+                or (child / "wp-content").is_dir()
+                or (child / "index.php").is_file()
+            ):
+                return child
+    except OSError:
+        pass
     # deepest single-folder chain
     cur = root
     for _ in range(4):
