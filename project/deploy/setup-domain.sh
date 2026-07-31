@@ -98,6 +98,10 @@ if [ "$WANT_SSL" -eq 1 ]; then
   fi
   echo "[>>] Выпускаю SSL (Let's Encrypt)…"
   certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos \
+    --email "${CERTBOT_EMAIL:-admin@${DOMAIN}}" --redirect || \
+  certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --agree-tos \
+    --email "${CERTBOT_EMAIL:-admin@${DOMAIN}}" --redirect || \
+  certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos \
     --register-unsafely-without-email --redirect || \
   certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --agree-tos --redirect
   echo "[OK] HTTPS: https://${DOMAIN}/"

@@ -287,14 +287,18 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
           className="input"
           value={oldUrl}
           onChange={(e) => setOldUrl(e.target.value)}
-          placeholder="старый URL (https://old-site.ru)"
+          placeholder="старый URL (пусто = взять из БД, обычно https://5mb2.ru)"
         />
         <input
           className="input"
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
-          placeholder={`http://${serverIpHint}/sites/${siteName}`}
+          placeholder={`https://5mb2.ru или http://${serverIpHint}/sites/${siteName}`}
         />
+        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+          Старый URL — как сайт открывался на старом хостинге. Можно оставить пустым: возьмём{" "}
+          <span className="mono">siteurl</span> из базы после импорта.
+        </p>
         <button className="btn" type="submit" disabled={busy || !newUrl.trim()}>
           Заменить URL в БД
         </button>

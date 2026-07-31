@@ -557,11 +557,29 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
 
 
 def replace_site_url(old_url: str, new_url: str, table_prefix: str = "wp_") -> Dict[str, Any]:
-    old_url = old_url.rstrip("/")
     new_url = new_url.rstrip("/")
-    if not old_url or not new_url:
-        raise ValueError("Нужны old_url и new_url")
+    if not new_url:
+        raise ValueError("Нужен new_url")
     ensure_mysql_user(force=False)
+    # Auto-detect old URL from DB when empty / AUTO
+    if not old_url or str(old_url).strip().upper() in {"", "AUTO", "FROM_DB"}:
+        detected = get_site_urls(table_prefix)
+        urls = detected.get("urls") or {}
+        old_url = str(urls.get("siteurl") or urls.get("home") or "").rstrip("/")
+        if not old_url:
+            raise ValueError(
+                "Не удалось определить old_url из БД. Укажи вручную "
+                "(обычно https://5mb2.ru — как на старом хостинге)."
+            )
+    old_url = old_url.rstrip("/")
+    if old_url == new_url:
+        return {
+            "ok": True,
+            "old_url": old_url,
+            "new_url": new_url,
+            "updated": {},
+            "warning": "old_url == new_url — замена не нужна",
+        }
     conn = _get_connection()
     updated = {}
     try:
