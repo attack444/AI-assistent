@@ -199,7 +199,8 @@ export function SitesPanel() {
       const res = await bindSiteDomain(siteName, d.trim());
       setOkMsg(
         (res.hint || `Домен ${d} привязан`) +
-          `\n\nНа VPS выполни:\nbash /opt/ai-helper/project/deploy/setup-domain.sh ${siteName} ${d.trim()} --ssl`,
+          `\n\nНа VPS (HTTP):\ncurl -fsSL https://raw.githubusercontent.com/attack444/AI-assistent/main/project/deploy/fix-5mb2-http.sh | bash` +
+          `\n\nHTTPS (когда HTTP ок):\ncurl -fsSL https://raw.githubusercontent.com/attack444/AI-assistent/main/project/deploy/install-ssl-5mb2.sh | bash`,
       );
       await refresh();
     } catch (err) {
@@ -404,6 +405,18 @@ export function SitesPanel() {
                 </button>
                 <a className="btn ghost small" href={site.url} target="_blank" rel="noreferrer">
                   Открыть
+                </a>
+                <a
+                  className="btn ghost small"
+                  href={`/files?path=${encodeURIComponent(site.path)}`}
+                >
+                  Файлы
+                </a>
+                <a
+                  className="btn ghost small"
+                  href={`/chat?site=${encodeURIComponent(site.name)}`}
+                >
+                  Чат
                 </a>
                 <button className="btn ghost small" type="button" onClick={() => onInspect(site.name)}>
                   Где файлы

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ChatPanel } from "@/components/ChatPanel";
 
 export default function ChatPage() {
@@ -5,9 +6,13 @@ export default function ChatPage() {
     <>
       <div className="page-head">
         <h1>Чат</h1>
-        <p>Ассистент с доступом к инструментам на сервере. DeepSeek / Groq / Ollama через API.</p>
+        <p>
+          Ассистент на сервере (DeepSeek). Открой из карточки сайта — тогда правки идут в его файлы.
+        </p>
       </div>
-      <ChatPanel />
+      <Suspense fallback={<div className="panel empty">Загрузка…</div>}>
+        <ChatPanel />
+      </Suspense>
     </>
   );
 }

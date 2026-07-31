@@ -518,6 +518,7 @@ export async function streamChat(
   history: { role: string; content: string }[],
   onEvent: (ev: ChatEvent) => void,
   signal?: AbortSignal,
+  opts?: { site?: string; project?: string },
 ) {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
@@ -525,7 +526,12 @@ export async function streamChat(
       "Content-Type": "application/json",
       ...authHeaders(),
     },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({
+      message,
+      history,
+      ...(opts?.site ? { site: opts.site } : {}),
+      ...(opts?.project ? { project: opts.project } : {}),
+    }),
     signal,
   });
   if (res.status === 401) {

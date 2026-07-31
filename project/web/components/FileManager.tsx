@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   deleteFs,
   FsEntry,
@@ -19,7 +20,9 @@ function formatSize(n?: number) {
 }
 
 export function FileManager() {
-  const [path, setPath] = useState("");
+  const searchParams = useSearchParams();
+  const initialPath = (searchParams.get("path") || "").trim();
+  const [path, setPath] = useState(initialPath);
   const [parent, setParent] = useState<string | undefined>();
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [selected, setSelected] = useState<string>("");
@@ -44,9 +47,9 @@ export function FileManager() {
   }, [path]);
 
   useEffect(() => {
-    void load("");
+    void load(initialPath);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialPath]);
 
   async function openEntry(entry: FsEntry) {
     if (entry.type === "dir") {
@@ -165,6 +168,11 @@ export function FileManager() {
           </label>
         </div>
         <div className="crumb">{path || "/"}</div>
+        {initialPath ? (
+          <div className="muted" style={{ margin: "6px 0", fontSize: "0.85rem" }}>
+            Контекст сайта: <span className="mono">{initialPath}</span>
+          </div>
+        ) : null}
         {error ? <div className="error-banner">{error}</div> : null}
         <div>
           {entries.length === 0 ? (

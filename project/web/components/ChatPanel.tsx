@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { streamChat } from "@/lib/api";
 
 type Msg =
@@ -8,6 +9,8 @@ type Msg =
   | { id: string; role: "tool"; content: string };
 
 export function ChatPanel() {
+  const searchParams = useSearchParams();
+  const site = (searchParams.get("site") || "").trim();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,6 +71,7 @@ export function ChatPanel() {
           }
         },
         ac.signal,
+        site ? { site } : undefined,
       );
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -80,10 +84,21 @@ export function ChatPanel() {
 
   return (
     <div className="panel chat-layout">
+      {site ? (
+        <div className="muted" style={{ margin: "12px 14px 0", fontSize: "0.9rem" }}>
+          Работаем с сайтом <strong className="mono">{site}</strong>
+          {" · "}
+          <a href="/chat">сбросить</a>
+        </div>
+      ) : null}
       {error ? <div className="error-banner" style={{ margin: 14 }}>{error}</div> : null}
       <div className="chat-messages">
         {messages.length === 0 ? (
-          <div className="empty">Спроси про код, файлы или перенос сайта на этот сервер.</div>
+          <div className="empty">
+            {site
+              ? `Спроси про файлы сайта «${site}» — ассистент работает в его папке.`
+              : "Спроси про код, файлы или перенос сайта. Из «Сайты» можно открыть чат по конкретному сайту."}
+          </div>
         ) : (
           messages.map((m) => (
             <div key={m.id} className={`bubble ${m.role}`}>
@@ -99,7 +114,7 @@ export function ChatPanel() {
           style={{ minHeight: 72, fontFamily: "var(--font-body)" }}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Напиши сообщение…"
+          placeholder={site ? `Про сайт ${site}…` : "Напиши сообщение…"}
           disabled={busy}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -111,6 +126,15 @@ export function ChatPanel() {
         <button className="btn" type="submit" disabled={busy || !input.trim()}>
           {busy ? "…" : "Отправить"}
         </button>
+        {busy ? (
+          <button
+            className="btn ghost"
+            type="button"
+            onClick={() => abortRef.current?.abort()}
+          >
+            Стоп
+          </button>
+        ) : null}
       </form>
     </div>
   );

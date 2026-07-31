@@ -513,17 +513,23 @@ class APIHandler(BaseHTTPRequestHandler):
     def _qs(self) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
 
-    def _load_context(self, project_name: str = "") -> tuple:
+    def _load_context(self, project_name: str = "", site_name: str = "") -> tuple:
         settings = load_settings()
         profile = load_profile()
         memory = MemoryStore()
         projects = load_projects()
-        if project_name and project_name in projects:
-            project_root = Path(projects[project_name].root)
-        elif projects:
-            project_root = Path(list(projects.values())[0].root)
-        else:
-            project_root = None
+        project_root: Optional[Path] = None
+        # Site folder takes priority (hosting workspace for chat/tools)
+        site = (site_name or "").strip()
+        if site and _SAFE_NAME.match(site):
+            candidate = _ensure_sites_root() / site
+            if candidate.is_dir():
+                project_root = candidate
+        if project_root is None:
+            if project_name and project_name in projects:
+                project_root = Path(projects[project_name].root)
+            elif projects:
+                project_root = Path(list(projects.values())[0].root)
         return settings, profile, memory, project_root
 
     def _authorized(self) -> bool:
@@ -597,7 +603,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "1.7",
+            "version": "1.8",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1353,8 +1359,9 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send(400, _json({"error": "Нужно поле 'message'"}))
             return
         proj_name = body.get("project", "")
+        site_name = (body.get("site") or "").strip()
         history = body.get("history", [])
-        settings, profile, memory, project_root = self._load_context(proj_name)
+        settings, profile, memory, project_root = self._load_context(proj_name, site_name)
 
         t0 = time.time()
         text = _run_agent_sync(message, project_root, settings, profile, memory, history)
@@ -1374,13 +1381,14 @@ class APIHandler(BaseHTTPRequestHandler):
         body = self._read_body()
         message = body.get("message", "").strip()
         proj_name = body.get("project", "")
+        site_name = (body.get("site") or "").strip()
         history = body.get("history", [])
 
         if not message:
             self._send(400, _json({"error": "Нужно поле 'message'"}))
             return
 
-        settings, profile, memory, project_root = self._load_context(proj_name)
+        settings, profile, memory, project_root = self._load_context(proj_name, site_name)
 
         self.close_connection = True
         self.send_response(200)
