@@ -468,20 +468,32 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
             "path": str(sql_path),
         }
 
+    size = sql_path.stat().st_size
     if size < 2048:
         return {
             "ok": False,
             "statements": 0,
             "errors": [
                 f"SQL-файл слишком маленький ({size} байт). "
-                "Это не полный дамп — в phpMyAdmin Export выбери базу "
-                "со всеми таблицами (у тебя на старом хостинге была "
-                "u3406909_default), формат SQL, не только структуру."
+                "Это не полный дамп — в phpMyAdmin Export выбери базу сайта "
+                "u3406909_wp736 (не information_schema), SQL, структура+данные."
             ],
             "path": str(sql_path),
             "size_bytes": size,
         }
     raw = sql_path.read_bytes()
+    head = raw[:5000].decode("utf-8", errors="ignore").lower()
+    if "information_schema" in head and "wp_" not in head and "wp0w_" not in head:
+        return {
+            "ok": False,
+            "statements": 0,
+            "errors": [
+                "Залит дамп information_schema — это системная БД MySQL, не сайт. "
+                "В phpMyAdmin слева выбери базу u3406909_wp736 → Export → SQL → структура+данные."
+            ],
+            "path": str(sql_path),
+            "size_bytes": size,
+        }
     text = None
     used_encoding = "utf-8"
     for enc in ("utf-8-sig", "utf-8", "cp1251", "latin-1"):

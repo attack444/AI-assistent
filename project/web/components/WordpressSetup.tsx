@@ -266,11 +266,13 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
         </label>
         <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
           Выбери файл в панели — имя на диске может быть любым.
+          Нужна база сайта <span className="mono">u3406909_wp736</span>, не{" "}
+          <span className="mono">information_schema</span>.
           Ошибка <span className="mono">1045 Access denied</span> → на VPS:
           <br />
           <span className="mono">bash /opt/ai-helper/project/deploy/reset-mysql-password.sh</span>
           <br />
-          SCP (укажи полный путь к файлу на ПК, не просто dump.sql):
+          SCP (полный путь на ПК):
           <br />
           <span className="mono">
             scp &quot;C:\Users\ТЫ\Downloads\backup.sql&quot; root@IP:/tmp/dump.sql

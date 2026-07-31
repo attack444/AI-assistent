@@ -69,6 +69,14 @@ curl -s -X POST "$API/sites/normalize" -H 'Content-Type: application/json' \
   -d "{\"name\":\"${SITE_NAME}\"}" || true
 echo
 
+# Wordfence auto_prepend from old hosting breaks PHP until cleared + php restart
+if [ -f "/var/ai-helper/sites/${SITE_NAME}/.user.ini" ]; then
+  echo "[>>] Clearing Wordfence auto_prepend in .user.ini"
+  printf 'auto_prepend_file =\n' > "/var/ai-helper/sites/${SITE_NAME}/.user.ini"
+fi
+docker restart ai-helper-php >/dev/null 2>&1 || true
+sleep 2
+
 echo "[>>] wp-config + MySQL password…"
 curl -s -X POST "$API/wp/config" -H 'Content-Type: application/json' \
   -d "{\"name\":\"${SITE_NAME}\",\"db_name\":\"wordpress\",\"db_user\":\"wp\",\"db_password\":\"${MYSQL_PASSWORD}\",\"db_host\":\"mysql\",\"root_password\":\"${MYSQL_ROOT_PASSWORD}\",\"table_prefix\":\"wp0w_\"}"
