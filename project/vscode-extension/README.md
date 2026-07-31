@@ -1,28 +1,52 @@
-# AI Helper для VS Code — 1.3.0
+# AI Helper для VS Code — 1.3
 
-## Почему в Settings только Api Url и Chat Url?
+## Обновить расширение БЕЗ `git pull` всего репо
 
-Значит стоит **старое** расширение (1.1). В **1.3** есть:
+Качается только папка расширения (~несколько файлов). Если версия уже стоит — **ничего не качает**.
 
-- Password  
-- Site  
-- Auto Sync On Save  
-- Token, Local Root  
-- команда **AI Helper: Настройка VPS**
+### Способ 1 — одна команда (рекомендуется)
 
-### Как обновить (Windows)
+В **PowerShell**:
 
-1. Закрой VS Code полностью.  
-2. Запусти `install-copy.bat` из этой папки  
-   **или** скопируй папку вручную в  
-   `%USERPROFILE%\.vscode\extensions\ai-helper-local.ai-helper-1.3.0`  
-3. Открой VS Code.  
-4. `Ctrl+Shift+P` → **AI Helper: Настройка VPS**  
-   (пароль панели → сайт → авто-синк).
+```powershell
+irm https://raw.githubusercontent.com/attack444/AI-assistent/cursor/complete-ai-helper-17f9/project/vscode-extension/update-extension.ps1 | iex
+```
 
-Форматтеры из списка VS Code к AI Helper **не относятся** — их можно не трогать.
+Потом **полностью закрой и открой VS Code**.
 
-## Быстрая проверка
+### Способ 2 — bat-файл
 
-Settings → поиск `AI Helper` → должны быть **Password**, **Site**, **Auto Sync On Save**.  
-Если нет — всё ещё старая копия расширения (удали папки `ai-helper*` в `.vscode\extensions` и поставь 1.3 заново).
+Если репо уже есть локально — запусти  
+`project\vscode-extension\install-from-github.bat`  
+(он всё равно тянет свежие файлы с GitHub, не копирует устаревшую локальную копию).
+
+### Что делает скрипт
+
+1. Скачивает только `package.json` → смотрит версию  
+2. Если такая же уже в `%USERPROFILE%\.vscode\extensions\` → выход  
+3. Иначе качает ~7 файлов расширения и удаляет старые папки `ai-helper*`  
+4. Не трогает остальной проект / сайты / Docker  
+
+---
+
+## Настройка после установки
+
+`Ctrl+Shift+P` → **AI Helper: Настройка VPS**  
+→ пароль панели → сайт → авто-синк  
+
+В Settings → AI Helper должны быть: **Password**, **Site**, **Auto Sync On Save**.  
+Если только Api Url / Chat Url — VS Code ещё держит старое расширение: закрой редактор и повтори команду выше.
+
+Форматтеры в списке Settings к AI Helper не относятся.
+
+---
+
+## Сервер (панель / API) — отдельно
+
+Расширение ≠ сервер. API на VPS обновляй так:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/attack444/AI-assistent/cursor/complete-ai-helper-17f9/project/deploy/bootstrap-update.sh | bash
+```
+
+`git pull` всего репо на ПК для расширения **не нужен**.
