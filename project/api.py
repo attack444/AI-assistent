@@ -9,8 +9,9 @@ api.py — REST API сервер для AI Helper.
 
 Endpoints:
   GET    /status
-  POST   /chat
-  POST   /chat/stream
+  GET    /chats  /chats/<id>  /context
+  POST   /chats  /chats/rename  /chat  /chat/stream
+  DELETE /chats/<id>
   POST   /smart-commit
   GET    /project/files
   POST   /project/read
