@@ -227,12 +227,15 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
           />
         </label>
         <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-          Файл можно с любым именем — на сервер уйдёт как <span className="mono">dump.sql</span>.
-          Если ошибка latin-1 / пароль — в `.env` пароль MySQL должен совпадать с тем, что в wp-config.
-          Запасной путь через SSH:
+          Выбери файл в панели — имя на диске может быть любым.
+          Ошибка <span className="mono">1045 Access denied</span> → на VPS:
+          <br />
+          <span className="mono">bash /opt/ai-helper/project/deploy/reset-mysql-password.sh</span>
+          <br />
+          SCP (укажи полный путь к файлу на ПК, не просто dump.sql):
           <br />
           <span className="mono">
-            scp dump.sql root@IP:/tmp/dump.sql && bash /opt/ai-helper/project/deploy/import-wp-sql.sh /tmp/dump.sql
+            scp &quot;C:\Users\ТЫ\Downloads\backup.sql&quot; root@IP:/tmp/dump.sql
           </span>
         </p>
         <button className="btn" type="submit" disabled={busy || !sqlFile}>
