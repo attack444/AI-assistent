@@ -13,6 +13,7 @@ services:
     volumes:
       - ai_helper_data:/root/.ai-helper
       - /var/ai-helper/sites:/opt/sites
+      - /var/ai-helper/sites:/var/ai-helper/sites
     env_file:
       - ../.env
     environment:
@@ -20,7 +21,9 @@ services:
       - AI_HELPER_API_HOST=0.0.0.0
       - AI_HELPER_API_PORT=8502
       - SITES_ROOT=/opt/sites
-      - WORKSPACE_ROOTS=/opt/sites,/opt/ai-helper,/workspace
+      - HOST_SITES_PATH=/var/ai-helper/sites
+      - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
+      - MAX_UPLOAD_BYTES=2147483648
       - PANEL_PASSWORD=${PANEL_PASSWORD:-}
       - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
@@ -44,6 +47,42 @@ services:
       - app
     networks:
       - ai-net
+
+  # ── PHP-FPM (WordPress / обычный хостинг) ───────────────────
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: ai-helper-php
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/ai-helper/sites:/var/ai-helper/sites
+    networks:
+      - ai-net
+
+  # ── MySQL для WordPress ─────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: ai-helper-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-смени_root_пароль}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
+      MYSQL_USER: ${MYSQL_USER:-wp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-смени_wp_пароль}
+    networks:
+      - ai-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-смени_root_пароль}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ── PostgreSQL ────────────────────────────────────────────────
   db:
@@ -78,6 +117,7 @@ volumes:
   ai_helper_data:
   postgres_data:
   redis_data:
+  mysql_data:
 
 networks:
   ai-net:

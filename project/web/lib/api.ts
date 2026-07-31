@@ -40,11 +40,15 @@ export type FsEntry = {
 export type SiteInfo = {
   name: string;
   path: string;
+  host_path?: string;
   url: string;
   files: number;
   size_bytes: number;
   has_index: boolean;
   domain?: string | null;
+  is_wordpress?: boolean;
+  top_entries?: { name: string; type: string; size?: number | null }[];
+  suggested_webroot?: string | null;
 };
 
 const API_BASE = typeof window === "undefined"
@@ -165,18 +169,9 @@ export function migrateSite(opts: {
   name: string;
   domain?: string;
   file: File;
+  onProgress?: (pct: number, label: string) => void;
 }) {
-  if (opts.file.size > 180 * 1024 * 1024) {
-    return Promise.reject(
-      new Error("ZIP больше 180 МБ — сожми архив или залей через SCP на сервер"),
-    );
-  }
-  const q = new URLSearchParams({ name: opts.name, filename: opts.file.name });
-  if (opts.domain) q.set("domain", opts.domain);
-  return uploadBinary<{ ok: boolean; site: SiteInfo & { nginx_conf?: string; created?: boolean } }>(
-    `/sites/migrate?${q}`,
-    opts.file,
-  );
+  return chunkedMigrate(opts);
 }
 
 export function bindSiteDomain(name: string, domain: string) {
@@ -193,7 +188,117 @@ export function fixSitePerms(name?: string) {
   });
 }
 
-/** Stream File as raw body — no base64, low browser memory. */
+export function inspectSites(name?: string) {
+  const q = name ? `?name=${encodeURIComponent(name)}` : "";
+  return request<{
+    ok: boolean;
+    sites_root?: string;
+    host_sites_path?: string;
+    host_path?: string;
+    container_path?: string;
+    diagnosis?: string;
+    site?: SiteInfo | null;
+    sites?: SiteInfo[];
+    pending_uploads?: unknown[];
+    hint?: string;
+  }>(`/sites/inspect${q}`);
+}
+
+const DEFAULT_CHUNK = 4 * 1024 * 1024;
+
+async function chunkedMigrate(opts: {
+  name: string;
+  domain?: string;
+  file: File;
+  onProgress?: (pct: number, label: string) => void;
+}) {
+  const { file, name, domain, onProgress } = opts;
+  const chunkSize = DEFAULT_CHUNK;
+  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+
+  onProgress?.(1, "Инициализация загрузки…");
+  const init = await request<{
+    ok: boolean;
+    upload_id: string;
+    chunk_size: number;
+    total_chunks: number;
+  }>("/upload/init", {
+    method: "POST",
+    body: JSON.stringify({
+      filename: file.name,
+      size: file.size,
+      site_name: name,
+      chunk_size: chunkSize,
+      total_chunks: totalChunks,
+    }),
+  });
+
+  const uploadId = init.upload_id;
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(file.size, start + chunkSize);
+    const blob = file.slice(start, end);
+    const pct = Math.round(((i + 1) / totalChunks) * 90);
+    onProgress?.(pct, `Чанк ${i + 1}/${totalChunks} (${formatBytes(end)} / ${formatBytes(file.size)})`);
+
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      try {
+        const res = await fetch(
+          `${API_BASE}/upload/chunk?id=${encodeURIComponent(uploadId)}&index=${i}`,
+          {
+            method: "POST",
+            headers: {
+              ...authHeaders(),
+              "Content-Type": "application/octet-stream",
+              "X-Filename": file.name,
+            },
+            body: blob,
+          },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          clearToken();
+          throw new Error("Нужен вход");
+        }
+        if (!res.ok) {
+          throw new Error((data as { error?: string }).error || `Чанк ${i}: HTTP ${res.status}`);
+        }
+        break;
+      } catch (err) {
+        if (attempt >= 3) throw err;
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
+  }
+
+  onProgress?.(95, "Сборка ZIP и распаковка…");
+  const done = await request<{
+    ok: boolean;
+    site: SiteInfo;
+    message?: string;
+    assembled_path?: string;
+  }>("/upload/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      upload_id: uploadId,
+      name,
+      domain: domain || "",
+      action: "migrate",
+    }),
+  });
+  onProgress?.(100, "Готово");
+  return done;
+}
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Stream File as raw body — for small files only. */
 async function uploadBinary<T>(path: string, file: File): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",

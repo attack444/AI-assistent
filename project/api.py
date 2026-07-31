@@ -56,6 +56,7 @@ from core import (
 from memory import MemoryStore
 from profile import UserProfile, load_profile
 from tools import git_run, list_dir, read_file
+import panel_uploads as pup
 
 DATA_DIR = Path.home() / ".ai-helper"
 PORT = int(os.environ.get("AI_HELPER_API_PORT", os.environ.get("API_PORT", "8502")))
@@ -65,7 +66,10 @@ SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
-MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))  # 200 MB
+# Chunked uploads support up to 2 GB by default (WordPress backups)
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
+HOST_SITES_PATH = os.environ.get("HOST_SITES_PATH", "/var/ai-helper/sites")
+CHUNK_SIZE = int(os.environ.get("UPLOAD_CHUNK_SIZE", str(4 * 1024 * 1024)))  # 4 MB
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
 _PUBLIC_PATHS = {"/status", "/auth/login", "/auth/check"}
@@ -175,9 +179,12 @@ def _site_info(name: str) -> Dict[str, Any]:
     domain_file = root / ".ai-helper-domain"
     if domain_file.is_file():
         domain = domain_file.read_text(encoding="utf-8").strip()
+    is_wp = pup.detect_wordpress(root)
+    nested = pup.find_wp_or_public(root)
     return {
         "name": name,
         "path": str(root),
+        "host_path": f"{HOST_SITES_PATH.rstrip('/')}/{name}",
         "url": f"/sites/{name}/",
         "files": files,
         "size_bytes": size,
@@ -187,14 +194,45 @@ def _site_info(name: str) -> Dict[str, Any]:
             or (root / "index.php").is_file()
         ),
         "domain": domain or None,
+        "is_wordpress": is_wp,
+        "top_entries": pup.top_entries(root),
+        "suggested_webroot": str(nested) if nested and nested.resolve() != root.resolve() else None,
     }
 
 
 def _flatten_hosting_layout(root: Path) -> None:
-    """Unwrap common hosting ZIP layouts: single folder, public_html, www, htdocs."""
-    if (root / "index.html").exists() or (root / "index.htm").exists() or (root / "index.php").exists():
+    """Unwrap common hosting ZIP layouts: public_html, www, wordpress, single folder."""
+    if (
+        (root / "index.html").exists()
+        or (root / "index.htm").exists()
+        or (root / "index.php").exists()
+        or pup.detect_wordpress(root)
+    ):
         return
-    for folder_name in ("public_html", "www", "htdocs", "httpdocs", "public"):
+    # Prefer known web roots nested inside the archive
+    found = pup.find_wp_or_public(root)
+    if found and found.resolve() != root.resolve():
+        for item in list(found.iterdir()):
+            dest = root / item.name
+            if dest.exists():
+                if dest.is_dir():
+                    shutil.rmtree(dest)
+                else:
+                    dest.unlink()
+            shutil.move(str(item), str(dest))
+        try:
+            cur = found
+            while cur != root and cur.parent:
+                parent = cur.parent
+                if cur.exists() and cur.is_dir() and not any(cur.iterdir()):
+                    cur.rmdir()
+                cur = parent
+                if cur.resolve() == root.resolve():
+                    break
+        except OSError:
+            pass
+        return
+    for folder_name in ("public_html", "www", "htdocs", "httpdocs", "public", "wordpress"):
         nested = root / folder_name
         if nested.is_dir():
             for item in list(nested.iterdir()):
@@ -462,10 +500,13 @@ class APIHandler(BaseHTTPRequestHandler):
             "llm_model": settings.llm_model,
             "fast_model": settings.fast_llm_model,
             "projects": list(projects.keys()),
-            "sites_root": str(SITES_ROOT),
             "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
             "auth_required": _auth_enabled(),
-            "version": "1.2",
+            "sites_root": str(SITES_ROOT),
+            "host_sites_path": HOST_SITES_PATH,
+            "max_upload_bytes": MAX_UPLOAD_BYTES,
+            "upload_chunk_size": CHUNK_SIZE,
+            "version": "1.3",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -848,6 +889,168 @@ class APIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
+    def _get_sites_inspect(self):
+        """Where did my files go? Diagnose empty / nested / WP sites."""
+        qs = self._qs()
+        name = (qs.get("name") or "").strip()
+        root = _ensure_sites_root()
+        pending = pup.list_pending(root)
+        if not name:
+            sites = []
+            for child in sorted(root.iterdir()):
+                if child.is_dir() and not child.name.startswith("."):
+                    sites.append(_site_info(child.name))
+            self._send(200, _json({
+                "ok": True,
+                "sites_root": str(root),
+                "host_sites_path": HOST_SITES_PATH,
+                "sites": sites,
+                "pending_uploads": pending,
+                "hint": (
+                    "Файлы сайтов на хосте: "
+                    f"{HOST_SITES_PATH}/<имя>/  (= {root}/<имя>/ в Docker). "
+                    "Незавершённые ZIP — в .uploads/"
+                ),
+            }))
+            return
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Некорректное имя"}))
+            return
+        site_root = root / name
+        info = _site_info(name) if site_root.exists() else None
+        exists = site_root.exists()
+        self._send(200, _json({
+            "ok": True,
+            "exists": exists,
+            "site": info,
+            "sites_root": str(root),
+            "host_path": f"{HOST_SITES_PATH.rstrip('/')}/{name}",
+            "container_path": str(site_root),
+            "pending_uploads": pending,
+            "diagnosis": (
+                "Папка сайта пуста или не создана — ZIP не дошёл или не распаковался. "
+                "Залей заново через chunked-загрузку (большие WP-архивы)."
+                if not exists or (info and info["files"] == 0)
+                else (
+                    "Похоже на WordPress — нужен PHP+MySQL (см. WORDPRESS.md)."
+                    if info and info.get("is_wordpress")
+                    else "Файлы на месте."
+                )
+            ),
+        }))
+
+    def _post_upload_init(self):
+        try:
+            body = self._read_body()
+            filename = body.get("filename") or "site.zip"
+            size = int(body.get("size") or 0)
+            site_name = (body.get("site_name") or body.get("name") or "").strip()
+            chunk_size = int(body.get("chunk_size") or CHUNK_SIZE)
+            result = pup.init_upload(
+                SITES_ROOT,
+                filename=filename,
+                size=size,
+                site_name=site_name,
+                chunk_size=chunk_size,
+            )
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_upload_chunk(self):
+        try:
+            qs = self._qs()
+            upload_id = (qs.get("id") or qs.get("upload_id") or "").strip()
+            index = int(qs.get("index") or -1)
+            if not upload_id:
+                self._send(400, _json({"error": "Нужен id загрузки"}))
+                return
+            # Stream chunk to temp then save (chunk is small ~4MB)
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                self._send(400, _json({"error": "Пустой чанк"}))
+                return
+            if length > CHUNK_SIZE * 2:
+                self._send(400, _json({"error": "Чанк слишком большой"}))
+                return
+            data = self.rfile.read(length)
+            result = pup.save_chunk(SITES_ROOT, upload_id, index, data)
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _get_upload_status(self):
+        try:
+            qs = self._qs()
+            upload_id = (qs.get("id") or qs.get("upload_id") or "").strip()
+            if not upload_id:
+                self._send(200, _json({"ok": True, "pending": pup.list_pending(SITES_ROOT)}))
+                return
+            self._send(200, _json(pup.status(SITES_ROOT, upload_id)))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_upload_complete(self):
+        """Assemble chunks and optionally extract into a site (WordPress-ready)."""
+        tmp_assembled: Optional[Path] = None
+        try:
+            body = self._read_body()
+            upload_id = (body.get("upload_id") or body.get("id") or "").strip()
+            name = (body.get("name") or body.get("site_name") or "").strip()
+            domain = (body.get("domain") or "").strip()
+            action = (body.get("action") or "migrate").strip()  # migrate | keep
+            if not upload_id:
+                self._send(400, _json({"error": "Нужен upload_id"}))
+                return
+            assembled = pup.assemble(SITES_ROOT, upload_id)
+            tmp_assembled = assembled
+            if action == "keep":
+                self._send(200, _json({
+                    "ok": True,
+                    "assembled_path": str(assembled),
+                    "host_hint": f"Файл в контейнере: {assembled}. На хосте смотри {HOST_SITES_PATH}/.uploads/",
+                    "size": assembled.stat().st_size,
+                }))
+                return
+            if not _SAFE_NAME.match(name):
+                self._send(400, _json({"error": "Имя сайта: латиница, цифры, _ и -"}))
+                return
+            if not zipfile.is_zipfile(assembled):
+                self._send(400, _json({
+                    "error": "Собранный файл не ZIP. Для WordPress нужен .zip бэкап сайта.",
+                    "assembled_path": str(assembled),
+                    "size": assembled.stat().st_size,
+                }))
+                return
+            root = _ensure_sites_root() / name
+            root.mkdir(parents=True, exist_ok=True)
+            self._extract_zip_file(assembled, root)
+            if domain:
+                _write_nginx_vhost(name, domain)
+            info = _site_info(name)
+            if info["files"] == 0:
+                self._send(400, _json({
+                    "error": (
+                        "ZIP распакован, но файлов 0. "
+                        f"Проверь архив. Путь: {info.get('host_path')}"
+                    ),
+                    "site": info,
+                    "assembled_path": str(assembled),
+                }))
+                return
+            self._send(200, _json({
+                "ok": True,
+                "site": info,
+                "assembled_path": str(assembled),
+                "message": (
+                    "WordPress обнаружен — дальше PHP+MySQL (см. deploy/WORDPRESS.md)."
+                    if info.get("is_wordpress")
+                    else "Сайт развёрнут."
+                ),
+            }))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
     def _post_sites_domain(self):
         body = self._read_body()
         name = (body.get("name") or "").strip()
@@ -1014,6 +1217,10 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_fs_list()
         elif path == "/sites":
             self._get_sites()
+        elif path == "/sites/inspect":
+            self._get_sites_inspect()
+        elif path == "/upload/status":
+            self._get_upload_status()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
@@ -1039,6 +1246,9 @@ class APIHandler(BaseHTTPRequestHandler):
             "/sites/migrate": self._post_sites_migrate,
             "/sites/domain": self._post_sites_domain,
             "/sites/fix-perms": self._post_sites_fix_perms,
+            "/upload/init": self._post_upload_init,
+            "/upload/chunk": self._post_upload_chunk,
+            "/upload/complete": self._post_upload_complete,
         }
         handler = routes.get(path)
         if handler:
