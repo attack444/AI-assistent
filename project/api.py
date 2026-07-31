@@ -632,7 +632,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.6",
+            "version": "2.7",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1205,6 +1205,51 @@ class APIHandler(BaseHTTPRequestHandler):
             f"Конфиг: {nginx_path}"
         )
         self._send(200, _json({"ok": True, "site": info}))
+
+    def _post_sites_sync(self):
+        """
+        Write a file into a site from VS Code / remote clients.
+        Body: { site, path, content } — path relative to site root (e.g. index.html).
+        Instantly live via nginx (no separate deploy step).
+        """
+        body = self._read_body()
+        name = (body.get("site") or body.get("name") or "").strip()
+        rel = (body.get("path") or body.get("relative_path") or "").strip().lstrip("/")
+        content = body.get("content", "")
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Некорректное имя сайта (site)"}))
+            return
+        if not rel or ".." in Path(rel).parts:
+            self._send(400, _json({"error": "Нужен относительный path внутри сайта"}))
+            return
+        if not isinstance(content, str):
+            self._send(400, _json({"error": "content должен быть строкой"}))
+            return
+        root = _ensure_sites_root() / name
+        if not root.is_dir():
+            self._send(404, _json({"error": f"Сайт не найден: {name}"}))
+            return
+        try:
+            dest = (root / rel).resolve()
+            if not _is_under(dest, root) and dest != root.resolve():
+                raise PermissionError("Путь вне сайта")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
+            try:
+                os.chmod(dest, 0o644)
+            except OSError:
+                pass
+            self._send(200, _json({
+                "ok": True,
+                "site": name,
+                "path": str(dest),
+                "relative": rel.replace("\\", "/"),
+                "bytes": len(content.encode("utf-8")),
+                "url": f"/sites/{name}/{rel.replace(chr(92), '/')}",
+                "live": True,
+            }))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
 
     # ── WordPress ────────────────────────────────────────────────
     def _get_wp_status(self):
@@ -2074,6 +2119,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/sites/deploy": self._post_sites_deploy,
             "/sites/migrate": self._post_sites_migrate,
             "/sites/domain": self._post_sites_domain,
+            "/sites/sync": self._post_sites_sync,
             "/sites/fix-perms": self._post_sites_fix_perms,
             "/sites/normalize": self._post_sites_normalize,
             "/upload/init": self._post_upload_init,

@@ -1,60 +1,52 @@
-# AI Helper — VS Code Extension
+# AI Helper — VS Code → сайт на VPS
 
-Локальный AI-ассистент прямо в VS Code. Работает с твоим Ollama и Groq.
+Правки из VS Code сразу попадают на сайт (без ручных команд и деплоя).
+
+## Как это работает
+
+1. **Чат в сайдбаре** с выбранным сайтом → агент на сервере пишет файлы в `/var/ai-helper/sites/<сайт>/` → nginx отдаёт их сразу.
+2. **Авто-синк** (`Ctrl+S`) → `POST /sites/sync` → тот же файл на сайте.
+3. Кнопка **☁ На сайт** у блока кода → записать код в файл на сервере.
 
 ## Установка
 
-### Вариант 1: Из VSIX (рекомендуется)
-
-```cmd
-cd vscode-extension
-npm install
-npm run package
+```bash
+# скопируй папку vscode-extension в extensions
+# Windows: %USERPROFILE%\.vscode\extensions\ai-helper-1.2.0
+# или: Extensions → Install from VSIX после npm run package
 ```
 
-Затем в VS Code: `Ctrl+Shift+P` → "Extensions: Install from VSIX" → выбери `ai-helper-1.0.0.vsix`
+Перезапусти VS Code.
 
-### Вариант 2: Символическая ссылка (для разработки)
+## Настройки (Settings → AI Helper)
 
-Скопируй папку `vscode-extension` в:
-- Windows: `%USERPROFILE%\.vscode\extensions\ai-helper-1.0.0`
-- Перезапусти VS Code
+| Ключ | Пример | Зачем |
+|------|--------|--------|
+| `aiHelper.apiUrl` | `http://80.78.248.195/api` | API панели |
+| `aiHelper.password` | пароль панели | логин, токен сам |
+| `aiHelper.token` | (опционально) | Bearer вместо password |
+| `aiHelper.site` | `5mb2` | какой сайт править |
+| `aiHelper.autoSyncOnSave` | `true` | Ctrl+S → сайт |
+| `aiHelper.localRoot` | пусто = workspace | корень зеркала сайта |
 
-## Требования
+## Быстрый старт
 
-- AI Helper должен быть запущен (`START.bat`)
-- API сервер работает на `http://localhost:8502`
+1. Открой локальную копию файлов сайта (или скачай нужные файлы).
+2. `Ctrl+Shift+P` → **AI Helper: Выбрать сайт на VPS** → `5mb2`.
+3. Задай `aiHelper.apiUrl` и `aiHelper.password`.
+4. Пиши в чате: «поменяй заголовок на …» — правка на сервере.
+5. Или правь файл руками и жми **Ctrl+S** — улетит на сайт.
+6. **Ctrl+Alt+S** — отправить текущий файл вручную.
 
-## Горячие клавиши
+## Команды
 
-| Клавиша | Действие |
-|---|---|
-| `Ctrl+Alt+A` | Спросить про файл/выделение |
-| `Ctrl+Alt+F` | Найти и исправить баги |
-| `Ctrl+Alt+C` | Smart Git Commit |
+| Команда | Клавиша |
+|---------|---------|
+| Чат | `Ctrl+Alt+A` |
+| Файл → сайт | `Ctrl+Alt+S` |
+| Выбрать сайт | Command Palette |
+| Авто-синк вкл/выкл | Command Palette |
 
-## Команды (Ctrl+Shift+P → "AI Helper:")
+## Без VS Code
 
-- **Спросить про файл** — задать вопрос с контекстом открытого файла
-- **Найти и исправить баги** — анализ кода
-- **Объяснить код** — подробное объяснение
-- **Написать тесты** — pytest/jest тесты
-- **Smart Git Commit** — AI генерирует commit message
-- **Smart Git Commit + Push** — коммит + пуш
-
-## Контекстное меню
-
-Правый клик в редакторе → раздел "AI Helper"
-
-## SCM (Source Control)
-
-В панели Git появляются кнопки "AI Helper: Smart Commit" и "+ Push"
-
-## Настройки
-
-```json
-{
-  "aiHelper.apiUrl": "http://localhost:8502",
-  "aiHelper.chatUrl": "http://localhost:8501"
-}
-```
+В веб-панели: **Сайты → Чат** у сайта — тот же эффект (правки на диске сервера).
