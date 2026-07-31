@@ -13,21 +13,20 @@ fi
 ENV_FILE="${ENV_FILE:-/opt/ai-helper/project/.env}"
 COMPOSE_DIR="${COMPOSE_DIR:-/opt/ai-helper/project/deploy}"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.prod.yml"
+REPO_DIR="${REPO_DIR:-/opt/ai-helper}"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "[!!] Нет $ENV_FILE"
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a
-source <(sed 's/\r$//' "$ENV_FILE")
-set +a
-
-DB="${MYSQL_DATABASE:-wordpress}"
-USER="${MYSQL_USER:-wp}"
-PASS="${MYSQL_PASSWORD:-}"
-ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
+# Не source весь .env — там gsk_/sk- ключи ломают bash
+# shellcheck source=env-get.sh
+source "$REPO_DIR/project/deploy/env-get.sh"
+DB="$(env_get MYSQL_DATABASE || true)"; DB="${DB:-wordpress}"
+USER="$(env_get MYSQL_USER || true)"; USER="${USER:-wp}"
+PASS="$(env_get MYSQL_PASSWORD || true)"
+ROOT_PASS="$(env_get MYSQL_ROOT_PASSWORD || true)"
 
 if [ -z "$PASS" ] || [ -z "$ROOT_PASS" ]; then
   echo "[!!] Задай MYSQL_PASSWORD и MYSQL_ROOT_PASSWORD в $ENV_FILE (латиница!)"

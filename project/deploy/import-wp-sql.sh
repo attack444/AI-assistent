@@ -5,6 +5,7 @@ set -euo pipefail
 SQL_FILE="${1:?Usage: $0 dump.sql [database]}"
 DB="${2:-wordpress}"
 ENV_FILE="${ENV_FILE:-/opt/ai-helper/project/.env}"
+REPO_DIR="${REPO_DIR:-/opt/ai-helper}"
 
 if [ ! -f "$SQL_FILE" ]; then
   echo "[!!] Нет файла: $SQL_FILE"
@@ -18,26 +19,32 @@ if [ "$SIZE" -lt 2048 ]; then
   exit 1
 fi
 
-if [ -f "$ENV_FILE" ]; then
-  # shellcheck disable=SC1090
-  set -a; source <(sed 's/\r$//' "$ENV_FILE"); set +a
+# shellcheck source=env-get.sh
+source "$REPO_DIR/project/deploy/env-get.sh"
+
+USER="$(env_get MYSQL_USER || true)"; USER="${USER:-wp}"
+PASS="$(env_get MYSQL_PASSWORD || true)"
+ROOT_PASS="$(env_get MYSQL_ROOT_PASSWORD || true)"
+if [ -n "${2:-}" ]; then
+  DB="$2"
+else
+  _db="$(env_get MYSQL_DATABASE || true)"; DB="${_db:-wordpress}"
 fi
 
-USER="${MYSQL_USER:-wp}"
-PASS="${MYSQL_PASSWORD:-}"
-ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
+if [ -z "$PASS" ]; then
+  echo "[!!] MYSQL_PASSWORD пустой в $ENV_FILE"
+  exit 1
+fi
 
 if ! docker ps --format '{{.Names}}' | grep -qx ai-helper-mysql; then
   echo "[!!] Контейнер ai-helper-mysql не запущен"
   exit 1
 fi
 
-# Prepare cleaned SQL: strip DEFINER, force USE wordpress
 TMP=$(mktemp /tmp/wp-import-XXXXXX.sql)
 trap 'rm -f "$TMP"' EXIT
 
 echo "[>>] Готовлю дамп (DEFINER/USE → $DB)…"
-# stream-friendly sed
 sed -E \
   -e 's/DEFINER[ ]*=[ ]*`[^`]+`@`[^`]+`//Ig' \
   -e "s/DEFINER[ ]*=[ ]*'[^']+'@'[^']+'//Ig" \
@@ -45,7 +52,6 @@ sed -E \
   -e "s/USE[[:space:]]+[a-zA-Z0-9_]+/USE \`$DB\`/Ig" \
   "$SQL_FILE" > "$TMP"
 
-# Reject information_schema-only dumps
 if head -c 4000 "$TMP" | grep -qi 'information_schema' \
   && ! head -c 200000 "$TMP" | grep -Eqi 'wp0w_|CREATE TABLE.*`wp_'; then
   echo "[!!] Похоже на дамп information_schema, не сайт"
@@ -53,17 +59,15 @@ if head -c 4000 "$TMP" | grep -qi 'information_schema' \
 fi
 
 echo "[>>] Import → DB=$DB user=$USER"
-# Prefer app user; fallback root
-if docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" < "$TMP"; then
+if docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED --default-character-set=utf8mb4 "$DB" < "$TMP"; then
   echo "[OK] Import via $USER"
-elif [ -n "$ROOT_PASS" ] && docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" --ssl-mode=DISABLED "$DB" < "$TMP"; then
+elif [ -n "$ROOT_PASS" ] && docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" --ssl-mode=DISABLED --default-character-set=utf8mb4 "$DB" < "$TMP"; then
   echo "[OK] Import via root"
 else
   echo "[!!] Import failed"
   exit 1
 fi
 
-# Quick table count
 COUNT=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" \
   -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB';" 2>/dev/null || echo 0)
 echo "[OK] Tables in $DB: $COUNT"

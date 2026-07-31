@@ -2,15 +2,29 @@
 # Переимпорт большого дампа 5mb2 через mysql в Docker
 set -euo pipefail
 REPO="${REPO_DIR:-/opt/ai-helper}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$REPO/project/.env"
 DB=wordpress
 
-if [ -f "$ENV_FILE" ]; then
-  set -a; source <(sed 's/\r$//' "$ENV_FILE"); set +a
+# Не source весь .env — GROQ gsk_... / OpenAI sk-... ломают bash ("command not found: gsk_...")
+ENV_GET="$SCRIPT_DIR/env-get.sh"
+[ -f "$ENV_GET" ] || ENV_GET="$REPO/project/deploy/env-get.sh"
+if [ ! -f "$ENV_GET" ]; then
+  echo "[!!] Нет env-get.sh — сначала: bash $REPO/project/deploy/update.sh"
+  exit 1
 fi
-USER="${MYSQL_USER:-wp}"
-PASS="${MYSQL_PASSWORD:-}"
-ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
+# shellcheck source=env-get.sh
+source "$ENV_GET"
+
+USER="$(env_get MYSQL_USER || true)"; USER="${USER:-wp}"
+PASS="$(env_get MYSQL_PASSWORD || true)"
+ROOT_PASS="$(env_get MYSQL_ROOT_PASSWORD || true)"
+DB="$(env_get MYSQL_DATABASE || true)"; DB="${DB:-wordpress}"
+
+if [ -z "$PASS" ] || [ -z "$ROOT_PASS" ]; then
+  echo "[!!] В $ENV_FILE нужны MYSQL_PASSWORD и MYSQL_ROOT_PASSWORD"
+  exit 1
+fi
 
 DUMP="${1:-}"
 if [ -z "$DUMP" ]; then
@@ -21,6 +35,7 @@ if [ -z "${DUMP:-}" ] || [ ! -f "$DUMP" ]; then
   exit 1
 fi
 echo "[>>] DUMP=$DUMP ($(stat -c%s "$DUMP") bytes)"
+echo "[>>] MySQL user=$USER db=$DB (пароли из .env, API-ключи не трогаем)"
 
 echo "[>>] Очищаю таблицы $DB…"
 docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" --ssl-mode=DISABLED -e "
@@ -49,15 +64,14 @@ sed -E \
 echo "[>>] Import (это может занять несколько минут)…"
 docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED --default-character-set=utf8mb4 "$DB" < "$TMP"
 
-COUNT=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" "$DB" \
+COUNT=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" \
   -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB';" 2>/dev/null || echo 0)
 echo "[OK] Tables: $COUNT"
 
-SITEURL=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" "$DB" \
+SITEURL=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" \
   -e "SELECT option_value FROM wp0w_options WHERE option_name='siteurl' LIMIT 1;" 2>/dev/null || true)
 echo "[info] siteurl=$SITEURL"
 
-# Point URLs to production domain
 docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" -e "
 UPDATE wp0w_options SET option_value='https://5mb2.ru' WHERE option_name IN ('siteurl','home');
 " 2>/dev/null || true
@@ -66,6 +80,7 @@ printf 'auto_prepend_file =\n' > /var/ai-helper/sites/5mb2/.user.ini || true
 docker restart ai-helper-php >/dev/null 2>&1 || true
 
 echo "============================================"
-echo "  Готово. Проверь: http://$(curl -s ifconfig.me)/sites/5mb2/"
-echo "  и https://5mb2.ru/ (после SSL)"
+echo "  Готово. Tables=$COUNT"
+echo "  http://$(curl -s --max-time 3 ifconfig.me)/sites/5mb2/"
+echo "  https://5mb2.ru/"
 echo "============================================"

@@ -82,11 +82,14 @@ else
   bash "$DEPLOY/reset-mysql-password.sh" || bash "$DEPLOY/reset-mysql-password.sh" --reinit
 fi
 
-# Reload env after possible rewrite
-set -a
-source <(sed 's/\r$//' "$ENV_FILE")
-set +a
-WP_PASS="${MYSQL_PASSWORD:-}"
+# Reload only MySQL vars (не source весь .env — gsk_/sk- ключи ломают bash)
+# shellcheck source=env-get.sh
+source "$DEPLOY/env-get.sh"
+WP_PASS="$(env_get MYSQL_PASSWORD || true)"
+MYSQL_PASSWORD="$WP_PASS"
+MYSQL_ROOT_PASSWORD="$(env_get MYSQL_ROOT_PASSWORD || true)"
+MYSQL_USER="$(env_get MYSQL_USER || true)"; MYSQL_USER="${MYSQL_USER:-wp}"
+MYSQL_DATABASE="$(env_get MYSQL_DATABASE || true)"; MYSQL_DATABASE="${MYSQL_DATABASE:-wordpress}"
 
 # ── 2. Site folder ───────────────────────────────────────────
 if [ ! -d "$SITE_ROOT" ]; then
