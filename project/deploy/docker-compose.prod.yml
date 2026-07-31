@@ -1,6 +1,6 @@
 services:
 
-  # ── AI Helper (Streamlit + API) ──────────────────────────────
+  # ── AI Helper API + Streamlit (legacy chat) ─────────────────
   app:
     build:
       context: ..
@@ -8,16 +8,38 @@ services:
     container_name: ai-helper-app
     restart: unless-stopped
     ports:
-      - "8501:8501"   # Streamlit chat
+      - "8501:8501"   # Streamlit (legacy)
       - "8502:8502"   # REST API
     volumes:
       - ai_helper_data:/root/.ai-helper
-      - /var/ai-helper/sites:/opt/sites   # deployed user sites
+      - /var/ai-helper/sites:/opt/sites
     env_file:
       - ../.env
     environment:
       - PYTHONUNBUFFERED=1
+      - AI_HELPER_API_HOST=0.0.0.0
+      - AI_HELPER_API_PORT=8502
+      - SITES_ROOT=/opt/sites
+      - WORKSPACE_ROOTS=/opt/sites,/opt/ai-helper,/workspace
       - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
+    networks:
+      - ai-net
+
+  # ── Next.js control panel (файлы / сайты / чат) ─────────────
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    container_name: ai-helper-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - API_INTERNAL_URL=http://app:8502
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - app
     networks:
       - ai-net
 

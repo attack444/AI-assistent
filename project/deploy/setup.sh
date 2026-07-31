@@ -64,10 +64,16 @@ info "Настраиваю файрвол..."
 ufw allow ssh
 ufw allow http
 ufw allow https
-ufw allow 8501   # Streamlit (временно)
+ufw allow 8501   # Streamlit (legacy)
 ufw allow 8502   # AI Helper API
+ufw allow 3000   # Next.js panel (также через Nginx :80)
 ufw --force enable
 log "Файрвол настроен"
+
+# ── Папка сайтов ─────────────────────────────────────────────
+mkdir -p /var/ai-helper/sites
+chmod 755 /var/ai-helper/sites
+log "Папка сайтов: /var/ai-helper/sites"
 
 # ── Клонирование репозитория ─────────────────────────────────
 REPO_DIR="/opt/ai-helper"
@@ -111,12 +117,14 @@ echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗"
 echo -e "║              Установка завершена!            ║"
 echo -e "╠══════════════════════════════════════════════╣"
-echo -e "║  Чат:     http://${SERVER_IP}:8501            "
-echo -e "║  API:     http://${SERVER_IP}:8502            "
-echo -e "║  API docs: http://${SERVER_IP}:8502/status    "
+echo -e "║  Панель:  http://${SERVER_IP}/                "
+echo -e "║  Файлы:   http://${SERVER_IP}/files           "
+echo -e "║  Сайты:   http://${SERVER_IP}/sites           "
+echo -e "║  API:     http://${SERVER_IP}/api/status      "
+echo -e "║  Legacy:  http://${SERVER_IP}/legacy/         "
 echo -e "╠══════════════════════════════════════════════╣"
 echo -e "║  Следующие шаги:                             ║"
-echo -e "║  1. Отредактируй .env с API ключами          ║"
-echo -e "║  2. Перезапусти: docker compose restart      ║"
-echo -e "║  3. Купи домен → добавим SSL                 ║"
+echo -e "║  1. Отредактируй .env (DeepSeek ключ)        ║"
+echo -e "║  2. docker compose up -d --build             ║"
+echo -e "║  3. Перенеси сайт: deploy/MIGRATE_SITE.md    ║"
 echo -e "╚══════════════════════════════════════════════╝${NC}"
