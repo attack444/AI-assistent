@@ -550,6 +550,100 @@ def search_code(query: str, root: str) -> Dict[str, Any]:
     return r
 
 
+def smart_search(
+    query: str,
+    root: str = ".",
+    mode: str = "all",
+    max_results: int = 80,
+) -> Dict[str, Any]:
+    """
+    Умный поиск по сайту/проекту:
+    - name: имена файлов
+    - path: пути папок/файлов
+    - content: фрагменты кода/текста
+    - all: всё сразу
+    """
+    args = {"query": query, "root": root, "mode": mode}
+    try:
+        q = (query or "").strip()
+        if not q:
+            return {"ok": False, "error": "Пустой query"}
+        p = Path(root).expanduser().resolve()
+        if not p.is_dir():
+            return {"ok": False, "error": f"Не директория: {p}"}
+        mode = (mode or "all").lower().strip()
+        if mode not in {"all", "name", "path", "content"}:
+            mode = "all"
+        max_results = max(10, min(int(max_results or 80), 200))
+        q_lower = q.lower()
+        name_hits: List[str] = []
+        path_hits: List[str] = []
+        content_hits: List[str] = []
+
+        from core import iter_project_files
+
+        # Walk names/paths (skip only relative segments — not /tmp host path)
+        if mode in {"all", "name", "path"}:
+            for item in p.rglob("*"):
+                try:
+                    rel_parts = item.relative_to(p).parts
+                except ValueError:
+                    continue
+                if any(s in rel_parts for s in _SKIP_DIRS):
+                    continue
+                rel = "/".join(rel_parts).replace("\\", "/")
+                rel_l = rel.lower()
+                if mode in {"all", "path"} and q_lower in rel_l:
+                    kind = "dir" if item.is_dir() else "file"
+                    path_hits.append(f"{kind}: {rel}")
+                if mode in {"all", "name"} and item.is_file() and q_lower in item.name.lower():
+                    name_hits.append(rel)
+                if len(path_hits) + len(name_hits) >= max_results * 2:
+                    break
+
+        # Content search (escaped, case-insensitive); also try as loose regex if looks like regex
+        if mode in {"all", "content"}:
+            try:
+                if any(ch in q for ch in r".*+?[](){}^$|\\") and len(q) >= 3:
+                    pattern = re.compile(q, re.IGNORECASE)
+                else:
+                    pattern = re.compile(re.escape(q), re.IGNORECASE)
+            except re.error:
+                pattern = re.compile(re.escape(q), re.IGNORECASE)
+            for f in iter_project_files(p):
+                try:
+                    rel = str(f.relative_to(p)).replace("\\", "/")
+                    for i, line in enumerate(
+                        f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+                    ):
+                        if pattern.search(line):
+                            content_hits.append(f"{rel}:{i}: {line.strip()[:140]}")
+                            if len(content_hits) >= max_results:
+                                break
+                except Exception:
+                    pass
+                if len(content_hits) >= max_results:
+                    break
+
+        r = {
+            "ok": True,
+            "query": q,
+            "mode": mode,
+            "names": name_hits[:max_results],
+            "paths": path_hits[:max_results],
+            "content": content_hits[:max_results],
+            "counts": {
+                "names": len(name_hits[:max_results]),
+                "paths": len(path_hits[:max_results]),
+                "content": len(content_hits[:max_results]),
+            },
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("smart_search", args, r)
+    return r
+
+
 # ---------------------------------------------------------------------------
 # Command / PowerShell tools
 # ---------------------------------------------------------------------------
@@ -1525,6 +1619,30 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "smart_search",
+            "description": (
+                "Умный поиск по сайту: имена файлов, пути папок и фрагменты кода. "
+                "mode: all | name | path | content. Используй вместо ручного list_dir."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Что искать: header, style.css, site-title…"},
+                    "root": {"type": "string", "default": "."},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["all", "name", "path", "content"],
+                        "default": "all",
+                    },
+                    "max_results": {"type": "integer", "default": 80},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_command",
             "description": "Выполняет команду в cmd/bash. Возвращает stdout+stderr.",
             "parameters": {
@@ -1948,6 +2066,27 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "site_health_check",
+            "description": (
+                "Автопроверка сайта: структура, WordPress/БД, viewport, съехавший header/float, "
+                "права. auto_fix=true — сразу исправить безопасные проблемы (clearfix, viewport, flatten, URL)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "."},
+                    "auto_fix": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "true — применить автоисправления",
+                    },
+                },
+            },
+        },
+    },
     # ── Self-evolution ────────────────────────────────────────────────────────
     {
         "type": "function",
@@ -2034,6 +2173,7 @@ def _hosting_fns() -> Dict[str, Any]:
         "flatten_site_layout": ht.flatten_site_layout,
         "php_lint": ht.php_lint,
         "nginx_test": ht.nginx_test,
+        "site_health_check": ht.site_health_check,
     }
 
 
@@ -2051,6 +2191,7 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "list_dir": list_dir,
     "find_files": find_files,
     "search_code": search_code,
+    "smart_search": smart_search,
     "run_command": run_command,
     "run_powershell": run_powershell,
     "get_env_var": get_env_var,

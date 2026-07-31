@@ -51,7 +51,8 @@ _TOOL_TRIGGERS = frozenset([
     "уведомлен",
     "улучши себя", "обнови модель", "бэкап", "бекап",
     "read_file", "write_file", "list_dir", "str_replace", "apply_edits",
-    "site_status", "wp_replace", "fix_perms",
+    "site_status", "wp_replace", "fix_perms", "smart_search", "health",
+    "автопровер", "автоисправ", "съехал", "clearfix",
 ])
 
 # Soft site-review questions → answer from prefetched server data (no tool drama)
@@ -65,10 +66,11 @@ _SITE_REVIEW_HINTS = (
 # Tool names grouped by category — only relevant ones sent per request
 _TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "str_replace",
                   "create_file", "delete_file", "mkdir_path", "copy_path",
-                  "move_path", "apply_edits", "list_dir", "find_files"}
-_TOOLS_CODE    = {"search_code", "format_code", "str_replace", "diff_preview", "apply_edits"}
+                  "move_path", "apply_edits", "list_dir", "find_files", "smart_search"}
+_TOOLS_CODE    = {"search_code", "smart_search", "format_code", "str_replace",
+                  "diff_preview", "apply_edits"}
 _TOOLS_HOST    = {"site_status", "wp_replace_urls", "site_fix_perms",
-                  "flatten_site_layout", "php_lint", "nginx_test"}
+                  "flatten_site_layout", "php_lint", "nginx_test", "site_health_check"}
 _TOOLS_GIT     = {"git_run", "diff_preview"}
 _TOOLS_CMD     = {"run_command", "run_powershell", "run_tests"}
 _TOOLS_WIN     = {"get_env_var", "set_env_var", "get_windows_info",
@@ -92,7 +94,12 @@ _CATEGORY_KEYWORDS: List[tuple[frozenset[str], frozenset[str]]] = [
      _TOOLS_CODE | _TOOLS_FILE),
     (frozenset(["wordpress", "wp-", "siteurl", "белый экран", "mysql",
                 "базу", "права", "permission", "nginx", "public_html",
-                "хостинг", "домен"]), _TOOLS_HOST | _TOOLS_FILE),
+                "хостинг", "домен", "съехал", "заголовок", "health",
+                "автопровер", "автоисправ", "верстк", "layout"]),
+     _TOOLS_HOST | _TOOLS_FILE | _TOOLS_CODE),
+    (frozenset(["найди файл", "найди папк", "поиск по", "smart_search",
+                "где файл", "где лежит", "фрагмент"]),
+     _TOOLS_FILE | _TOOLS_CODE),
     (frozenset(["git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
                 "merge", "rebase"]),                                      _TOOLS_GIT),
     (frozenset(["команд", "запусти", "powershell", "terminal",
@@ -683,6 +690,7 @@ _PATH_ARG_KEYS: Dict[str, tuple[str, ...]] = {
     "list_dir": ("path",),
     "find_files": ("root",),
     "search_code": ("root",),
+    "smart_search": ("root",),
     "diff_preview": ("path",),
     "format_code": ("path",),
     "php_lint": ("path",),
@@ -690,6 +698,7 @@ _PATH_ARG_KEYS: Dict[str, tuple[str, ...]] = {
     "wp_replace_urls": ("path",),
     "site_fix_perms": ("path",),
     "flatten_site_layout": ("path",),
+    "site_health_check": ("path",),
     "git_run": ("repo_path",),
     "run_tests": ("project_root",),
     "check_deps": ("project_path",),
@@ -708,8 +717,11 @@ def _dispatch(
     args = dict(args or {})
 
     _default_dot = {
-        "list_dir", "site_status", "site_fix_perms", "flatten_site_layout", "wp_replace_urls",
+        "list_dir", "site_status", "site_fix_perms", "flatten_site_layout",
+        "wp_replace_urls", "site_health_check", "smart_search",
     }
+    if name == "smart_search" and not str(args.get("root") or "").strip() and project_root:
+        args["root"] = "."
     if name in _default_dot and not str(args.get("path") or "").strip() and project_root:
         args["path"] = "."
     if name == "find_files" and not str(args.get("root") or "").strip() and project_root:

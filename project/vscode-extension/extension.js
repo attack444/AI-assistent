@@ -1,6 +1,7 @@
 /**
- * AI Helper VS Code Extension v1.2
+ * AI Helper VS Code Extension v1.3
  *
+ * - Setup wizard: password / site / auto-sync
  * - Chat → VPS panel API with site context (agent edits live site files)
  * - Save file → POST /sites/sync (instant live on nginx)
  * - Apply code block → write to site or local editor
@@ -644,8 +645,8 @@ body {
 <div id="messages">
   <div id="empty">
     <div><strong>Правки сразу на сайте</strong></div>
-    <div>Выбери сайт сверху → пиши задачу в чат<br>
-    или редактируй файл и жми Ctrl+S (авто-синк)</div>
+    <div>Ctrl+Shift+P → «AI Helper: Настройка VPS»<br>
+    (пароль, сайт, авто-синк). Потом пиши задачу или Ctrl+S.</div>
   </div>
 </div>
 <div id="inputArea">
@@ -902,6 +903,67 @@ async function refreshStatusBar() {
     }
 }
 
+async function runSetupWizard() {
+    const api = await vscode.window.showInputBox({
+        prompt: 'API URL панели на VPS',
+        value: apiBase() || 'http://80.78.248.195/api',
+        ignoreFocusOut: true,
+    });
+    if (api === undefined) return;
+    await cfg().update('apiUrl', api.trim(), vscode.ConfigurationTarget.Global);
+
+    const password = await vscode.window.showInputBox({
+        prompt: 'Пароль панели (PANEL_PASSWORD)',
+        password: true,
+        value: String(cfg().get('password', '') || ''),
+        ignoreFocusOut: true,
+    });
+    if (password === undefined) return;
+    await cfg().update('password', password, vscode.ConfigurationTarget.Global);
+
+    await ensureToken();
+    const s = await httpGet(apiBase() + '/sites');
+    const names = (s.sites || []).map((x) => x.name);
+    let site = getSite();
+    if (names.length) {
+        const pick = await vscode.window.showQuickPick(
+            [{ label: '(не выбирать)', description: 'только чат без записи' }, ...names.map((n) => ({ label: n }))],
+            { placeHolder: 'Какой сайт править на VPS?', ignoreFocusOut: true },
+        );
+        if (pick && pick.label !== '(не выбирать)') site = pick.label;
+    } else {
+        site = await vscode.window.showInputBox({
+            prompt: 'Имя сайта на сервере (например 5mb2)',
+            value: site || '5mb2',
+            ignoreFocusOut: true,
+        });
+        if (site === undefined) return;
+    }
+    await cfg().update('site', site || '', vscode.ConfigurationTarget.Global);
+
+    const syncPick = await vscode.window.showQuickPick(
+        [
+            { label: 'Да', description: 'Ctrl+S сразу на сайт', value: true },
+            { label: 'Нет', description: 'только вручную Ctrl+Alt+S', value: false },
+        ],
+        { placeHolder: 'Авто-синк при сохранении?', ignoreFocusOut: true },
+    );
+    if (syncPick) {
+        await cfg().update('autoSyncOnSave', !!syncPick.value, vscode.ConfigurationTarget.Global);
+    }
+
+    const st = await httpGet(apiBase() + '/status');
+    if (st.ok) {
+        vscode.window.showInformationMessage(
+            `AI Helper готов → сайт «${getSite() || '—'}», авто-синк ${autoSyncOn() ? 'ON' : 'OFF'}`,
+        );
+    } else {
+        vscode.window.showWarningMessage(
+            `Настройки сохранены, но API не ответил: ${st.error || 'offline'}. Проверь apiUrl.`,
+        );
+    }
+}
+
 function activate(context) {
     const provider = new ChatViewProvider(context);
     context.subscriptions.push(
@@ -916,6 +978,21 @@ function activate(context) {
     refreshStatusBar();
     const timer = setInterval(refreshStatusBar, 30_000);
     context.subscriptions.push({ dispose: () => clearInterval(timer) });
+
+    // First run: offer setup if password/site missing (old extension only had apiUrl)
+    setTimeout(() => {
+        if (!getToken() && !String(cfg().get('password', '') || '').trim()) {
+            vscode.window
+                .showInformationMessage(
+                    'AI Helper: нужны Password и Site. Сейчас только Api Url / Chat Url — значит стоит старая версия или не настроено.',
+                    'Настроить',
+                    'Позже',
+                )
+                .then((choice) => {
+                    if (choice === 'Настроить') vscode.commands.executeCommand('aiHelper.setup');
+                });
+        }
+    }, 1500);
 
     // Auto-sync on save → live site
     context.subscriptions.push(
@@ -941,6 +1018,11 @@ function activate(context) {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('aiHelper.setup', async () => {
+            await runSetupWizard();
+            provider._sendStatus();
+            refreshStatusBar();
+        }),
         vscode.commands.registerCommand('aiHelper.newChat', () => {
             vscode.commands.executeCommand('aiHelper.chat.focus');
         }),

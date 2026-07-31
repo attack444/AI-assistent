@@ -1,8 +1,8 @@
 {
   "name": "ai-helper",
   "displayName": "AI Helper",
-  "description": "AI на VPS: чат правит сайт на сервере, сохранение файла сразу на сайт",
-  "version": "1.2.0",
+  "description": "AI на VPS: чат и Ctrl+S правят сайт на сервере",
+  "version": "1.3.0",
   "publisher": "ai-helper-local",
   "engines": { "vscode": "^1.80.0" },
   "categories": ["AI", "Other"],
@@ -30,6 +30,7 @@
       ]
     },
     "commands": [
+      { "command": "aiHelper.setup", "title": "AI Helper: Настройка VPS (пароль, сайт, авто-синк)" },
       { "command": "aiHelper.newChat", "title": "AI Helper: Новый чат" },
       { "command": "aiHelper.selectSite", "title": "AI Helper: Выбрать сайт на VPS" },
       { "command": "aiHelper.pushFile", "title": "AI Helper: Отправить файл на сайт" },
@@ -48,6 +49,7 @@
       ]
     },
     "keybindings": [
+      { "command": "aiHelper.setup", "key": "ctrl+alt+h", "mac": "cmd+alt+h" },
       { "command": "aiHelper.newChat", "key": "ctrl+alt+a", "mac": "cmd+alt+a" },
       { "command": "aiHelper.pushFile", "key": "ctrl+alt+s", "mac": "cmd+alt+s" },
       { "command": "aiHelper.smartCommit", "key": "ctrl+alt+c", "mac": "cmd+alt+c" }
@@ -55,40 +57,47 @@
     "configuration": {
       "title": "AI Helper",
       "properties": {
-        "aiHelper.apiUrl": {
-          "type": "string",
-          "default": "http://80.78.248.195/api",
-          "description": "URL API панели на VPS (через nginx /api или :8502)"
-        },
-        "aiHelper.chatUrl": {
-          "type": "string",
-          "default": "http://80.78.248.195",
-          "description": "URL веб-панели"
-        },
-        "aiHelper.token": {
-          "type": "string",
-          "default": "",
-          "description": "Bearer-токен панели (после входа в веб-панель — из localStorage ai-helper-token, или логин командой)"
-        },
         "aiHelper.password": {
           "type": "string",
           "default": "",
-          "description": "Пароль панели (PANEL_PASSWORD). Если задан — токен получается автоматически"
+          "order": 1,
+          "description": "Пароль панели на VPS (PANEL_PASSWORD). Нужен для записи на сайт."
         },
         "aiHelper.site": {
           "type": "string",
           "default": "",
-          "description": "Имя сайта на сервере (папка в /var/ai-helper/sites), например 5mb2"
+          "order": 2,
+          "description": "Имя сайта на сервере, например 5mb2"
         },
         "aiHelper.autoSyncOnSave": {
           "type": "boolean",
           "default": true,
-          "description": "При сохранении файла в VS Code сразу писать его на сайт (POST /sites/sync)"
+          "order": 3,
+          "description": "Ctrl+S сразу пишет файл на сайт (POST /sites/sync)"
+        },
+        "aiHelper.apiUrl": {
+          "type": "string",
+          "default": "http://80.78.248.195/api",
+          "order": 4,
+          "description": "URL API панели (обычно http://IP/api)"
+        },
+        "aiHelper.chatUrl": {
+          "type": "string",
+          "default": "http://80.78.248.195",
+          "order": 5,
+          "description": "URL веб-панели в браузере"
+        },
+        "aiHelper.token": {
+          "type": "string",
+          "default": "",
+          "order": 6,
+          "description": "Bearer-токен (необязательно, если задан Password)"
         },
         "aiHelper.localRoot": {
           "type": "string",
           "default": "",
-          "description": "Локальная папка-зеркало сайта (пусто = корень workspace). Относительные пути от неё → путь на сайте"
+          "order": 7,
+          "description": "Локальная папка-зеркало сайта (пусто = корень workspace)"
         }
       }
     }

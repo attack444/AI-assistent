@@ -632,7 +632,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.7",
+            "version": "2.8",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1205,6 +1205,24 @@ class APIHandler(BaseHTTPRequestHandler):
             f"Конфиг: {nginx_path}"
         )
         self._send(200, _json({"ok": True, "site": info}))
+
+    def _post_sites_health(self):
+        """Auto-check site issues; optional auto_fix."""
+        from hosting_tools import site_health_check
+
+        body = self._read_body()
+        name = (body.get("site") or body.get("name") or "").strip()
+        auto_fix = bool(body.get("auto_fix") or body.get("fix"))
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Некорректное имя сайта"}))
+            return
+        root = _ensure_sites_root() / name
+        if not root.is_dir():
+            self._send(404, _json({"error": f"Сайт не найден: {name}"}))
+            return
+        result = site_health_check(str(root), auto_fix=auto_fix)
+        result["site"] = name
+        self._send(200, _json(result))
 
     def _post_sites_sync(self):
         """
@@ -2120,6 +2138,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/sites/migrate": self._post_sites_migrate,
             "/sites/domain": self._post_sites_domain,
             "/sites/sync": self._post_sites_sync,
+            "/sites/health": self._post_sites_health,
             "/sites/fix-perms": self._post_sites_fix_perms,
             "/sites/normalize": self._post_sites_normalize,
             "/upload/init": self._post_upload_init,

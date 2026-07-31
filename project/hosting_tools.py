@@ -261,3 +261,295 @@ def _local_flatten(root: Path) -> None:
                 shutil.move(str(item), str(dest))
             shutil.rmtree(nested, ignore_errors=True)
             return
+
+
+def _find_main_html(root: Path) -> Optional[Path]:
+    for name in ("index.html", "index.htm"):
+        p = root / name
+        if p.is_file():
+            return p
+    for sub in ("public_html", "www", "public"):
+        for name in ("index.html", "index.htm"):
+            p = root / sub / name
+            if p.is_file():
+                return p
+    # WP theme front — skip; prefer header.php later
+    return None
+
+
+def _find_header_css(root: Path) -> List[Path]:
+    candidates: List[Path] = []
+    for pattern in ("style.css", "styles.css", "main.css", "header.css", "theme.css"):
+        for p in root.rglob(pattern):
+            if any(s in p.parts for s in ("node_modules", ".git", "vendor")):
+                continue
+            candidates.append(p)
+            if len(candidates) >= 8:
+                return candidates
+    return candidates
+
+
+def site_health_check(path: str = ".", auto_fix: bool = False) -> Dict[str, Any]:
+    """
+    Автопроверка сайта: структура, WP, HTML/CSS типичные поломки (в т.ч. «съехавший» header).
+    auto_fix=True — безопасные автоисправления.
+    """
+    import re
+
+    try:
+        root = Path(path).expanduser().resolve()
+        if not root.is_dir():
+            return {"ok": False, "error": f"Не директория: {root}"}
+
+        issues: List[Dict[str, Any]] = []
+        fixes: List[Dict[str, Any]] = []
+
+        def add(kind: str, msg: str, severity: str = "warn", file: str = "", fixable: bool = False):
+            issues.append({
+                "kind": kind,
+                "message": msg,
+                "severity": severity,
+                "file": file,
+                "fixable": fixable,
+            })
+
+        # ── Structure ──────────────────────────────────────────────────────
+        nested = None
+        for folder_name in ("public_html", "www", "htdocs", "wordpress"):
+            cand = root / folder_name
+            if cand.is_dir() and (
+                (cand / "index.php").is_file()
+                or (cand / "index.html").is_file()
+                or (cand / "wp-config.php").is_file()
+            ):
+                nested = folder_name
+                break
+        if nested:
+            add(
+                "layout",
+                f"Сайт лежит во вложенной папке «{nested}/» — nginx может отдавать пустой корень",
+                "error",
+                nested + "/",
+                True,
+            )
+            if auto_fix:
+                before = [p.name for p in root.iterdir()][:20]
+                _local_flatten(root)
+                fixes.append({"action": "flatten_site_layout", "before": before})
+
+        has_index = any((root / n).is_file() for n in ("index.html", "index.htm", "index.php"))
+        if not has_index:
+            add("structure", "В корне нет index.html / index.php", "error", fixable=False)
+
+        # ── WordPress ──────────────────────────────────────────────────────
+        is_wp = (root / "wp-config.php").is_file() or (root / "wp-content").is_dir()
+        if is_wp:
+            try:
+                import wp_tools as wpt
+                st = wpt.wp_status(root)
+                db = st.get("db") or {}
+                if not db.get("ok"):
+                    add("wordpress", f"MySQL: {db.get('error') or 'нет соединения'}", "error")
+                urls = (st.get("urls") or {}).get("urls") or {}
+                domain = _site_domain(root)
+                siteurl = str(urls.get("siteurl") or "")
+                if domain and siteurl and domain not in siteurl and "localhost" not in siteurl:
+                    add(
+                        "wordpress",
+                        f"siteurl={siteurl} не совпадает с доменом {domain}",
+                        "warn",
+                        "БД options",
+                        True,
+                    )
+                    if auto_fix:
+                        new_url = f"http://{domain}"
+                        r = wpt.replace_site_url("AUTO", new_url, st.get("defines", {}).get("table_prefix") or "wp_")
+                        fixes.append({"action": "wp_replace_urls", "new_url": new_url, "result": r.get("ok")})
+            except Exception as exc:
+                add("wordpress", f"Не удалось проверить WP: {exc}", "warn")
+
+        # ── HTML head / header ─────────────────────────────────────────────
+        html = _find_main_html(root)
+        if html:
+            text = html.read_text(encoding="utf-8", errors="ignore")
+            rel = str(html.relative_to(root)).replace("\\", "/")
+            if not re.search(r"<meta[^>]+charset=", text, re.I):
+                add("html", "Нет <meta charset> — кириллица/вёрстка может ломаться", "warn", rel, True)
+                if auto_fix:
+                    if re.search(r"<head[^>]*>", text, re.I):
+                        text2 = re.sub(
+                            r"(<head[^>]*>)",
+                            r'\1\n<meta charset="utf-8">',
+                            text,
+                            count=1,
+                            flags=re.I,
+                        )
+                        html.write_text(text2, encoding="utf-8")
+                        text = text2
+                        fixes.append({"action": "add_charset", "file": rel})
+            if not re.search(r"name=[\"']viewport[\"']", text, re.I):
+                add(
+                    "html",
+                    "Нет viewport — на телефоне заголовок/блок часто «съезжает»",
+                    "warn",
+                    rel,
+                    True,
+                )
+                if auto_fix:
+                    if re.search(r"<head[^>]*>", text, re.I):
+                        text2 = re.sub(
+                            r"(<head[^>]*>)",
+                            r'\1\n<meta name="viewport" content="width=device-width, initial-scale=1">',
+                            text,
+                            count=1,
+                            flags=re.I,
+                        )
+                        html.write_text(text2, encoding="utf-8")
+                        text = text2
+                        fixes.append({"action": "add_viewport", "file": rel})
+
+            # Unclosed header/h1 rough check in first 8KB
+            head_chunk = text[:12000]
+            for tag in ("header", "h1", "nav", "div"):
+                opens = len(re.findall(rf"<{tag}(?:\s|>)", head_chunk, re.I))
+                closes = len(re.findall(rf"</{tag}>", head_chunk, re.I))
+                if opens > closes + 1:
+                    add(
+                        "html",
+                        f"Возможно незакрытый <{tag}> в начале страницы (открыто {opens}, закрыто {closes}) — блок может «съехать»",
+                        "warn",
+                        rel,
+                    )
+
+            # Inline style on h1 with huge negative margin / left
+            if re.search(
+                r"<h1[^>]+style=[\"'][^\"']*(?:margin-left\s*:\s*-?\d{3,}|left\s*:\s*-?\d{3,}|transform\s*:\s*translate)",
+                text,
+                re.I,
+            ):
+                add(
+                    "layout",
+                    "У <h1> подозрительный inline-style (сдвиг) — заголовок может быть съехавшим",
+                    "warn",
+                    rel,
+                    True,
+                )
+                if auto_fix:
+                    text2 = re.sub(
+                        r"(<h1[^>]*)\sstyle=[\"'][^\"']*[\"']",
+                        r"\1",
+                        text,
+                        count=1,
+                        flags=re.I,
+                    )
+                    if text2 != text:
+                        html.write_text(text2, encoding="utf-8")
+                        text = text2
+                        fixes.append({"action": "strip_h1_inline_shift", "file": rel})
+
+        # ── CSS clearfix / header float ──────────────────────────────────
+        for css in _find_header_css(root):
+            try:
+                css_text = css.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            rel = str(css.relative_to(root)).replace("\\", "/")
+            has_float_header = bool(
+                re.search(
+                    r"(header|\.site-header|\.header|\.main-header)[^{]*\{[^}]*float\s*:\s*left",
+                    css_text,
+                    re.I | re.S,
+                )
+            ) or bool(
+                re.search(
+                    r"(header|\.site-header|\.header)\s+[^{]*\{[^}]*float\s*:\s*left",
+                    css_text,
+                    re.I | re.S,
+                )
+            )
+            # children floated but parent without clearfix
+            floated_nav = bool(re.search(r"(nav|\.menu|\.logo|h1)[^{]*\{[^}]*float\s*:\s*left", css_text, re.I | re.S))
+            has_clearfix = "clearfix" in css_text.lower() or "overflow:hidden" in css_text.replace(" ", "").lower() or "overflow: hidden" in css_text.lower()
+            if floated_nav and not has_clearfix:
+                add(
+                    "layout",
+                    f"В {rel}: float у меню/лого/h1 без clearfix — классическая причина «съехавшего» заголовка",
+                    "error",
+                    rel,
+                    True,
+                )
+                if auto_fix:
+                    patch = (
+                        "\n\n/* AI Helper auto-fix: contain floated header children */\n"
+                        "header, .site-header, .header, .main-header {\n"
+                        "  overflow: hidden;\n"
+                        "}\n"
+                        "header::after, .site-header::after, .header::after {\n"
+                        "  content: \"\";\n"
+                        "  display: table;\n"
+                        "  clear: both;\n"
+                        "}\n"
+                    )
+                    if "AI Helper auto-fix" not in css_text:
+                        css.write_text(css_text.rstrip() + patch, encoding="utf-8")
+                        fixes.append({"action": "css_clearfix_header", "file": rel})
+
+            # h1 with large negative margin
+            if re.search(r"h1[^{]*\{[^}]*(margin-left|left)\s*:\s*-?\d{3,}px", css_text, re.I | re.S):
+                add(
+                    "layout",
+                    f"В {rel}: у h1 большой сдвиг (margin/left) — заголовок может уехать",
+                    "warn",
+                    rel,
+                    True,
+                )
+                if auto_fix:
+                    text2 = re.sub(
+                        r"(h1[^{]*\{[^}]*)((?:margin-left|left)\s*:\s*-?\d{3,}px\s*;?)",
+                        r"\1/* fixed: \2 */ margin-left: 0;",
+                        css_text,
+                        count=1,
+                        flags=re.I | re.S,
+                    )
+                    if text2 != css_text and "AI Helper h1-shift" not in css_text:
+                        # simpler: zero out extreme left margins on h1 blocks
+                        text2 = re.sub(
+                            r"(h1\s*\{[^}]*)margin-left\s*:\s*-?\d{3,}px\s*;?",
+                            r"\1margin-left: 0; /* AI Helper h1-shift */",
+                            css_text,
+                            count=1,
+                            flags=re.I | re.S,
+                        )
+                        if text2 != css_text:
+                            css.write_text(text2, encoding="utf-8")
+                            fixes.append({"action": "css_h1_margin_reset", "file": rel})
+
+        # ── Perms hint ─────────────────────────────────────────────────────
+        try:
+            st_mode = root.stat().st_mode & 0o777
+            if st_mode & 0o004 == 0:
+                add("perms", "Корень сайта может быть не читаем для nginx", "warn", str(root), True)
+                if auto_fix:
+                    site_fix_perms(str(root))
+                    fixes.append({"action": "site_fix_perms"})
+        except OSError:
+            pass
+
+        errors = sum(1 for i in issues if i["severity"] == "error")
+        warns = sum(1 for i in issues if i["severity"] == "warn")
+        return {
+            "ok": errors == 0,
+            "path": str(root),
+            "is_wordpress": is_wp,
+            "issues": issues,
+            "errors": errors,
+            "warnings": warns,
+            "fixes_applied": fixes,
+            "edited": bool(fixes),
+            "summary": (
+                f"Проверка: {errors} ошибок, {warns} предупреждений"
+                + (f", исправлено: {len(fixes)}" if fixes else "")
+            ),
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}

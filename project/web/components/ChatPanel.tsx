@@ -71,6 +71,11 @@ function quickPrompts(site: string, ctx: SiteContext | null): { label: string; t
         "Что скажешь о этом сайте? Разбери по файлам на сервере: тип (WP/статика), структура, домен, проблемы, что улучшить. Конкретно, без отговорок про отсутствие доступа.",
     },
     {
+      label: "Автопроверка",
+      text:
+        "Запусти site_health_check с auto_fix=true: найди ошибки вёрстки (съехавший заголовок/float), viewport, WP URL, вложенный public_html — и сразу исправь безопасное. Потом кратко отчёт.",
+    },
+    {
       label: "Статус",
       text: "Проверь статус сайта (site_status): WordPress?, БД, siteurl/home, index. Краткий отчёт и что чинить.",
     },
