@@ -41,6 +41,25 @@ if ! grep -q '^PANEL_PASSWORD=.\+' "$ENV_FILE" 2>/dev/null; then
   fi
 fi
 
+# Heal bare API keys: a lone "gsk_..." / "sk-..." line → bash "command not found"
+# (часто ключ вставили без GROQ_API_KEY= / OPENAI_API_KEY=)
+if grep -qE '^[[:space:]]*gsk_[A-Za-z0-9]' "$ENV_FILE" 2>/dev/null; then
+  echo "[>>] Чиню голый gsk_... в .env (строка без GROQ_API_KEY=)…"
+  if grep -qE '^[[:space:]]*GROQ_API_KEY=' "$ENV_FILE"; then
+    sed -i -E 's/^[[:space:]]*(gsk_[A-Za-z0-9_-]+)/# (moved) \1/' "$ENV_FILE"
+  else
+    sed -i -E '0,/^[[:space:]]*(gsk_[A-Za-z0-9_-]+)/s//GROQ_API_KEY=\1/' "$ENV_FILE"
+  fi
+fi
+if grep -qE '^[[:space:]]*sk-[A-Za-z0-9]' "$ENV_FILE" 2>/dev/null; then
+  echo "[>>] Чиню голый sk-... в .env…"
+  if grep -qE '^[[:space:]]*(OPENAI_API_KEY|DEEPSEEK_API_KEY)=' "$ENV_FILE"; then
+    sed -i -E 's/^[[:space:]]*(sk-[A-Za-z0-9_-]+)/# (moved) \1/' "$ENV_FILE"
+  else
+    sed -i -E '0,/^[[:space:]]*(sk-[A-Za-z0-9_-]+)/s//DEEPSEEK_API_KEY=\1/' "$ENV_FILE"
+  fi
+fi
+
 # Warn about Cyrillic MySQL passwords (pymysql latin-1 crash)
 if grep -E '^MYSQL_(PASSWORD|ROOT_PASSWORD)=.*[^ -~]' "$ENV_FILE" >/dev/null 2>&1; then
   echo ""
