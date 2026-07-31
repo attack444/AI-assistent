@@ -11,6 +11,7 @@ import {
   uploadFs,
   writeFs,
 } from "@/lib/api";
+import { CodeEditor, previewUrlForPath } from "@/components/CodeEditor";
 
 function formatSize(n?: number) {
   if (n == null) return "";
@@ -29,6 +30,7 @@ export function FileManager() {
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
+  const [okMsg, setOkMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (p = path) => {
@@ -61,6 +63,7 @@ export function FileManager() {
     }
     setBusy(true);
     setError("");
+    setOkMsg("");
     try {
       const data = await readFs(entry.path);
       setSelected(data.path);
@@ -80,6 +83,8 @@ export function FileManager() {
     try {
       await writeFs(selected, content);
       setDirty(false);
+      setOkMsg("Сохранено");
+      setTimeout(() => setOkMsg(""), 2000);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -142,6 +147,8 @@ export function FileManager() {
     }
   }
 
+  const preview = selected ? previewUrlForPath(selected) : null;
+
   return (
     <div className="panel files-layout">
       <div className="files-tree">
@@ -174,6 +181,18 @@ export function FileManager() {
           </div>
         ) : null}
         {error ? <div className="error-banner">{error}</div> : null}
+        {okMsg ? (
+          <div
+            className="error-banner"
+            style={{
+              background: "rgba(26, 127, 75, 0.1)",
+              color: "var(--ok)",
+              borderColor: "rgba(26, 127, 75, 0.25)",
+            }}
+          >
+            {okMsg}
+          </div>
+        ) : null}
         <div>
           {entries.length === 0 ? (
             <div className="empty">Папка пуста</div>
@@ -200,7 +219,12 @@ export function FileManager() {
       <div className="files-editor">
         <div className="editor-head">
           <div className="mono muted">{selected || "Выбери файл"}</div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {preview ? (
+              <a className="btn ghost small" href={preview} target="_blank" rel="noreferrer">
+                Проверить
+              </a>
+            ) : null}
             <button className="btn small" type="button" disabled={!selected || !dirty || busy} onClick={save}>
               Сохранить
             </button>
@@ -211,16 +235,17 @@ export function FileManager() {
         </div>
         <div className="editor-body">
           {selected ? (
-            <textarea
-              className="textarea"
+            <CodeEditor
+              path={selected}
               value={content}
-              onChange={(e) => {
-                setContent(e.target.value);
+              onChange={(v) => {
+                setContent(v);
                 setDirty(true);
               }}
+              onSave={() => void save()}
             />
           ) : (
-            <div className="empty">Открой файл слева — как в файловом менеджере хостинга.</div>
+            <div className="empty">Открой файл слева — правь и жми «Проверить», чтобы увидеть на сервере.</div>
           )}
         </div>
       </div>

@@ -43,7 +43,7 @@ export function Sidebar() {
         Выйти
       </button>
       <p className="muted" style={{ marginTop: "auto", fontSize: "0.85rem" }}>
-        Файлы и сайты на VPS — без FTP-клиента.
+        5mb2 + ai на одном VPS. Редактор и чат — без FTP.
       </p>
     </aside>
   );

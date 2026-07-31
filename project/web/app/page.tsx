@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getStatus } from "@/lib/api";
+import { getStatus, listSites, SiteInfo } from "@/lib/api";
 
 export default function HomePage() {
-  const [status, setStatus] = useState<string>("проверяю API…");
+  const [status, setStatus] = useState("проверяю API…");
   const [authHint, setAuthHint] = useState("");
+  const [sites, setSites] = useState<SiteInfo[]>([]);
 
   useEffect(() => {
     getStatus()
@@ -20,6 +21,10 @@ export default function HomePage() {
         setAuthHint(s.auth_required ? "Нужен пароль панели" : "Пароль не задан");
       })
       .catch(() => setStatus("API пока недоступен — запусти backend"));
+
+    listSites()
+      .then((d) => setSites(d.sites || []))
+      .catch(() => setSites([]));
   }, []);
 
   return (
@@ -27,27 +32,41 @@ export default function HomePage() {
       <div className="panel hero-card">
         <div className="brand">
           AI Helper
-          <span>серверная панель</span>
+          <span>хостинг + ассистент</span>
         </div>
-        <h1>Файлы, сайты и AI в одном интерфейсе</h1>
+        <h1>Один сервер — сайты, редактор и AI</h1>
         <p>
-          Открой эту страницу по адресу <span className="mono">http://IP/</span> —
-          это и есть интерфейс сервера. Дальше: файлы, сайты, чат.
+          Панель на этом VPS: сайт <strong>5mb2</strong> уже на хостинге,
+          сайт <strong>ai</strong> — витрина и среда для правок. HTTPS позже.
         </p>
         <div className="hero-actions">
-          <Link className="btn" href="/files">
-            Открыть файлы
+          <Link className="btn" href="/sites">
+            Сайты
           </Link>
-          <Link className="btn ghost" href="/sites">
-            Мои сайты
+          <Link className="btn ghost" href="/files?path=/opt/sites/ai">
+            Редактор ai
           </Link>
-          <Link className="btn ghost" href="/chat">
-            Чат
+          <Link className="btn ghost" href="/chat?site=ai">
+            Чат по ai
           </Link>
           <Link className="btn ghost" href="/login">
             Вход
           </Link>
         </div>
+        {sites.length ? (
+          <div className="muted" style={{ marginTop: 18, fontSize: "0.95rem" }}>
+            На сервере:{" "}
+            {sites.map((s, i) => (
+              <span key={s.name}>
+                {i ? " · " : ""}
+                <Link href={`/files?path=${encodeURIComponent(s.path)}`}>
+                  {s.name}
+                </Link>
+                {s.domain ? ` (${s.domain})` : ""}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div className="status-pill">
           <span className="dot" />
           {status}

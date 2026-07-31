@@ -6,8 +6,9 @@ export default function SitesPage() {
       <div className="page-head">
         <h1>Сайты</h1>
         <p>
-          Хостинг на VPS: большие ZIP (WordPress) грузятся чанками. Файлы лежат в{" "}
-          <span className="mono">/var/ai-helper/sites/имя/</span>. Если пусто — «Найти файлы».
+          Два рабочих контура: <strong>5mb2</strong> (продакшен WP) и <strong>ai</strong> (витрина + среда).
+          У карточки — «Файлы» / «Чат». HTTPS отложили. Корень:{" "}
+          <span className="mono">/var/ai-helper/sites/</span>
         </p>
       </div>
       <SitesPanel />

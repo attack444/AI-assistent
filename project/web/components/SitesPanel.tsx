@@ -375,6 +375,8 @@ export function SitesPanel() {
               <div>
                 <h3>
                   {site.name}
+                  {site.name === "5mb2" ? " · прод" : ""}
+                  {site.name === "ai" ? " · среда" : ""}
                   {site.is_wordpress ? " · WordPress" : ""}
                 </h3>
                 <p className="muted" style={{ margin: "6px 0 0" }}>
