@@ -241,8 +241,6 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
         }
     finally:
         conn.close()
-    finally:
-        conn.close()
 
 
 def replace_site_url(old_url: str, new_url: str, table_prefix: str = "wp_") -> Dict[str, Any]:
