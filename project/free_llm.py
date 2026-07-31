@@ -117,7 +117,9 @@ def check_ollama(host: str = "", model: str = "") -> Dict[str, Any]:
             if has:
                 # pick best matching installed tag
                 for n in names:
-                    if n.startswith(model) or model.startswith(n.split(":")[0]) and model.split(":")[-1] in n:
+                    if n.startswith(model) or (
+                        model.startswith(n.split(":")[0]) and model.split(":")[-1] in n
+                    ):
                         model = n
                         break
                 else:

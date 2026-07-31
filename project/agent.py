@@ -865,35 +865,36 @@ def run_agent(
     http_proxy: str = "",
 ) -> Generator[AgentEvent, None, None]:
     """
-    Four-tier routing (priority order):
+    Routing (when LLM_PREFER_FREE=1, default):
 
-    🚀 DEEPSEEK  (key set): best for code, cheap, OpenAI-compatible
-    ☁️ GROQ      (key set): fast, free tier, good for chat
-    ⚡ LOCAL FAST (no tools): small local model, minimal prompt
-    🤖 LOCAL AGENT (tools): full local model, ReAct loop
+    1) FREE Ollama — chat / обзор сайта (1.5b без tools)
+    2) DEEPSEEK — правки файлов и tools (если есть ключ)
+    3) GROQ — запасной облачный путь
+    4) LOCAL FAST / LOCAL AGENT — если облака нет
     """
     agent_model = llm_model
     chat_model  = fast_llm_model.strip() or llm_model
     force_ws    = bool(project_root)
 
-    # Prefetch site files so review answers are grounded (even without tool calls)
+    # Tools only for real actions. Site reviews use prefetched context (fast path).
+    wants_action = _needs_tools(user_message)
+    is_review = (not wants_action) and _is_site_review(user_message)
+    use_tools = wants_action
+
+    # Prefetch only when it helps (review / actions) — not on every "привет"
     prefetched = ""
-    if project_root:
+    if project_root and (wants_action or is_review):
         try:
             prefetched = prefetch_workspace(project_root)
             yield AgentEvent(type="info", content="prefetch:site")
         except Exception as exc:
             yield AgentEvent(type="info", content=f"prefetch_error:{exc}")
-
-    # Tools only for real actions. Site reviews use prefetched context (fast path).
-    wants_action = _needs_tools(user_message)
-    is_review = (not wants_action) and (
-        _is_site_review(user_message) or bool(project_root and not wants_action)
-    )
-    # If user asks to fix/check WP etc. → tools. Pure "what about the site?" → grounded chat.
-    use_tools = wants_action
-    # Soft: "проверь сайт" / "белый экран" already in triggers → tools. Good.
-    # For free tiny models, prefer grounded chat when review-like even if "проверь" — keep as is.
+    elif project_root:
+        try:
+            from hosting_tools import build_site_card
+            prefetched = (build_site_card(project_root) or "")[:2500]
+        except Exception:
+            prefetched = ""
 
     user_for_llm = _augment_user_message(user_message, project_root)
 
@@ -920,8 +921,6 @@ def run_agent(
                 free_use_tools = bool(use_tools and can_tools)
                 if project_root and not wants_action:
                     free_use_tools = False  # grounded for non-action site questions
-                if project_root and is_review and not wants_action:
-                    free_use_tools = False
 
                 if use_tools and not can_tools:
                     yield AgentEvent(
@@ -1021,6 +1020,7 @@ def run_agent(
     # ── DeepSeek PATH (paid / fallback) ──────────────────────────────────────
     if deepseek_api_key.strip() and not skip_cloud:
         mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
+        deepseek_ok = False
         if not use_tools:
             sys_msg  = _fast_prompt(profile, project_root, mem_ctx, prefetched)
             messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
@@ -1038,14 +1038,16 @@ def run_agent(
                     yield AgentEvent(type="text", content=chunk)
                 if project_root and _looks_like_access_refusal("".join(collected)):
                     yield AgentEvent(type="text", content="\n\n" + _offline_site_review(project_root, prefetched))
+                deepseek_ok = True
             except GroqAuthError as exc:
-                yield AgentEvent(type="error", content=str(exc))
+                yield AgentEvent(type="info", content=f"deepseek_auth_fallback:{exc}")
             except Exception as exc:
-                yield AgentEvent(type="error", content=f"DeepSeek: {exc}")
-            yield AgentEvent(type="done")
-            return
+                yield AgentEvent(type="info", content=f"deepseek_fallback:{exc}")
+            if deepseek_ok:
+                yield AgentEvent(type="done")
+                return
         else:
-            # DeepSeek agent path
+            # DeepSeek agent path — on failure fall through to Groq/local
             relevant_tools = _select_tools(user_message, force_workspace=force_ws)
             system_prompt  = build_system_prompt(
                 profile, memory, project_root, user_message, prefetched
@@ -1057,6 +1059,7 @@ def run_agent(
             yield AgentEvent(type="info", content=f"deepseek-agent:{deepseek_model}")
             steps = 0
             tool_calls_made = False
+            deepseek_failed = False
             while steps < MAX_STEPS:
                 steps += 1
                 try:
@@ -1065,9 +1068,13 @@ def run_agent(
                         tools=relevant_tools, proxy=http_proxy, _api_url=DEEPSEEK_API_URL
                     )
                 except GroqAuthError as exc:
-                    yield AgentEvent(type="error", content=str(exc)); return
+                    yield AgentEvent(type="info", content=f"deepseek_auth_fallback:{exc}")
+                    deepseek_failed = True
+                    break
                 except Exception as exc:
-                    yield AgentEvent(type="error", content=f"DeepSeek: {exc}"); return
+                    yield AgentEvent(type="info", content=f"deepseek_fallback:{exc}")
+                    deepseek_failed = True
+                    break
                 raw_msg    = raw_resp.get("message", {}) or {}
                 content    = (raw_msg.get("content") or "").strip()
                 tool_calls = _extract_tool_calls(raw_msg)
@@ -1096,11 +1103,15 @@ def run_agent(
                                                   _api_url=DEEPSEEK_API_URL):
                             yield AgentEvent(type="text", content=chunk)
                     except Exception as exc:
-                        yield AgentEvent(type="error", content=f"DeepSeek stream: {exc}")
-                yield AgentEvent(type="done")
+                        yield AgentEvent(type="info", content=f"deepseek_stream_fallback:{exc}")
+                        deepseek_failed = True
+                        break
+                if not deepseek_failed:
+                    yield AgentEvent(type="done")
+                    return
+            if not deepseek_failed:
+                yield AgentEvent(type="error", content=f"Превышен лимит шагов ({MAX_STEPS}).")
                 return
-            yield AgentEvent(type="error", content=f"Превышен лимит шагов ({MAX_STEPS}).")
-            return
 
     mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
 

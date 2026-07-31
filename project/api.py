@@ -71,6 +71,7 @@ PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
 # Chunked uploads support up to 2 GB by default (WordPress backups)
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
+MAX_JSON_BODY = int(os.environ.get("MAX_JSON_BODY", str(20 * 1024 * 1024)))
 HOST_SITES_PATH = os.environ.get("HOST_SITES_PATH", "/var/ai-helper/sites")
 CHUNK_SIZE = int(os.environ.get("UPLOAD_CHUNK_SIZE", str(4 * 1024 * 1024)))  # 4 MB
 
@@ -490,10 +491,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Internal Server Error")
 
     def _read_body(self) -> Dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0))
-        if length:
-            return json.loads(self.rfile.read(length).decode("utf-8"))
-        return {}
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            return {}
+        if length > MAX_JSON_BODY:
+            raise ValueError(
+                f"JSON слишком большой: {length // (1024 * 1024)} МБ "
+                f"(лимит {MAX_JSON_BODY // (1024 * 1024)} МБ)"
+            )
+        raw = self.rfile.read(length)
+        if not raw:
+            return {}
+        return json.loads(raw.decode("utf-8"))
 
     def _stream_body_to_file(self, dest: Path, max_bytes: int = MAX_UPLOAD_BYTES) -> int:
         """Stream raw request body to disk in chunks (no full in-memory buffer)."""
@@ -618,10 +627,10 @@ class APIHandler(BaseHTTPRequestHandler):
             if "tools_supported" in free_st
             else fl.model_supports_tools(free_model_name)
         )
-        self._send(200, _json({
+        payload: Dict[str, Any] = {
             "ok": True,
             "ollama": ost.reachable,
-            "models": ost.models,
+            "models": list(ost.models or [])[:40],
             "groq": bool(settings.groq_api_key or os.environ.get("GROQ_API_KEY", "").strip()),
             "groq_model": settings.groq_model,
             "deepseek": deepseek,
@@ -632,15 +641,18 @@ class APIHandler(BaseHTTPRequestHandler):
             "llm_prefer_free": fl.prefer_free(),
             "llm_model": settings.llm_model,
             "fast_model": settings.fast_llm_model,
-            "projects": list(projects.keys()),
-            "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
             "auth_required": _auth_enabled(),
-            "sites_root": str(SITES_ROOT),
-            "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.8.1",
-        }))
+            "version": "2.8.2",
+        }
+        # Paths / project names only for authenticated panel clients
+        if (not _auth_enabled()) or self._authorized():
+            payload["projects"] = list(projects.keys())
+            payload["allowed_roots"] = [str(r) for r in ALLOWED_ROOTS]
+            payload["sites_root"] = str(SITES_ROOT)
+            payload["host_sites_path"] = HOST_SITES_PATH
+        self._send(200, _json(payload))
 
     # ── GET /project/files ───────────────────────────────────────
     def _get_project_files(self):
@@ -657,11 +669,26 @@ class APIHandler(BaseHTTPRequestHandler):
     def _post_project_read(self):
         body = self._read_body()
         path = body.get("path", "")
+        proj_name = body.get("project", "") or body.get("site", "")
         if not path:
             self._send(400, _json({"error": "Нужен путь (path)"}))
             return
-        r = read_file(path)
-        self._send(200 if r["ok"] else 404, _json(r))
+        try:
+            # Prefer explicit path under allowed roots; else resolve via site workspace
+            try:
+                safe = _resolve_safe(path, must_exist=True)
+                r = read_file(str(safe))
+            except Exception:
+                _, _, _, project_root = self._load_context(proj_name)
+                if not project_root:
+                    raise
+                from tools import resolve_workspace_path
+                safe = resolve_workspace_path(path, project_root)
+                r = read_file(str(safe))
+        except Exception as exc:
+            self._send(403, _json({"ok": False, "error": str(exc)}))
+            return
+        self._send(200 if r.get("ok") else 404, _json(r))
 
     # ── FS: list / read / write / mkdir / delete / upload ────────
     def _get_fs_list(self):
@@ -2005,13 +2032,20 @@ class APIHandler(BaseHTTPRequestHandler):
 
     # ── POST /smart-commit ───────────────────────────────────────
     def _post_smart_commit(self):
+        import re
+        import shlex
+
         body = self._read_body()
-        proj_name = body.get("project", "")
+        # Prefer site name from extension; ignore local Windows paths
+        proj_name = (body.get("site") or body.get("project") or "").strip()
+        if proj_name and (":" in proj_name or proj_name.startswith("/") or "\\" in proj_name):
+            # Looks like a local filesystem path — use configured site / default project
+            proj_name = ""
         push = body.get("push", False)
         settings, profile, memory, project_root = self._load_context(proj_name)
 
         if not project_root:
-            self._send(404, _json({"error": "Нет активного проекта"}))
+            self._send(404, _json({"error": "Нет активного проекта / сайта. Укажи site в запросе."}))
             return
 
         diff_result = git_run("diff --cached --stat", str(project_root))
@@ -2027,9 +2061,10 @@ class APIHandler(BaseHTTPRequestHandler):
         )
         commit_msg = _run_agent_sync(prompt, project_root, settings, profile, memory)
         commit_msg = commit_msg.strip().split("\n")[0].strip('"').strip("'")
+        commit_msg = re.sub(r"[\r\n\x00\"\\]", " ", commit_msg).strip()[:180] or "chore: update"
 
         git_run("add -A", str(project_root))
-        commit_r = git_run(f'commit -m "{commit_msg}"', str(project_root))
+        commit_r = git_run(f"commit -m {shlex.quote(commit_msg)}", str(project_root))
         result = {"ok": commit_r["ok"], "message": commit_msg, "output": commit_r.get("output")}
 
         if push and commit_r["ok"]:

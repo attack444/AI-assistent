@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="AI Helper — платформа для деплоя сайтов, проверки кода и работы с AI-моделями. Как Vercel, с ассистентом внутри." />
-  <title>AI Helper — деплой сайтов и AI</title>
+  <meta name="description" content="AI Helper — деплой статики, чат с AI и инструменты для сайтов. Бесплатная модель на сервере + облако для сложных задач." />
+  <title>AI Helper — деплой и AI для сайтов</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet" />
@@ -418,6 +418,60 @@
     .plan ul { margin: 0; padding-left: 1.1rem; color: var(--muted); line-height: 1.55; }
     .plan.featured { border-color: rgba(11, 127, 110, 0.45); box-shadow: 0 12px 30px rgba(11,127,110,0.1); }
 
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin-top: 8px;
+    }
+    .matrix th, .matrix td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .matrix th { color: var(--muted); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .matrix td strong { color: var(--accent-ink); }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+    .chip-row button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.75);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--ink);
+    }
+    .chip-row button:hover { border-color: var(--accent); color: var(--accent-ink); }
+
+    .faq details {
+      border-top: 1px solid var(--line);
+      padding: 14px 0;
+    }
+    .faq details:first-child { border-top: none; }
+    .faq summary {
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq details p { margin: 8px 0 0; color: var(--muted); line-height: 1.5; }
+
+    .embed-box {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 14px;
+      background: #0f1714;
+      color: #d7e6df;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
     .deploy-box {
       border: 1px solid var(--line);
       border-radius: 18px;
@@ -577,8 +631,8 @@
     <div class="hero-visual" aria-hidden="true"></div>
     <div class="hero-inner">
       <p class="brand"><span>platform</span>AI Helper</p>
-      <h1>Деплой сайта и проверка кода с AI</h1>
-      <p class="hero-lead">Публичная среда: аккаунт → деплой → превью → чат с моделью. Платно, по делу.</p>
+      <h1>Деплой сайта и AI-чат на своём сервере</h1>
+      <p class="hero-lead">Аккаунт → ZIP → превью → вопросы модели. Для правок на живых сайтах — панель владельца и DeepSeek.</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="#deploy">Задеплоить ZIP</a>
         <a class="btn btn-ghost" href="#models">Чат с AI</a>
@@ -588,37 +642,102 @@
 
   <section class="section" id="how">
     <h2>Одна платформа — три действия</h2>
-    <p>Не панель админа, а сервис для людей: развернуть сайт, проверить код в браузере и говорить с моделью в контексте проекта.</p>
+    <p>Публичная витрина: развернуть статику, править в браузере и спросить модель. Панель владельца — отдельно, для живых сайтов вроде WordPress.</p>
     <ul class="feature-list">
       <li>
         <strong>Деплой</strong>
-        <span>Загрузка проекта и мгновенный превью на сервере — логика как у Vercel, свой хостинг.</span>
+        <span>ZIP со статикой → мгновенный превью. Без PHP и без доступа к чужим сайтам.</span>
       </li>
       <li>
         <strong>Код</strong>
-        <span>Редактор в браузере: поправил файл — сразу открыл страницу и проверил.</span>
+        <span>Редактор в браузере по token: поправил файл — сразу открыл страницу.</span>
       </li>
       <li>
         <strong>Модели</strong>
-        <span>Сейчас DeepSeek; позже подключим ещё — у каждой площадки свой чат и сценарий.</span>
+        <span>Чат: бесплатная Ollama на сервере. Сложные ответы — DeepSeek, если ключ подключён.</span>
       </li>
     </ul>
   </section>
 
+  <section class="section" id="stack">
+    <h2>Какая модель что умеет</h2>
+    <p>Чтобы не ждать от лёгкой модели правок файлов: честно по задачам.</p>
+    <table class="matrix">
+      <thead>
+        <tr><th>Задача</th><th>Здесь на витрине</th><th>В панели владельца</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Вопросы про деплой и код</td>
+          <td><strong>Ollama 1.5b</strong> (бесплатно)</td>
+          <td>Ollama → DeepSeek</td>
+        </tr>
+        <tr>
+          <td>Правки HTML/CSS/PHP на сайте</td>
+          <td>Редактор по token (вручную)</td>
+          <td><strong>DeepSeek + tools</strong></td>
+        </tr>
+        <tr>
+          <td>WordPress, белый экран, URL</td>
+          <td>—</td>
+          <td><strong>DeepSeek</strong> + проверки сайта</td>
+        </tr>
+        <tr>
+          <td>Чат на клиентском сайте</td>
+          <td colspan="2">Виджет ниже — встраивается в 5mb2 и другие площадки</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
   <section class="section" id="models">
-    <h2>Чат здесь — про среду</h2>
-    <p>На этом сайте ассистент помогает с деплоем и кодом. На клиентских сайтах (например 5mb2) — отдельный чат-бот под их задачи.</p>
+    <h2>Чат — про деплой и код</h2>
+    <p>Ассистент витрины не читает диск сервера. Для правок живого WordPress — панель владельца или VS Code extension.</p>
+    <div class="chip-row" id="chat-chips">
+      <button type="button" data-q="Как задеплоить ZIP и получить ссылку?">Как задеплоить?</button>
+      <button type="button" data-q="Чем бесплатная модель отличается от DeepSeek?">Ollama vs DeepSeek</button>
+      <button type="button" data-q="Можно ли залить PHP или WordPress через этот деплой?">PHP / WordPress?</button>
+      <button type="button" data-q="Как встроить чат на свой сайт виджетом?">Виджет на сайт</button>
+    </div>
     <div class="chat-preview" role="group" aria-label="Чат AI Helper">
-      <div class="chat-preview-head">AI Helper · бесплатная модель <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
+      <div class="chat-preview-head">AI Helper · Ollama / DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
       <div class="chat-preview-body" id="demo-chat">
-        <div class="bubble bot">Привет! Отвечаю на бесплатной модели на сервере (Ollama). Спроси про деплой и код — без доступа к файлам сервера.</div>
+        <div class="bubble bot">Привет! Сначала бесплатная Ollama, при необходимости — DeepSeek. Спроси про деплой, тарифы или виджет.</div>
       </div>
       <form class="chat-preview form" id="demo-form">
         <input id="chat-input" type="text" placeholder="Напиши вопрос…" autocomplete="off" maxlength="2000" required />
         <button type="submit" id="chat-send">Отправить</button>
       </form>
     </div>
-    <p class="hint">Нужен аккаунт. Лимит: до 30 сообщений / час с IP. Панель сервера и чужие файлы недоступны.</p>
+    <p class="hint">Нужен аккаунт. Лимит: по тарифу (Free ≈ 30/день) и до 30 сообщений/час с IP.</p>
+  </section>
+
+  <section class="section" id="widget">
+    <h2>Фишка: чат-виджет для своего сайта</h2>
+    <p>Для площадок вроде лендинга или магазина — тот же публичный чат во всплывающем окне. Не открывает панель и не правит файлы.</p>
+    <div class="embed-box" id="embed-snippet">&lt;script src="/sites/ai/widget.js" defer&gt;&lt;/script&gt;
+&lt;script&gt;
+  document.addEventListener("DOMContentLoaded", function () {
+    AIHelperChat.mount({ title: "Помощник", placeholder: "Спросите про заказ…" });
+  });
+&lt;/script&gt;</div>
+    <p class="hint">На WordPress: Custom HTML в footer или виджет. Файл лежит рядом с витриной: /sites/ai/widget.js</p>
+  </section>
+
+  <section class="section faq" id="faq">
+    <h2>Коротко по делу</h2>
+    <details open>
+      <summary>Почему «исправь сайт» не работает в этом чате?</summary>
+      <p>Витринный чат без доступа к файлам — так безопаснее. Правки делает панель владельца / VS Code с DeepSeek.</p>
+    </details>
+    <details>
+      <summary>Нужен ли DeepSeek?</summary>
+      <p>Для болтовни — нет. Чтобы AI сам правил файлы и чинил WP — да. Ollama 1.5b остаётся бесплатным слоем для простых ответов.</p>
+    </details>
+    <details>
+      <summary>Что с тарифами?</summary>
+      <p>Free после регистрации. Starter/Pro — вручную после оплаты (письмо владельцу). Лимиты — в блоке «Мой лимит».</p>
+    </details>
   </section>
 
   <section class="section" id="deploy">
@@ -655,7 +774,7 @@
         </div>
       </div>
     </div>
-    <p class="hint">Нужен аккаунт · 8 деплоев / час · ~14 дней · только статика</p>
+    <p class="hint">Нужен аккаунт · лимит деплоев по тарифу (Free ≈ 5/день) · хранение превью ~14 дней · только статика</p>
   </section>
 
   <section class="section" id="start">
@@ -872,6 +991,13 @@
     const sendBtn = document.getElementById("chat-send");
     const statusEl = document.getElementById("chat-status");
     const history = [];
+
+    document.getElementById("chat-chips")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-q]");
+      if (!btn) return;
+      input.value = btn.getAttribute("data-q") || "";
+      input.focus();
+    });
 
     function addBubble(role, text) {
       const div = document.createElement("div");

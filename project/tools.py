@@ -111,19 +111,27 @@ def resolve_workspace_path(
 # ---------------------------------------------------------------------------
 
 def read_file(path: str) -> Dict[str, Any]:
-    """Читает файл целиком. Для больших файлов — первые 100 KB."""
+    """Читает файл. Не более ~100 KB с диска (без загрузки гигабайтных дампов в RAM)."""
     args = {"path": path}
+    _CAP = 100_000
     try:
         p = Path(path).expanduser().resolve()
         if not p.is_file():
             r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
         else:
-            text = p.read_text(encoding="utf-8", errors="ignore")
-            truncated = len(text) > 100_000
+            with p.open("rb") as fh:
+                raw = fh.read(_CAP + 1)
+            truncated = len(raw) > _CAP
+            text = raw[:_CAP].decode("utf-8", errors="ignore")
             if truncated:
-                text = text[:100_000] + "\n...[обрезано до 100 KB]"
-            r = {"ok": True, "path": str(p), "content": text,
-                 "lines": text.count("\n") + 1, "truncated": truncated}
+                text += "\n...[обрезано до 100 KB]"
+            r = {
+                "ok": True,
+                "path": str(p),
+                "content": text,
+                "lines": text.count("\n") + 1,
+                "truncated": truncated,
+            }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("read_file", args, r)
@@ -138,12 +146,31 @@ def read_file_lines(path: str, start: int = 1, end: int = 200) -> Dict[str, Any]
         if not p.is_file():
             r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
         else:
-            lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
-            total = len(lines)
-            s, e = max(1, start) - 1, min(end, total)
-            chunk = "\n".join(f"{i+s+1}: {l}" for i, l in enumerate(lines[s:e]))
-            r = {"ok": True, "path": str(p), "content": chunk,
-                 "from_line": s + 1, "to_line": e, "total_lines": total}
+            start_i = max(1, int(start))
+            end_i = max(start_i, min(int(end), start_i + 2000))
+            lines_out: List[str] = []
+            total = 0
+            with p.open("r", encoding="utf-8", errors="ignore") as fh:
+                for i, line in enumerate(fh, 1):
+                    total = i
+                    if i < start_i:
+                        continue
+                    if i > end_i:
+                        # keep counting total cheaply up to a soft cap
+                        if i > end_i + 50_000:
+                            total = end_i  # unknown full size; avoid scanning huge files
+                            break
+                        continue
+                    lines_out.append(f"{i}: {line.rstrip(chr(10)).rstrip(chr(13))}")
+            chunk = "\n".join(lines_out)
+            r = {
+                "ok": True,
+                "path": str(p),
+                "content": chunk,
+                "from_line": start_i,
+                "to_line": min(end_i, total),
+                "total_lines": total,
+            }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("read_file_lines", args, r)
@@ -1218,14 +1245,25 @@ def apply_self_improvement(file: str, new_content: str, reason: str = "") -> Dic
         from pathlib import Path as _Path
 
         SELF_DIR = _Path(__file__).resolve().parent
-        target = SELF_DIR / file
-        if not target.exists():
-            r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {target}"}
+        rel = (file or "").replace("\\", "/").strip().lstrip("/")
+        if not rel or ".." in rel.split("/"):
+            r = {"ok": False, "error": "Недопустимый путь файла (только относительный внутри ассистента)"}
+            _log("apply_self_improvement", args, r)
+            return r
+        target = (SELF_DIR / rel).resolve()
+        try:
+            target.relative_to(SELF_DIR)
+        except ValueError:
+            r = {"ok": False, "error": f"Путь вне папки ассистента: {file}"}
+            _log("apply_self_improvement", args, r)
+            return r
+        if not target.exists() or not target.is_file():
+            r = {"ok": False, "error": f"Файл не найден: {target}"}
             _log("apply_self_improvement", args, r)
             return r
 
         # Бэкап ВСЕХ файлов перед изменением
-        backup_dir = backup_all_sources(label=f"self_improve_{_Path(file).stem}")
+        backup_dir = backup_all_sources(label=f"self_improve_{target.stem}")
 
         r = safe_apply_patch(target, new_content, reason=reason, backup_dir=backup_dir)
         r["backup_dir"] = str(backup_dir)

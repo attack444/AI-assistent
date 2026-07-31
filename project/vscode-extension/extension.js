@@ -484,7 +484,7 @@ class ChatViewProvider {
         });
         this._post({ type: 'startResponse' });
         const folder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || '';
-        const r = await httpPost('/smart-commit', { push, project: folder });
+        const r = await httpPost('/smart-commit', { push, site: getSite(), project: getSite() || folder });
         if (r.ok) {
             const detail = push && r.pushed ? ' + pushed ✓' : '';
             this._post({ type: 'appendText', text: `✓ Committed: \`${r.message}\`${detail}` });
@@ -1072,13 +1072,13 @@ function activate(context) {
         }),
         vscode.commands.registerCommand('aiHelper.smartCommit', async () => {
             const folder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || '';
-            const r = await httpPost('/smart-commit', { push: false, project: folder });
+            const r = await httpPost('/smart-commit', { push: false, site: getSite(), project: getSite() || '' });
             if (r.ok) vscode.window.showInformationMessage(`✓ Committed: ${r.message}`);
             else vscode.window.showErrorMessage(`Smart commit: ${r.error || r.output || '?'}`);
         }),
         vscode.commands.registerCommand('aiHelper.smartCommitPush', async () => {
             const folder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || '';
-            const r = await httpPost('/smart-commit', { push: true, project: folder });
+            const r = await httpPost('/smart-commit', { push: true, site: getSite(), project: getSite() || '' });
             if (r.ok)
                 vscode.window.showInformationMessage(
                     `✓ Committed${r.pushed ? ' + pushed' : ''}: ${r.message}`,
