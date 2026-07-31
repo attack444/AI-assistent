@@ -324,6 +324,78 @@
       color: var(--muted);
     }
 
+    .deploy-box {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.65);
+      padding: 20px;
+      box-shadow: 0 20px 50px rgba(12, 26, 22, 0.06);
+    }
+
+    .deploy-box .drop {
+      border: 1.5px dashed rgba(12, 26, 22, 0.22);
+      border-radius: 14px;
+      padding: 28px 18px;
+      text-align: center;
+      background: rgba(255,255,255,0.5);
+    }
+
+    .deploy-box .drop strong { display: block; margin-bottom: 6px; }
+
+    .deploy-result {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      display: none;
+    }
+
+    .deploy-result.show { display: block; }
+
+    .deploy-result .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      background: #eef5f2;
+      padding: 10px 12px;
+      border-radius: 10px;
+    }
+
+    .file-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    .file-list button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .file-list button.active {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+
+    #deploy-editor {
+      width: 100%;
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      resize: vertical;
+      background: #0f1714;
+      color: #e7f0ea;
+    }
+
     footer {
       width: min(960px, calc(100% - 40px));
       margin: 0 auto;
@@ -387,8 +459,8 @@
       <h1>Деплой сайта и проверка кода с AI</h1>
       <p class="hero-lead">Публичная среда: залил проект — посмотрел результат — спросил модель. Платно, по делу.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#start">Начать</a>
-        <a class="btn btn-ghost" href="#how">Как это работает</a>
+        <a class="btn btn-primary" href="#deploy">Задеплоить ZIP</a>
+        <a class="btn btn-ghost" href="#models">Чат с AI</a>
       </div>
     </div>
   </header>
@@ -426,6 +498,43 @@
       </form>
     </div>
     <p class="hint">Лимит: до 30 сообщений в час с одного IP. Админ-панель и чужие файлы здесь недоступны.</p>
+  </section>
+
+  <section class="section" id="deploy">
+    <h2>Деплой за минуту</h2>
+    <p>Залей ZIP со статикой (HTML/CSS/JS). Получишь ссылку на превью и token для правок. PHP и чужие сайты сервера недоступны.</p>
+    <div class="deploy-box">
+      <div class="drop">
+        <strong>ZIP до 15 МБ</strong>
+        <span class="hint" style="margin:0">index.html внутри архива или в папке</span>
+        <div class="cta-row" style="justify-content:center;margin-top:16px">
+          <label class="btn btn-primary" style="cursor:pointer">
+            Выбрать ZIP
+            <input id="deploy-file" type="file" accept=".zip,application/zip" hidden />
+          </label>
+        </div>
+        <p id="deploy-filename" class="hint" style="margin-top:12px"></p>
+      </div>
+      <div id="deploy-progress" class="hint" style="display:none;margin-top:12px">Загружаю…</div>
+      <div class="deploy-result" id="deploy-result">
+        <p style="margin:0 0 8px;font-weight:700">Готово</p>
+        <p class="hint" style="margin:0 0 10px">Превью (открой в новой вкладке):</p>
+        <p class="mono"><a id="deploy-url" href="#" target="_blank" rel="noreferrer"></a></p>
+        <p class="hint" style="margin:14px 0 8px">Token — сохрани, без него не отредактируешь:</p>
+        <p class="mono" id="deploy-token"></p>
+        <div class="cta-row" style="margin-top:14px">
+          <a class="btn btn-primary" id="deploy-open" href="#" target="_blank" rel="noreferrer">Открыть сайт</a>
+          <button class="btn btn-ghost" type="button" id="deploy-load-files">Файлы</button>
+        </div>
+        <div class="file-list" id="deploy-files"></div>
+        <textarea id="deploy-editor" placeholder="Выбери файл выше — правь и сохрани" spellcheck="false"></textarea>
+        <div class="cta-row" style="margin-top:12px">
+          <button class="btn btn-primary" type="button" id="deploy-save" disabled>Сохранить файл</button>
+          <span class="hint" id="deploy-edit-status" style="margin:0;align-self:center"></span>
+        </div>
+      </div>
+    </div>
+    <p class="hint">Лимит: 8 деплоев / час с IP · хранение ~14 дней · только статика</p>
   </section>
 
   <section class="section" id="start">
@@ -534,6 +643,142 @@
       } finally {
         sendBtn.disabled = false;
         input.focus();
+      }
+    });
+
+    // Public static deploy
+    const fileInput = document.getElementById("deploy-file");
+    const fnameEl = document.getElementById("deploy-filename");
+    const progEl = document.getElementById("deploy-progress");
+    const resultEl = document.getElementById("deploy-result");
+    const urlA = document.getElementById("deploy-url");
+    const openA = document.getElementById("deploy-open");
+    const tokenEl = document.getElementById("deploy-token");
+    const filesEl = document.getElementById("deploy-files");
+    const editor = document.getElementById("deploy-editor");
+    const saveBtn = document.getElementById("deploy-save");
+    const editStatus = document.getElementById("deploy-edit-status");
+    let pub = { name: "", token: "", path: "" };
+
+    try {
+      const saved = JSON.parse(localStorage.getItem("aihelper-public-deploy") || "null");
+      if (saved && saved.name && saved.token) {
+        pub = saved;
+        resultEl.classList.add("show");
+        urlA.href = saved.url;
+        urlA.textContent = location.origin + saved.url;
+        openA.href = saved.url;
+        tokenEl.textContent = saved.token;
+      }
+    } catch (_) {}
+
+    async function deployZip(file) {
+      if (!file) return;
+      fnameEl.textContent = file.name + " · " + Math.round(file.size / 1024) + " КБ";
+      progEl.style.display = "block";
+      progEl.textContent = "Загружаю…";
+      try {
+        const res = await fetch("/api/public/deploy", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/zip",
+            "X-Filename": file.name.replace(/[^\x20-\x7E]/g, "_"),
+          },
+          body: file,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        pub = { name: data.name, token: data.token, url: data.url, path: "" };
+        localStorage.setItem("aihelper-public-deploy", JSON.stringify(pub));
+        resultEl.classList.add("show");
+        urlA.href = data.url;
+        urlA.textContent = location.origin + data.url;
+        openA.href = data.url;
+        tokenEl.textContent = data.token;
+        filesEl.innerHTML = "";
+        editor.value = "";
+        saveBtn.disabled = true;
+        progEl.textContent =
+          "Ок · файлов: " + ((data.stats && data.stats.files_kept) || "?") +
+          (data.stats && data.stats.files_skipped ? " · пропущено: " + data.stats.files_skipped : "");
+      } catch (err) {
+        progEl.textContent = err.message || "Ошибка деплоя";
+      }
+    }
+
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      void deployZip(f);
+    });
+
+    document.getElementById("deploy-load-files").addEventListener("click", async () => {
+      if (!pub.name || !pub.token) return;
+      editStatus.textContent = "Загрузка списка…";
+      try {
+        const res = await fetch("/api/public/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pub.name, token: pub.token }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка");
+        filesEl.innerHTML = "";
+        (data.files || []).forEach((f) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = f.path;
+          b.addEventListener("click", () => void openPubFile(f.path, b));
+          filesEl.appendChild(b);
+        });
+        editStatus.textContent = (data.files || []).length + " файлов";
+      } catch (err) {
+        editStatus.textContent = err.message || "Ошибка";
+      }
+    });
+
+    async function openPubFile(path, btn) {
+      editStatus.textContent = "Читаю…";
+      filesEl.querySelectorAll("button").forEach((x) => x.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      try {
+        const res = await fetch("/api/public/fs/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pub.name, token: pub.token, path }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка");
+        pub.path = path;
+        editor.value = data.content || "";
+        saveBtn.disabled = false;
+        editStatus.textContent = path;
+      } catch (err) {
+        editStatus.textContent = err.message || "Ошибка";
+      }
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      if (!pub.path) return;
+      saveBtn.disabled = true;
+      editStatus.textContent = "Сохраняю…";
+      try {
+        const res = await fetch("/api/public/fs/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: pub.name,
+            token: pub.token,
+            path: pub.path,
+            content: editor.value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка");
+        editStatus.textContent = "Сохранено · обнови превью";
+      } catch (err) {
+        editStatus.textContent = err.message || "Ошибка";
+      } finally {
+        saveBtn.disabled = false;
       }
     });
   </script>

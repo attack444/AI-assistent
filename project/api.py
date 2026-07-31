@@ -79,6 +79,11 @@ _PUBLIC_PATHS = {
     "/auth/check",
     "/public/chat",
     "/public/chat/stream",
+    "/public/deploy",
+    "/public/redeploy",
+    "/public/files",
+    "/public/fs/read",
+    "/public/fs/write",
 }
 
 
@@ -609,7 +614,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "1.9",
+            "version": "2.0",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1357,7 +1362,7 @@ class APIHandler(BaseHTTPRequestHandler):
     def _get_wp_db_test(self):
         self._send(200, _json(wpt.test_db()))
 
-    # ── POST /public/chat (витрина ai — без инструментов) ───────
+    # ── POST /public/* (витрина ai — без панели / без чужих файлов) ─
     def _post_public_chat(self):
         import public_chat as pch
 
@@ -1414,6 +1419,114 @@ class APIHandler(BaseHTTPRequestHandler):
 
         for ev in pch.stream_public_chat(message, history):
             _sse(ev)
+
+    def _public_ip(self) -> str:
+        import public_chat as pch
+        return pch.client_ip(self)
+
+    def _post_public_deploy(self):
+        import public_deploy as pd
+
+        tmp: Optional[Path] = None
+        try:
+            ok, why = pd.check_rate_limit(self._public_ip())
+            if not ok:
+                self._send(429, _json({"error": why}))
+                return
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+            if "json" in ctype:
+                body = self._read_body()
+                raw = base64.b64decode(body.get("content_b64") or "")
+                if not raw:
+                    self._send(400, _json({"error": "Нужен ZIP (content_b64)"}))
+                    return
+                if len(raw) > pd.MAX_ZIP:
+                    self._send(400, _json({"error": f"ZIP > {pd.MAX_ZIP // (1024*1024)} МБ"}))
+                    return
+                tmp.write_bytes(raw)
+            else:
+                self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
+            result = pd.create_deployment(tmp, ip=self._public_ip())
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+        finally:
+            if tmp and tmp.exists():
+                tmp.unlink(missing_ok=True)
+
+    def _post_public_redeploy(self):
+        import public_deploy as pd
+
+        tmp: Optional[Path] = None
+        try:
+            qs = self._qs()
+            name = (qs.get("name") or "").strip()
+            token = (qs.get("token") or self.headers.get("X-Public-Token") or "").strip()
+            ctype = (self.headers.get("Content-Type") or "").lower()
+            if "json" in ctype:
+                body = self._read_body()
+                name = (body.get("name") or name).strip()
+                token = (body.get("token") or token).strip()
+                raw = base64.b64decode(body.get("content_b64") or "")
+                if not raw:
+                    self._send(400, _json({"error": "Нужен ZIP"}))
+                    return
+                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp.write_bytes(raw)
+            else:
+                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
+            result = pd.redeploy(name, token, tmp)
+            self._send(200, _json(result))
+        except Exception as exc:
+            code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
+            self._send(code, _json({"error": str(exc)}))
+        finally:
+            if tmp and tmp.exists():
+                tmp.unlink(missing_ok=True)
+
+    def _post_public_files(self):
+        import public_deploy as pd
+
+        try:
+            body = self._read_body()
+            result = pd.list_files((body.get("name") or "").strip(), (body.get("token") or "").strip())
+            self._send(200, _json(result))
+        except Exception as exc:
+            code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
+            self._send(code, _json({"error": str(exc)}))
+
+    def _post_public_fs_read(self):
+        import public_deploy as pd
+
+        try:
+            body = self._read_body()
+            result = pd.read_file(
+                (body.get("name") or "").strip(),
+                (body.get("token") or "").strip(),
+                (body.get("path") or "").strip(),
+            )
+            self._send(200, _json(result))
+        except Exception as exc:
+            code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
+            self._send(code, _json({"error": str(exc)}))
+
+    def _post_public_fs_write(self):
+        import public_deploy as pd
+
+        try:
+            body = self._read_body()
+            result = pd.write_file(
+                (body.get("name") or "").strip(),
+                (body.get("token") or "").strip(),
+                (body.get("path") or "").strip(),
+                body.get("content") or "",
+            )
+            self._send(200, _json(result))
+        except Exception as exc:
+            code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
+            self._send(code, _json({"error": str(exc)}))
 
     # ── POST /chat ───────────────────────────────────────────────
     def _post_chat(self):
@@ -1584,6 +1697,21 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/chat/stream":
             self._post_public_chat_stream()
+            return
+        if path == "/public/deploy":
+            self._post_public_deploy()
+            return
+        if path == "/public/redeploy":
+            self._post_public_redeploy()
+            return
+        if path == "/public/files":
+            self._post_public_files()
+            return
+        if path == "/public/fs/read":
+            self._post_public_fs_read()
+            return
+        if path == "/public/fs/write":
+            self._post_public_fs_write()
             return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
