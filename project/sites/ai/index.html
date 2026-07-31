@@ -387,6 +387,37 @@
 
     .auth-error { color: #b42318; font-size: 0.9rem; margin: 6px 0 0; }
 
+    .plans {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .plan {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 16px;
+      background: rgba(255,255,255,0.7);
+    }
+
+    .plan h3 {
+      font-family: var(--font-display);
+      margin: 0 0 6px;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .plan .price {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      margin: 0 0 8px;
+      letter-spacing: -0.03em;
+    }
+
+    .plan .price span { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+    .plan ul { margin: 0; padding-left: 1.1rem; color: var(--muted); line-height: 1.55; }
+    .plan.featured { border-color: rgba(11, 127, 110, 0.45); box-shadow: 0 12px 30px rgba(11,127,110,0.1); }
+
     .deploy-box {
       border: 1px solid var(--line);
       border-radius: 18px;
@@ -628,16 +659,15 @@
   </section>
 
   <section class="section" id="start">
-    <h2>Не бесплатный шаблон</h2>
-    <p>Доступ к среде и моделям — по тарифу. Свой сервер, свои правила, без «вечного free tier» в обмен на ограничения.</p>
-    <div class="pricing-note">
-      <span class="tag">Paid platform</span>
-      <span class="tag">DeepSeek сейчас</span>
-      <span class="tag">Модели расширим</span>
+    <h2>Тарифы</h2>
+    <p>Регистрация даёт Free. Starter и Pro включаем вручную после оплаты — напиши на почту, владелец активирует план.</p>
+    <div class="plans" id="plans-grid">
+      <p class="hint">Загрузка тарифов…</p>
     </div>
-    <div class="cta-row" style="margin-top: 28px">
-      <a class="btn btn-primary" href="mailto:slavasundukov887@gmail.com?subject=AI%20Helper%20доступ">Запросить доступ</a>
-      <a class="btn btn-ghost" href="/sites/5mb2/index.php">Смотреть 5mb2 на этом VPS</a>
+    <p class="hint" id="plan-status" style="margin-top:18px"></p>
+    <div class="cta-row" style="margin-top: 22px">
+      <a class="btn btn-primary" href="mailto:slavasundukov887@gmail.com?subject=AI%20Helper%20тариф">Запросить Starter / Pro</a>
+      <button class="btn btn-ghost" type="button" id="btn-show-billing">Мой лимит</button>
     </div>
   </section>
 
@@ -690,10 +720,21 @@
     function setAuthUI() {
       if (currentUser && currentUser.email) {
         authUserEl.hidden = false;
-        authUserEl.textContent = currentUser.email;
+        const plan = (currentUser.plan || "free").toUpperCase();
+        authUserEl.textContent = currentUser.email + " · " + plan;
         btnLogin.hidden = true;
         btnRegister.hidden = true;
         btnLogout.hidden = false;
+        const st = document.getElementById("plan-status");
+        if (st && currentUser.billing) {
+          const u = currentUser.billing.usage || {};
+          const l = currentUser.billing.limits || {};
+          st.textContent =
+            "Сейчас: " + plan +
+            " · чат " + (u.chat || 0) + "/" + (l.chat_per_day < 0 ? "∞" : l.chat_per_day) +
+            " · деплои " + (u.deploy || 0) + "/" + (l.deploy_per_day < 0 ? "∞" : l.deploy_per_day) +
+            " · сайты " + (u.sites || 0) + "/" + (l.max_sites < 0 ? "∞" : l.max_sites);
+        }
       } else {
         authUserEl.hidden = true;
         btnLogin.hidden = false;
@@ -791,6 +832,38 @@
     });
 
     void refreshMe();
+
+    // —— Plans ——
+    async function loadPlans() {
+      const grid = document.getElementById("plans-grid");
+      try {
+        const res = await fetch("/api/public/plans");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "plans");
+        grid.innerHTML = "";
+        (data.plans || []).forEach((p) => {
+          const el = document.createElement("div");
+          el.className = "plan" + (p.id === "starter" ? " featured" : "");
+          const price = p.price_rub
+            ? p.price_rub.toLocaleString("ru-RU") + " ₽<span>/мес</span>"
+            : "0 ₽<span> старт</span>";
+          el.innerHTML =
+            "<h3>" + p.name + "</h3>" +
+            "<p class='price'>" + price + "</p>" +
+            "<p class='hint' style='margin:0 0 10px'>" + (p.blurb || "") + "</p>" +
+            "<ul>" + (p.features || []).map((f) => "<li>" + f + "</li>").join("") + "</ul>";
+          grid.appendChild(el);
+        });
+      } catch (_) {
+        grid.innerHTML = "<p class='hint'>Тарифы появятся после обновления API (bootstrap-update).</p>";
+      }
+    }
+    void loadPlans();
+    document.getElementById("btn-show-billing").addEventListener("click", async () => {
+      if (!ensureAuth()) return;
+      await refreshMe();
+      document.getElementById("start").scrollIntoView({ behavior: "smooth" });
+    });
 
     // —— Chat ——
     const chatEl = document.getElementById("demo-chat");

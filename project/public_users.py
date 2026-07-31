@@ -90,11 +90,20 @@ def _sessions() -> Dict[str, dict]:
 
 
 def _public_user(u: dict) -> dict:
+    import public_plans as pp
+
+    email = u.get("email") or ""
+    plan_id = pp.plan_for_email(email, u.get("plan") or "")
+    # ensure usage day bucket exists (read-only snapshot)
+    tmp = dict(u)
+    pp.ensure_usage(tmp)
     return {
         "id": u.get("id"),
-        "email": u.get("email"),
+        "email": email,
         "name": u.get("name") or "",
         "created_at": u.get("created_at"),
+        "plan": plan_id,
+        "billing": pp.usage_public(tmp, plan_id),
     }
 
 
@@ -119,6 +128,9 @@ def register(email: str, password: str, name: str = "", ip: str = "") -> dict:
             raise ValueError("Такой email уже зарегистрирован")
         pwd_hash, salt = _hash_password(password)
         uid = secrets.token_hex(8)
+        import public_plans as pp
+
+        plan = pp.plan_for_email(email, pp.DEFAULT_PLAN)
         users[email] = {
             "id": uid,
             "email": email,
@@ -127,6 +139,8 @@ def register(email: str, password: str, name: str = "", ip: str = "") -> dict:
             "salt": salt,
             "created_at": _now(),
             "sites": [],
+            "plan": plan,
+            "usage": {},
         }
         _save_json(USERS_FILE, users)
         token = _create_session_unlocked(uid, email)
@@ -212,6 +226,43 @@ def list_sites(email: str) -> List[str]:
     with _lock:
         u = _users().get(email) or {}
         return list(u.get("sites") or [])
+
+
+def set_plan(email: str, plan_id: str) -> dict:
+    import public_plans as pp
+
+    email = (email or "").strip().lower()
+    plan_id = pp.normalize_plan(plan_id)
+    if plan_id == "owner" and email != pp.OWNER_EMAIL:
+        # only OWNER_EMAIL may hold owner plan via auto; admin can still set starter/pro
+        pass
+    with _lock:
+        users = _users()
+        u = users.get(email)
+        if not u:
+            raise ValueError("Пользователь не найден")
+        u["plan"] = plan_id
+        users[email] = u
+        _save_json(USERS_FILE, users)
+        return {"ok": True, "user": _public_user(u)}
+
+
+def consume_quota(email: str, kind: str) -> Tuple[bool, str, dict]:
+    """Check plan limits and bump daily usage. kind: chat|deploy|site"""
+    import public_plans as pp
+
+    email = (email or "").strip().lower()
+    with _lock:
+        users = _users()
+        u = users.get(email)
+        if not u:
+            return False, "Нужен вход", {}
+        plan_id = pp.plan_for_email(email, u.get("plan") or "")
+        ok, why, usage = pp.check_and_bump(u, kind, plan_id)
+        if ok and kind in {"chat", "deploy"}:
+            users[email] = u
+            _save_json(USERS_FILE, users)
+        return ok, why, pp.usage_public(u, plan_id)
 
 
 def bearer_token(handler) -> str:

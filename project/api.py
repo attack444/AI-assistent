@@ -89,6 +89,8 @@ _PUBLIC_PATHS = {
     "/public/auth/logout",
     "/public/auth/me",
     "/public/me/sites",
+    "/public/plans",
+    "/public/admin/set-plan",
 }
 
 
@@ -619,7 +621,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.1",
+            "version": "2.2",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1452,10 +1454,29 @@ class APIHandler(BaseHTTPRequestHandler):
                 "expires_at": meta.get("expires_at"),
                 "created_at": meta.get("created_at"),
             })
-        self._send(200, _json({"ok": True, "sites": sites}))
+        self._send(200, _json({"ok": True, "sites": sites, "billing": user.get("billing")}))
+
+    def _get_public_plans(self):
+        import public_plans as pp
+        self._send(200, _json({"ok": True, "plans": pp.list_public_plans()}))
+
+    def _post_public_admin_set_plan(self):
+        """Owner/panel: set user plan. Requires panel Bearer token."""
+        import public_users as pu
+
+        if not self._authorized():
+            self._send(401, _json({"error": "Нужен пароль панели"}))
+            return
+        body = self._read_body()
+        try:
+            result = pu.set_plan(body.get("email") or "", body.get("plan") or "")
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
 
     def _post_public_chat(self):
         import public_chat as pch
+        import public_users as pu
 
         user = self._require_public_user()
         if user is None:
@@ -1466,6 +1487,11 @@ class APIHandler(BaseHTTPRequestHandler):
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
+        if user.get("email"):
+            ok_q, why_q, _ = pu.consume_quota(user["email"], "chat")
+            if not ok_q:
+                self._send(429, _json({"error": why_q, "upgrade": True}))
+                return
         ok, why = pch.check_rate_limit(pch.client_ip(self))
         if not ok:
             self._send(429, _json({"error": why}))
@@ -1485,10 +1511,12 @@ class APIHandler(BaseHTTPRequestHandler):
             "response": "".join(parts),
             "model": "deepseek",
             "user": user.get("email") or None,
+            "plan": user.get("plan"),
         }))
 
     def _post_public_chat_stream(self):
         import public_chat as pch
+        import public_users as pu
 
         user = self._require_public_user()
         if user is None:
@@ -1499,6 +1527,11 @@ class APIHandler(BaseHTTPRequestHandler):
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
+        if user.get("email"):
+            ok_q, why_q, _ = pu.consume_quota(user["email"], "chat")
+            if not ok_q:
+                self._send(429, _json({"error": why_q, "upgrade": True}))
+                return
         ok, why = pch.check_rate_limit(pch.client_ip(self))
         if not ok:
             self._send(429, _json({"error": why}))
@@ -1524,12 +1557,18 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _post_public_deploy(self):
         import public_deploy as pd
+        import public_users as pu
 
         user = self._require_public_user()
         if user is None:
             return
         tmp: Optional[Path] = None
         try:
+            if user.get("email"):
+                ok_s, why_s, _ = pu.consume_quota(user["email"], "site")
+                if not ok_s:
+                    self._send(429, _json({"error": why_s, "upgrade": True}))
+                    return
             ok, why = pd.check_rate_limit(self._public_ip())
             if not ok:
                 self._send(429, _json({"error": why}))
@@ -1554,6 +1593,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 user_id=user.get("id") or "",
                 user_email=user.get("email") or "",
             )
+            if user.get("email"):
+                pu.consume_quota(user["email"], "deploy")
             self._send(200, _json(result))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
@@ -1774,6 +1815,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/public/auth/me":
             self._get_public_auth_me()
             return
+        if path == "/public/plans":
+            self._get_public_plans()
+            return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
         if path == "/project/files":
@@ -1812,6 +1856,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/me/sites":
             self._post_public_me_sites()
+            return
+        if path == "/public/admin/set-plan":
+            self._post_public_admin_set_plan()
             return
         if path == "/public/chat":
             self._post_public_chat()

@@ -22,7 +22,20 @@
 | Публичный чат на ai (DeepSeek) | `/public/chat/stream` + логин |
 | Публичный деплой (статика) | `/public/deploy` + логин + site token |
 | Публичные пользователи | `/public/auth/*` (отдельно от панели) |
+| Тарифы Free/Starter/Pro | лимиты + ручная активация владельцем |
 | Панель `/` | только владелец |
+
+### Активация тарифа (владелец)
+
+```bash
+# после входа в панель — токен панели:
+curl -s -X POST http://127.0.0.1:8502/public/admin/set-plan \
+  -H "Authorization: Bearer PANEL_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@mail.ru","plan":"starter"}'
+```
+
+`OWNER_EMAIL` в `.env` получает план `owner` (без лимитов).
 
 ## Команды на VPS (root)
 
