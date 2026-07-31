@@ -44,6 +44,7 @@ export type SiteInfo = {
   files: number;
   size_bytes: number;
   has_index: boolean;
+  domain?: string | null;
 };
 
 const API_BASE = typeof window === "undefined"
@@ -156,6 +157,39 @@ export function deploySiteZip(name: string, content_b64: string, filename: strin
     method: "POST",
     body: JSON.stringify({ name, content_b64, filename }),
   });
+}
+
+export function migrateSite(opts: {
+  name: string;
+  domain?: string;
+  content_b64: string;
+  filename: string;
+}) {
+  return request<{ ok: boolean; site: SiteInfo & { nginx_conf?: string; created?: boolean } }>(
+    "/sites/migrate",
+    {
+      method: "POST",
+      body: JSON.stringify(opts),
+    },
+  );
+}
+
+export function bindSiteDomain(name: string, domain: string) {
+  return request<{ ok: boolean; site: SiteInfo; hint?: string }>("/sites/domain", {
+    method: "POST",
+    body: JSON.stringify({ name, domain }),
+  });
+}
+
+export async function fileToBase64(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 export type ChatEvent =

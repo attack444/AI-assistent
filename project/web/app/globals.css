@@ -474,6 +474,32 @@ button {
   gap: 10px;
 }
 
+.migrate-form {
+  display: grid;
+  gap: 12px;
+}
+
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wizard-steps button {
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.wizard-steps button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .empty {
   padding: 28px;
   text-align: center;

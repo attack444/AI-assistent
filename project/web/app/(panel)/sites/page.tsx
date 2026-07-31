@@ -6,8 +6,8 @@ export default function SitesPage() {
       <div className="page-head">
         <h1>Сайты</h1>
         <p>
-          Создай сайт на VPS и загрузи ZIP с текущего хостинга. Статика отдаётся через Nginx по пути{" "}
-          <span className="mono">/sites/имя/</span>.
+          Перенеси сайт со старого хостинга: скачай ZIP → мастер ниже → открой{" "}
+          <span className="mono">/sites/имя/</span>. Потом можно привязать домен.
         </p>
       </div>
       <SitesPanel />

@@ -169,14 +169,54 @@ def _dir_stats(path: Path) -> Tuple[int, int]:
 def _site_info(name: str) -> Dict[str, Any]:
     root = _ensure_sites_root() / name
     files, size = _dir_stats(root)
+    domain = ""
+    domain_file = root / ".ai-helper-domain"
+    if domain_file.is_file():
+        domain = domain_file.read_text(encoding="utf-8").strip()
     return {
         "name": name,
         "path": str(root),
         "url": f"/sites/{name}/",
         "files": files,
         "size_bytes": size,
-        "has_index": (root / "index.html").is_file() or (root / "index.htm").is_file(),
+        "has_index": (
+            (root / "index.html").is_file()
+            or (root / "index.htm").is_file()
+            or (root / "index.php").is_file()
+        ),
+        "domain": domain or None,
     }
+
+
+def _flatten_hosting_layout(root: Path) -> None:
+    """Unwrap common hosting ZIP layouts: single folder, public_html, www, htdocs."""
+    if (root / "index.html").exists() or (root / "index.htm").exists() or (root / "index.php").exists():
+        return
+    for folder_name in ("public_html", "www", "htdocs", "httpdocs", "public"):
+        nested = root / folder_name
+        if nested.is_dir():
+            for item in list(nested.iterdir()):
+                dest = root / item.name
+                if dest.exists():
+                    if dest.is_dir():
+                        shutil.rmtree(dest)
+                    else:
+                        dest.unlink()
+                shutil.move(str(item), str(dest))
+            shutil.rmtree(nested, ignore_errors=True)
+            return
+    children = [c for c in root.iterdir() if not c.name.startswith(".")]
+    if len(children) == 1 and children[0].is_dir():
+        top = children[0]
+        for item in list(top.iterdir()):
+            dest = root / item.name
+            if dest.exists():
+                if dest.is_dir():
+                    shutil.rmtree(dest)
+                else:
+                    dest.unlink()
+            shutil.move(str(item), str(dest))
+        shutil.rmtree(top, ignore_errors=True)
 
 
 def _write_nginx_vhost(name: str, domain: str = "") -> Optional[str]:
@@ -184,25 +224,39 @@ def _write_nginx_vhost(name: str, domain: str = "") -> Optional[str]:
     if not domain.strip():
         return None
     domain = domain.strip().lower()
+    # Prefer host path when sites are bind-mounted
+    host_root = Path("/var/ai-helper/sites") / name
+    root_path = host_root if host_root.parent.exists() else (SITES_ROOT / name)
     conf = f"""# AI Helper site: {name}
 server {{
     listen 80;
     server_name {domain} www.{domain};
-    root {SITES_ROOT / name};
-    index index.html index.htm;
+    root {root_path};
+    index index.html index.htm index.php;
 
     location / {{
         try_files $uri $uri/ =404;
     }}
 }}
 """
+    site_meta = SITES_ROOT / name / ".ai-helper-domain"
+    site_meta.parent.mkdir(parents=True, exist_ok=True)
+    site_meta.write_text(domain, encoding="utf-8")
+
     try:
         NGINX_SITES_DIR.mkdir(parents=True, exist_ok=True)
         out = NGINX_SITES_DIR / f"ai-helper-{name}.conf"
         out.write_text(conf, encoding="utf-8")
+        enabled = Path("/etc/nginx/sites-enabled") / f"ai-helper-{name}.conf"
+        if enabled.parent.exists():
+            try:
+                if enabled.exists() or enabled.is_symlink():
+                    enabled.unlink()
+                enabled.symlink_to(out)
+            except OSError:
+                pass
         return str(out)
     except Exception:
-        # Inside Docker / without root — store next to site instead
         out = SITES_ROOT / name / "nginx.vhost.conf"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(conf, encoding="utf-8")
@@ -582,31 +636,85 @@ class APIHandler(BaseHTTPRequestHandler):
             raw = base64.b64decode(body.get("content_b64", ""))
             if filename.lower().endswith(".zip") or raw[:2] == b"PK":
                 with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                    # Prevent zip-slip
                     for member in zf.infolist():
                         target = (root / member.filename).resolve()
                         if not _is_under(target, root) and target != root.resolve():
                             raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
                     zf.extractall(root)
-                # If zip had a single top-level folder, flatten common case
-                children = [c for c in root.iterdir() if not c.name.startswith(".")]
-                if len(children) == 1 and children[0].is_dir() and not (root / "index.html").exists():
-                    top = children[0]
-                    for item in top.iterdir():
-                        dest = root / item.name
-                        if dest.exists():
-                            if dest.is_dir():
-                                shutil.rmtree(dest)
-                            else:
-                                dest.unlink()
-                        shutil.move(str(item), str(dest))
-                    shutil.rmtree(top)
+                _flatten_hosting_layout(root)
             else:
                 out = root / Path(filename).name
                 out.write_bytes(raw)
             self._send(200, _json({"ok": True, "site": _site_info(name)}))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
+
+    def _post_sites_migrate(self):
+        """One-shot: create site (if needed) + upload ZIP + optional domain."""
+        body = self._read_body()
+        name = (body.get("name") or "").strip()
+        domain = (body.get("domain") or "").strip()
+        filename = body.get("filename") or "site.zip"
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Имя: латиница, цифры, _ и -"}))
+            return
+        if not body.get("content_b64"):
+            self._send(400, _json({"error": "Нужен ZIP (content_b64)"}))
+            return
+        root = _ensure_sites_root() / name
+        created = False
+        if not root.exists():
+            root.mkdir(parents=True, exist_ok=False)
+            created = True
+        try:
+            raw = base64.b64decode(body.get("content_b64", ""))
+            # Clear placeholder index if we're replacing with a real site
+            for stale in ("index.html", "index.htm"):
+                p = root / stale
+                if p.is_file() and created is False:
+                    pass
+            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                for member in zf.infolist():
+                    target = (root / member.filename).resolve()
+                    if not _is_under(target, root) and target != root.resolve():
+                        raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
+                zf.extractall(root)
+            _flatten_hosting_layout(root)
+            nginx_path = _write_nginx_vhost(name, domain) if domain else None
+            info = _site_info(name)
+            if nginx_path:
+                info["nginx_conf"] = nginx_path
+            info["created"] = created
+            info["filename"] = filename
+            self._send(200, _json({"ok": True, "site": info}))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_sites_domain(self):
+        body = self._read_body()
+        name = (body.get("name") or "").strip()
+        domain = (body.get("domain") or "").strip()
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Некорректное имя сайта"}))
+            return
+        if not domain:
+            self._send(400, _json({"error": "Нужен domain"}))
+            return
+        root = _ensure_sites_root() / name
+        if not root.is_dir():
+            self._send(404, _json({"error": "Сайт не найден"}))
+            return
+        nginx_path = _write_nginx_vhost(name, domain)
+        info = _site_info(name)
+        info["nginx_conf"] = nginx_path
+        info["hint"] = (
+            f"Пропиши A-запись домена на IP сервера. "
+            f"Если nginx.vhost.conf лежит в папке сайта — скопируй на хост:\n"
+            f"sudo cp {nginx_path} /etc/nginx/sites-available/ai-helper-{name}.conf && "
+            f"sudo ln -sf /etc/nginx/sites-available/ai-helper-{name}.conf "
+            f"/etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+        )
+        self._send(200, _json({"ok": True, "site": info}))
 
     # ── POST /chat ───────────────────────────────────────────────
     def _post_chat(self):
@@ -770,6 +878,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "/fs/upload": self._post_fs_upload,
             "/sites": self._post_sites,
             "/sites/deploy": self._post_sites_deploy,
+            "/sites/migrate": self._post_sites_migrate,
+            "/sites/domain": self._post_sites_domain,
         }
         handler = routes.get(path)
         if handler:

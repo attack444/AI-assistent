@@ -6,17 +6,37 @@ REPO_DIR="${REPO_DIR:-/opt/ai-helper}"
 cd "$REPO_DIR"
 
 echo "[>>] git pull..."
-git pull
+git pull origin main || git pull
 
 cd "$REPO_DIR/project/deploy"
+ENV_FILE="$REPO_DIR/project/.env"
 
-if [ ! -f "$REPO_DIR/project/.env" ]; then
+if [ ! -f "$ENV_FILE" ]; then
   echo "[!!] Нет .env — копирую шаблон"
-  cp .env.example "$REPO_DIR/project/.env"
-  echo "[!!] Заполни PANEL_PASSWORD и DEEPSEEK_API_KEY в $REPO_DIR/project/.env"
+  cp .env.example "$ENV_FILE"
 fi
 
-# Создать папку сайтов
+# PANEL_PASSWORD
+if ! grep -q '^PANEL_PASSWORD=.\+' "$ENV_FILE" 2>/dev/null; then
+  echo ""
+  echo "[!!] PANEL_PASSWORD не задан."
+  if [ -t 0 ]; then
+    read -r -p "Введи пароль панели (будет записан в .env): " PANEL_PW
+    if [ -n "$PANEL_PW" ]; then
+      if grep -q '^PANEL_PASSWORD=' "$ENV_FILE"; then
+        sed -i "s|^PANEL_PASSWORD=.*|PANEL_PASSWORD=${PANEL_PW}|" "$ENV_FILE"
+      else
+        echo "PANEL_PASSWORD=${PANEL_PW}" >> "$ENV_FILE"
+      fi
+      echo "[OK] Пароль записан в $ENV_FILE"
+    else
+      echo "[!!] Пропущено. Задай позже: nano $ENV_FILE"
+    fi
+  else
+    echo "[!!] Задай пароль: nano $ENV_FILE  →  PANEL_PASSWORD=..."
+  fi
+fi
+
 mkdir -p /var/ai-helper/sites
 
 echo "[>>] Docker rebuild..."
@@ -34,14 +54,13 @@ IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $
 
 echo ""
 echo "============================================"
-echo "  ИНТЕРФЕЙС СЕРВЕРА (открой в браузере):"
+echo "  ИНТЕРФЕЙС СЕРВЕРА:"
 echo "  http://${IP}/"
 echo "============================================"
-echo "  Файлы:  http://${IP}/files"
-echo "  Сайты:  http://${IP}/sites"
-echo "  Чат:    http://${IP}/chat"
-echo "  API:    http://${IP}/api/status"
+echo "  Дальше: открой Сайты → «Перенос с хостинга»"
+echo "  http://${IP}/sites"
 echo "============================================"
-echo "  Пароль панели: PANEL_PASSWORD в project/.env"
-echo "  Перенос сайта: deploy/MIGRATE_SITE.md"
+echo "  Файлы:  http://${IP}/files"
+echo "  Чат:    http://${IP}/chat"
+echo "  Пароль: PANEL_PASSWORD в project/.env"
 echo "============================================"
