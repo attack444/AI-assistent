@@ -813,6 +813,41 @@ class APIHandler(BaseHTTPRequestHandler):
             if tmp and tmp.exists():
                 tmp.unlink(missing_ok=True)
 
+    def _post_sites_fix_perms(self):
+        """Fix 403: chmod site files so host nginx can read them."""
+        body: Dict[str, Any] = {}
+        ctype = (self.headers.get("Content-Type") or "").lower()
+        if "json" in ctype:
+            body = self._read_body()
+        qs = self._qs()
+        name = (body.get("name") or qs.get("name") or "").strip()
+        root = _ensure_sites_root()
+        fixed: List[str] = []
+        try:
+            if name:
+                if not _SAFE_NAME.match(name):
+                    self._send(400, _json({"error": "Некорректное имя"}))
+                    return
+                target = root / name
+                if not target.is_dir():
+                    self._send(404, _json({"error": "Сайт не найден"}))
+                    return
+                _fix_site_perms(target)
+                fixed.append(name)
+            else:
+                _fix_site_perms(root)
+                for child in root.iterdir():
+                    if child.is_dir() and not child.name.startswith("."):
+                        _fix_site_perms(child)
+                        fixed.append(child.name)
+            self._send(200, _json({
+                "ok": True,
+                "fixed": fixed,
+                "hint": "Если 403 остался — на VPS: bash project/deploy/fix-sites-403.sh",
+            }))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
     def _post_sites_domain(self):
         body = self._read_body()
         name = (body.get("name") or "").strip()
