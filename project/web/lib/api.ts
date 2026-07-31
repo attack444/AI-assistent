@@ -142,7 +142,7 @@ export function deleteFs(path: string) {
 export function uploadFs(path: string, file: File) {
   const q = new URLSearchParams({
     path: path || "",
-    filename: file.name,
+    filename: safeHeaderFilename(file.name),
   });
   return uploadBinary<{ ok: boolean; path: string; bytes: number }>(
     `/fs/upload?${q}`,
@@ -168,7 +168,7 @@ export function deleteSite(name: string) {
 }
 
 export function deploySiteZip(name: string, file: File) {
-  const q = new URLSearchParams({ name, filename: file.name });
+  const q = new URLSearchParams({ name, filename: safeHeaderFilename(file.name) });
   return uploadBinary<{ ok: boolean; site: SiteInfo }>(`/sites/deploy?${q}`, file);
 }
 
@@ -297,11 +297,15 @@ export async function chunkedUploadFile(opts: {
   }>("/upload/init", {
     method: "POST",
     body: JSON.stringify({
-      filename: file.name,
+      // Always ASCII on disk — Cyrillic names are kept only as original_filename
+      filename: file.name.toLowerCase().endsWith(".sql")
+        ? "dump.sql"
+        : safeHeaderFilename(file.name) || "upload.bin",
       size: file.size,
       site_name: siteName || "",
       chunk_size: chunkSize,
       total_chunks: totalChunks,
+      original_filename: file.name,
     }),
   });
 
@@ -324,7 +328,6 @@ export async function chunkedUploadFile(opts: {
             headers: {
               ...authHeaders(),
               "Content-Type": "application/octet-stream",
-              "X-Filename": safeHeaderFilename(file.name),
             },
             body: blob,
           },
@@ -378,11 +381,12 @@ async function chunkedMigrate(opts: {
   }>("/upload/init", {
     method: "POST",
     body: JSON.stringify({
-      filename: file.name,
+      filename: safeHeaderFilename(file.name) || "site.zip",
       size: file.size,
       site_name: name,
       chunk_size: chunkSize,
       total_chunks: totalChunks,
+      original_filename: file.name,
     }),
   });
 
@@ -405,7 +409,6 @@ async function chunkedMigrate(opts: {
             headers: {
               ...authHeaders(),
               "Content-Type": "application/octet-stream",
-              "X-Filename": safeHeaderFilename(file.name),
             },
             body: blob,
           },
@@ -453,12 +456,15 @@ function formatBytes(n: number) {
 
 /** Stream File as raw body — for small files only. */
 async function uploadBinary<T>(path: string, file: File): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Never put filename in headers (Latin-1 only) — use query string (URL-encoded)
+  const sep = path.includes("?") ? "&" : "?";
+  const safeName = encodeURIComponent(safeHeaderFilename(file.name));
+  const url = `${API_BASE}${path}${sep}filename=${safeName}`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       ...authHeaders(),
       "Content-Type": file.type || "application/octet-stream",
-      "X-Filename": safeHeaderFilename(file.name),
     },
     body: file,
   });

@@ -125,6 +125,22 @@ def mysql_connect_params() -> Dict[str, Any]:
     }
 
 
+def _mysql_password(password: str):
+    """pymysql does str.encode('latin1') — Cyrillic MYSQL_PASSWORD crashes.
+
+    If password is not latin-1, pass UTF-8 bytes so pymysql skips that encode.
+    Matches how MySQL Docker stores Unicode passwords from env.
+    """
+    if isinstance(password, bytes):
+        return password
+    text = password or ""
+    try:
+        text.encode("latin-1")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-8")
+
+
 def _get_connection(database: Optional[str] = None):
     try:
         import pymysql
@@ -137,7 +153,7 @@ def _get_connection(database: Optional[str] = None):
         host=params["host"],
         port=params["port"],
         user=params["user"],
-        password=params["password"],
+        password=_mysql_password(params["password"]),
         database=database or params["database"],
         charset="utf8mb4",
         autocommit=True,

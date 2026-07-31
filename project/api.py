@@ -387,21 +387,89 @@ def _run_agent_sync(
 
 
 class APIHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, fmt, *args):
-        print(f"[api] {self.address_string()} {fmt % args}", flush=True)
+        try:
+            msg = fmt % args
+        except Exception:
+            msg = fmt
+        # Console may be latin-1 in some images — never crash on log
+        try:
+            print(f"[api] {self.address_string()} {msg}", flush=True)
+        except Exception:
+            print("[api] (log encode error)", flush=True)
+
+    def send_response(self, code, message=None):
+        # Status line is latin-1 only — never put Cyrillic in the reason phrase
+        if message is None:
+            try:
+                message = self.responses[code][0]
+            except Exception:
+                message = "OK"
+        safe = str(message).encode("ascii", "replace").decode("ascii") or "OK"
+        super().send_response(code, safe)
+
+    def send_header(self, keyword, value):
+        safe = str(value).encode("latin-1", "replace").decode("latin-1")
+        super().send_header(keyword, safe)
+
+    def send_error(self, code, message=None, explain=None):
+        """BaseHTTPRequestHandler encodes status message as latin-1 — Cyrillic crashes it."""
+        safe_msg = "Error"
+        if message:
+            safe_msg = str(message).encode("ascii", "replace").decode("ascii") or "Error"
+        detail = str(message) if message else safe_msg
+        try:
+            body = _json({"error": detail, "code": code})
+            self.send_response(code, safe_msg)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception:
+            try:
+                super().send_error(code, safe_msg)
+            except Exception:
+                pass
 
     def _send(self, code: int, body: bytes, content_type: str = "application/json") -> None:
-        self.send_response(code)
+        reasons = {
+            200: "OK",
+            201: "Created",
+            204: "No Content",
+            400: "Bad Request",
+            401: "Unauthorized",
+            404: "Not Found",
+            409: "Conflict",
+            500: "Internal Server Error",
+        }
+        self.send_response(code, reasons.get(code, "OK"))
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Filename")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization",
+        )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
         self._send(204, b"")
+
+    def _safe_handler(self, fn):
+        try:
+            fn()
+        except Exception as exc:
+            # Never let Cyrillic exceptions hit default send_error status line
+            try:
+                self._send(500, _json({"error": str(exc)}))
+            except Exception:
+                self.send_error(500, "Internal Server Error")
 
     def _read_body(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", 0))
@@ -967,7 +1035,9 @@ class APIHandler(BaseHTTPRequestHandler):
     def _post_upload_init(self):
         try:
             body = self._read_body()
-            filename = body.get("filename") or "site.zip"
+            filename = body.get("filename") or body.get("original_filename") or "site.zip"
+            # Force ASCII disk name
+            filename = "".join(ch if 32 <= ord(ch) < 127 else "_" for ch in str(filename)) or "upload.bin"
             size = int(body.get("size") or 0)
             site_name = (body.get("site_name") or body.get("name") or "").strip()
             chunk_size = int(body.get("chunk_size") or CHUNK_SIZE)
@@ -1342,6 +1412,9 @@ class APIHandler(BaseHTTPRequestHandler):
 
     # ── Routing ──────────────────────────────────────────────────
     def do_GET(self):
+        self._safe_handler(self._do_GET_inner)
+
+    def _do_GET_inner(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/status":
             self._get_status()
@@ -1369,6 +1442,9 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
     def do_POST(self):
+        self._safe_handler(self._do_POST_inner)
+
+    def _do_POST_inner(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/auth/login":
             self._post_auth_login()
@@ -1404,6 +1480,9 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
     def do_DELETE(self):
+        self._safe_handler(self._do_DELETE_inner)
+
+    def _do_DELETE_inner(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if not self._require_auth():
             return

@@ -31,8 +31,8 @@ services:
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}
       - MYSQL_USER=${MYSQL_USER:-wp}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-смени_wp_пароль}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-смени_root_пароль}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-wp_change_me}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_change_me}
     networks:
       - ai-net
 
@@ -78,14 +78,14 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-смени_root_пароль}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
       MYSQL_USER: ${MYSQL_USER:-wp}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-смени_wp_пароль}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wp_change_me}
     networks:
       - ai-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-смени_root_пароль}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
       interval: 10s
       timeout: 5s
       retries: 10

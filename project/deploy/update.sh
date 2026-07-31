@@ -6,7 +6,11 @@ REPO_DIR="${REPO_DIR:-/opt/ai-helper}"
 cd "$REPO_DIR"
 
 echo "[>>] git pull..."
+git fetch origin main || true
 git pull origin main || git pull
+
+REV=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+echo "[OK] commit: $REV"
 
 cd "$REPO_DIR/project/deploy"
 ENV_FILE="$REPO_DIR/project/.env"
@@ -37,9 +41,21 @@ if ! grep -q '^PANEL_PASSWORD=.\+' "$ENV_FILE" 2>/dev/null; then
   fi
 fi
 
+# Warn about Cyrillic MySQL passwords (pymysql latin-1 crash)
+if grep -E '^MYSQL_(PASSWORD|ROOT_PASSWORD)=.*[^ -~]' "$ENV_FILE" >/dev/null 2>&1; then
+  echo ""
+  echo "[!!] В .env кириллица в MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD."
+  echo "    Раньше из-за этого был latin-1 crash. Код теперь терпит UTF-8,"
+  echo "    но лучше сменить пароли на латиницу (и в MySQL тоже)."
+  echo ""
+fi
+
 mkdir -p /var/ai-helper/sites
 
-echo "[>>] Docker rebuild..."
+echo "[>>] Docker rebuild (app + web)..."
+# Force recreate so api.py / Next panel definitely pick up the new commit
+docker compose -f docker-compose.prod.yml build app web
+docker compose -f docker-compose.prod.yml up -d --force-recreate app web
 docker compose -f docker-compose.prod.yml up -d --build
 
 # Права: иначе nginx даёт 403 на /sites/...
@@ -65,6 +81,7 @@ echo ""
 echo "============================================"
 echo "  ИНТЕРФЕЙС СЕРВЕРА:"
 echo "  http://${IP}/"
+echo "  commit: ${REV}"
 echo "============================================"
 echo "  Сайт:   http://${IP}/sites/mysite/"
 echo "  Если 403: bash project/deploy/fix-sites-403.sh"

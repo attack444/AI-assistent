@@ -218,7 +218,7 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
       <form onSubmit={onImportSql} className="migrate-form">
         <div className="muted">Шаг 2 — импорт дампа .sql со старого хостинга</div>
         <label className="btn ghost" style={{ justifyContent: "flex-start" }}>
-          {sqlFile ? sqlFile.name : "Выбрать dump.sql"}
+          {sqlFile ? sqlFile.name : "Выбрать .sql дамп"}
           <input
             type="file"
             accept=".sql,application/sql,text/plain,.txt"
@@ -227,7 +227,13 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
           />
         </label>
         <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-          Если имя файла на русском — перед загрузкой переименуй в <span className="mono">dump.sql</span>
+          Файл можно с любым именем — на сервер уйдёт как <span className="mono">dump.sql</span>.
+          Если ошибка latin-1 / пароль — в `.env` пароль MySQL должен совпадать с тем, что в wp-config.
+          Запасной путь через SSH:
+          <br />
+          <span className="mono">
+            scp dump.sql root@IP:/tmp/dump.sql && bash /opt/ai-helper/project/deploy/import-wp-sql.sh /tmp/dump.sql
+          </span>
         </p>
         <button className="btn" type="submit" disabled={busy || !sqlFile}>
           Загрузить и импортировать SQL
