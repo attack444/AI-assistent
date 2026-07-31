@@ -49,16 +49,39 @@ PANEL_PASSWORD=panel_password
 
 ### 3–5. В панели: кнопка «Настроить WP»
 
-1. **Сохранить wp-config** (DB_HOST=`mysql`, пароль из `.env`)
+1. **Сохранить wp-config** (DB_HOST=`mysql`, пароль = `MYSQL_PASSWORD` из `.env`)
 2. **Загрузить и импортировать SQL** (дамп со старого хостинга)
-3. **Заменить URL** на `http://IP/sites/mysite`
+3. **Заменить URL** на `http://IP/sites/mysite` или `https://5mb2.ru`
 
-Альтернатива SQL с VPS:
+#### Ошибка 1045 Access denied for user 'wp'
+
+Пароль в MySQL не совпадает с `.env` (часто после смены пароля или кириллицы). На VPS:
 
 ```bash
-scp dump.sql root@IP:/tmp/dump.sql
+# 1) Задай латиницу в .env (если ещё кириллица)
+nano /opt/ai-helper/project/.env
+# MYSQL_PASSWORD=MyWpPass123
+# MYSQL_ROOT_PASSWORD=MyRootPass123
+
+# 2) Сбрось пользователя wp под этот пароль
+bash /opt/ai-helper/project/deploy/reset-mysql-password.sh
+
+# 3) В панели снова: Сохранить wp-config (тот же пароль) → Проверить MySQL
+```
+
+#### SCP: `stat local "dump.sql": No such file`
+
+`dump.sql` — это имя **на сервере**. На ПК укажи **полный путь** к реальному файлу:
+
+```bash
+# Windows (PowerShell / cmd) — подставь свой путь и IP:
+scp "C:\Users\Слава\Downloads\5mb2.sql" root@IP_VPS:/tmp/dump.sql
+
+# Потом на VPS:
 bash /opt/ai-helper/project/deploy/import-wp-sql.sh /tmp/dump.sql
 ```
+
+Или просто выбери `.sql` в панели (Шаг 2) — SCP не обязателен.
 
 ### 6. Права
 
