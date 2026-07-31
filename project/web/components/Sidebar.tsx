@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { clearToken } from "@/lib/api";
 
 const LINKS = [
   { href: "/chat", label: "Чат" },
@@ -11,6 +12,7 @@ const LINKS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside className="sidebar">
@@ -29,6 +31,17 @@ export function Sidebar() {
           </Link>
         ))}
       </nav>
+      <button
+        className="btn ghost small"
+        type="button"
+        style={{ alignSelf: "flex-start" }}
+        onClick={() => {
+          clearToken();
+          router.push("/login");
+        }}
+      >
+        Выйти
+      </button>
       <p className="muted" style={{ marginTop: "auto", fontSize: "0.85rem" }}>
         Файлы и сайты на VPS — без FTP-клиента.
       </p>

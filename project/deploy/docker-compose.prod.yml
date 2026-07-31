@@ -21,6 +21,8 @@ services:
       - AI_HELPER_API_PORT=8502
       - SITES_ROOT=/opt/sites
       - WORKSPACE_ROOTS=/opt/sites,/opt/ai-helper,/workspace
+      - PANEL_PASSWORD=${PANEL_PASSWORD:-}
+      - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
     networks:
       - ai-net

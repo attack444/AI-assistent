@@ -94,6 +94,8 @@ project/
 
 Инструкция переноса сайта: `deploy/MIGRATE_SITE.md`.
 
+**Где интерфейс:** `http://IP/` — см. `deploy/ACCESS.md`.
+
 ---
 
 ## Docker (альтернатива)

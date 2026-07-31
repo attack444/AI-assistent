@@ -1,3 +1,20 @@
+const TOKEN_KEY = "ai-helper-token";
+
+export function getToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(TOKEN_KEY) || "";
+}
+
+export function setToken(token: string) {
+  if (typeof window === "undefined") return;
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function clearToken() {
+  setToken("");
+}
+
 export type ApiStatus = {
   ok: boolean;
   ollama?: boolean;
@@ -8,6 +25,7 @@ export type ApiStatus = {
   llm_model?: string;
   projects?: string[];
   sites_root?: string;
+  auth_required?: boolean;
   version?: string;
 };
 
@@ -32,16 +50,29 @@ const API_BASE = typeof window === "undefined"
   ? process.env.API_INTERNAL_URL || "http://127.0.0.1:8502"
   : "/api";
 
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...(init?.headers || {}),
     },
     cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+    throw new Error((data as { error?: string }).error || "Нужен вход");
+  }
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
   }
@@ -50,6 +81,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getStatus() {
   return request<ApiStatus>("/status");
+}
+
+export function login(password: string) {
+  return request<{ ok: boolean; token: string; auth_required: boolean }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+export function checkAuth() {
+  return request<{ ok: boolean; auth_required: boolean }>("/auth/check");
 }
 
 export function listFs(path = "") {
@@ -131,10 +173,18 @@ export async function streamChat(
 ) {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
     body: JSON.stringify({ message, history }),
     signal,
   });
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Нужен вход");
+  }
   if (!res.ok || !res.body) {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error(err.error || `HTTP ${res.status}`);

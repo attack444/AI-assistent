@@ -6,6 +6,7 @@ import { getStatus } from "@/lib/api";
 
 export default function HomePage() {
   const [status, setStatus] = useState<string>("проверяю API…");
+  const [authHint, setAuthHint] = useState("");
 
   useEffect(() => {
     getStatus()
@@ -16,6 +17,7 @@ export default function HomePage() {
           s.ollama ? "Ollama" : null,
         ].filter(Boolean);
         setStatus(bits.length ? `API онлайн · ${bits.join(" · ")}` : "API онлайн");
+        setAuthHint(s.auth_required ? "Нужен пароль панели" : "Пароль не задан");
       })
       .catch(() => setStatus("API пока недоступен — запусти backend"));
   }, []);
@@ -29,8 +31,8 @@ export default function HomePage() {
         </div>
         <h1>Файлы, сайты и AI в одном интерфейсе</h1>
         <p>
-          Как панель хостинга: смотри файлы на VPS, деплой сайты и общайся с ассистентом —
-          без команд в терминале.
+          Открой эту страницу по адресу <span className="mono">http://IP/</span> —
+          это и есть интерфейс сервера. Дальше: файлы, сайты, чат.
         </p>
         <div className="hero-actions">
           <Link className="btn" href="/files">
@@ -42,10 +44,14 @@ export default function HomePage() {
           <Link className="btn ghost" href="/chat">
             Чат
           </Link>
+          <Link className="btn ghost" href="/login">
+            Вход
+          </Link>
         </div>
         <div className="status-pill">
           <span className="dot" />
           {status}
+          {authHint ? ` · ${authHint}` : ""}
         </div>
       </div>
     </main>

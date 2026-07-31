@@ -28,6 +28,8 @@ Endpoints:
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -60,8 +62,23 @@ BIND_HOST = os.environ.get("AI_HELPER_API_HOST", "0.0.0.0")
 
 SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
+PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
+_PUBLIC_PATHS = {"/status", "/auth/login", "/auth/check"}
+
+
+def _token_for(password: str) -> str:
+    return hmac.new(
+        SECRET_KEY.encode("utf-8"),
+        password.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _auth_enabled() -> bool:
+    return bool(PANEL_PASSWORD)
 
 
 def _default_roots() -> List[Path]:
@@ -262,6 +279,51 @@ class APIHandler(BaseHTTPRequestHandler):
             project_root = None
         return settings, profile, memory, project_root
 
+    def _authorized(self) -> bool:
+        if not _auth_enabled():
+            return True
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return False
+        token = auth[7:].strip()
+        expected = _token_for(PANEL_PASSWORD)
+        return hmac.compare_digest(token, expected)
+
+    def _require_auth(self) -> bool:
+        if self._authorized():
+            return True
+        self._send(401, _json({
+            "error": "Нужен вход",
+            "auth_required": True,
+        }))
+        return False
+
+    def _post_auth_login(self):
+        body = self._read_body()
+        password = str(body.get("password", ""))
+        if not _auth_enabled():
+            self._send(200, _json({
+                "ok": True,
+                "auth_required": False,
+                "token": "",
+                "message": "Пароль панели не задан (PANEL_PASSWORD)",
+            }))
+            return
+        if not password or not hmac.compare_digest(password, PANEL_PASSWORD):
+            self._send(401, _json({"ok": False, "error": "Неверный пароль"}))
+            return
+        self._send(200, _json({
+            "ok": True,
+            "auth_required": True,
+            "token": _token_for(PANEL_PASSWORD),
+        }))
+
+    def _get_auth_check(self):
+        self._send(200, _json({
+            "ok": self._authorized(),
+            "auth_required": _auth_enabled(),
+        }))
+
     # ── GET /status ──────────────────────────────────────────────
     def _get_status(self):
         settings = load_settings()
@@ -284,7 +346,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "projects": list(projects.keys()),
             "sites_root": str(SITES_ROOT),
             "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
-            "version": "1.1",
+            "auth_required": _auth_enabled(),
+            "version": "1.2",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -673,7 +736,13 @@ class APIHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/status":
             self._get_status()
-        elif path == "/project/files":
+            return
+        if path == "/auth/check":
+            self._get_auth_check()
+            return
+        if path not in _PUBLIC_PATHS and not self._require_auth():
+            return
+        if path == "/project/files":
             self._get_project_files()
         elif path == "/fs/list":
             self._get_fs_list()
@@ -684,6 +753,11 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == "/auth/login":
+            self._post_auth_login()
+            return
+        if path not in _PUBLIC_PATHS and not self._require_auth():
+            return
         routes = {
             "/chat": self._post_chat,
             "/chat/stream": self._post_chat_stream,
@@ -705,6 +779,8 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if not self._require_auth():
+            return
         if path.startswith("/sites/"):
             name = path[len("/sites/"):]
             self._delete_site(name)
