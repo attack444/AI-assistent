@@ -261,6 +261,8 @@
       padding: 18px;
       display: grid;
       gap: 12px;
+      max-height: 360px;
+      overflow-y: auto;
     }
 
     .bubble {
@@ -413,19 +415,17 @@
   <section class="section" id="models">
     <h2>Чат здесь — про среду</h2>
     <p>На этом сайте ассистент помогает с деплоем и кодом. На клиентских сайтах (например 5mb2) — отдельный чат-бот под их задачи.</p>
-    <div class="chat-preview" role="group" aria-label="Демо чата">
-      <div class="chat-preview-head">AI Helper · DeepSeek</div>
+    <div class="chat-preview" role="group" aria-label="Чат AI Helper">
+      <div class="chat-preview-head">AI Helper · DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
       <div class="chat-preview-body" id="demo-chat">
-        <div class="bubble bot">Могу подсказать, как залить сайт, где править файлы и что проверить перед публикацией.</div>
-        <div class="bubble user">Хочу задеплоить лендинг и проверить index.html</div>
-        <div class="bubble bot">Загрузи ZIP в деплой → открой превью → в редакторе правь index.html → снова «Проверить». Чат подключится к твоей папке проекта.</div>
+        <div class="bubble bot">Привет! Я публичный ассистент AI Helper. Спрошу про деплой, код или как устроена платформа — без доступа к файлам сервера.</div>
       </div>
       <form class="chat-preview form" id="demo-form">
-        <input type="text" placeholder="Скоро: живой чат с DeepSeek…" disabled aria-disabled="true" />
-        <button type="submit" disabled>Ждём</button>
+        <input id="chat-input" type="text" placeholder="Напиши вопрос…" autocomplete="off" maxlength="2000" required />
+        <button type="submit" id="chat-send">Отправить</button>
       </form>
     </div>
-    <p class="hint">Живой чат и личные кабинеты подключим следующим шагом. Витрина уже на этом сервере.</p>
+    <p class="hint">Лимит: до 30 сообщений в час с одного IP. Админ-панель и чужие файлы здесь недоступны.</p>
   </section>
 
   <section class="section" id="start">
@@ -461,6 +461,80 @@
     els.forEach((el) => {
       el.style.animationPlayState = "paused";
       io.observe(el);
+    });
+
+    // Public DeepSeek chat (no panel auth, no server tools)
+    const chatEl = document.getElementById("demo-chat");
+    const form = document.getElementById("demo-form");
+    const input = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("chat-send");
+    const statusEl = document.getElementById("chat-status");
+    const history = [];
+
+    function addBubble(role, text) {
+      const div = document.createElement("div");
+      div.className = "bubble " + (role === "user" ? "user" : "bot");
+      div.textContent = text;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return div;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = (input.value || "").trim();
+      if (!text || sendBtn.disabled) return;
+      input.value = "";
+      addBubble("user", text);
+      history.push({ role: "user", content: text });
+      const bot = addBubble("bot", "…");
+      sendBtn.disabled = true;
+      statusEl.textContent = "· думаю";
+
+      let full = "";
+      try {
+        const res = await fetch("/api/public/chat/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history: history.slice(0, -1) }),
+        });
+        if (!res.ok || !res.body) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ("HTTP " + res.status));
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop() || "";
+          for (const chunk of parts) {
+            const line = chunk.trim();
+            if (!line.startsWith("data:")) continue;
+            let ev;
+            try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+            if (ev.type === "text") {
+              full += ev.content || "";
+              bot.textContent = full;
+              chatEl.scrollTop = chatEl.scrollHeight;
+            } else if (ev.type === "error") {
+              throw new Error(ev.content || "Ошибка чата");
+            }
+          }
+        }
+        if (!full) throw new Error("Пустой ответ — обнови API на сервере (bootstrap-update)");
+        history.push({ role: "assistant", content: full });
+        statusEl.textContent = "";
+      } catch (err) {
+        bot.textContent = err.message || "Ошибка";
+        statusEl.textContent = "";
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
     });
   </script>
 </body>

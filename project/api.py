@@ -73,7 +73,13 @@ HOST_SITES_PATH = os.environ.get("HOST_SITES_PATH", "/var/ai-helper/sites")
 CHUNK_SIZE = int(os.environ.get("UPLOAD_CHUNK_SIZE", str(4 * 1024 * 1024)))  # 4 MB
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
-_PUBLIC_PATHS = {"/status", "/auth/login", "/auth/check"}
+_PUBLIC_PATHS = {
+    "/status",
+    "/auth/login",
+    "/auth/check",
+    "/public/chat",
+    "/public/chat/stream",
+}
 
 
 def _token_for(password: str) -> str:
@@ -603,7 +609,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "1.8",
+            "version": "1.9",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1351,6 +1357,64 @@ class APIHandler(BaseHTTPRequestHandler):
     def _get_wp_db_test(self):
         self._send(200, _json(wpt.test_db()))
 
+    # ── POST /public/chat (витрина ai — без инструментов) ───────
+    def _post_public_chat(self):
+        import public_chat as pch
+
+        body = self._read_body()
+        message = (body.get("message") or "").strip()
+        history = body.get("history") or []
+        if not message:
+            self._send(400, _json({"error": "Нужно поле message"}))
+            return
+        ok, why = pch.check_rate_limit(pch.client_ip(self))
+        if not ok:
+            self._send(429, _json({"error": why}))
+            return
+        parts: List[str] = []
+        err = ""
+        for ev in pch.stream_public_chat(message, history):
+            if ev["type"] == "text":
+                parts.append(ev["content"])
+            elif ev["type"] == "error":
+                err = ev["content"]
+        if err and not parts:
+            self._send(400, _json({"error": err}))
+            return
+        self._send(200, _json({"ok": True, "response": "".join(parts), "model": "deepseek"}))
+
+    def _post_public_chat_stream(self):
+        import public_chat as pch
+
+        body = self._read_body()
+        message = (body.get("message") or "").strip()
+        history = body.get("history") or []
+        if not message:
+            self._send(400, _json({"error": "Нужно поле message"}))
+            return
+        ok, why = pch.check_rate_limit(pch.client_ip(self))
+        if not ok:
+            self._send(429, _json({"error": why}))
+            return
+
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+        def _sse(obj: dict) -> None:
+            try:
+                self.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False)}\n\n".encode("utf-8"))
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        for ev in pch.stream_public_chat(message, history):
+            _sse(ev)
+
     # ── POST /chat ───────────────────────────────────────────────
     def _post_chat(self):
         body = self._read_body()
@@ -1514,6 +1578,12 @@ class APIHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/auth/login":
             self._post_auth_login()
+            return
+        if path == "/public/chat":
+            self._post_public_chat()
+            return
+        if path == "/public/chat/stream":
+            self._post_public_chat_stream()
             return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
