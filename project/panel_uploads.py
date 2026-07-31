@@ -49,9 +49,15 @@ def init_upload(
     (upload_dir / CHUNK_DIR).mkdir(parents=True, exist_ok=True)
     if total_chunks <= 0:
         total_chunks = max(1, (size + chunk_size - 1) // chunk_size)
+    # Safe on-disk name (no Cyrillic) — keep original in meta
+    original_name = Path(filename).name or "upload.bin"
+    safe_name = "".join(ch if 32 <= ord(ch) < 127 else "_" for ch in original_name).strip("._") or "upload.bin"
+    if not Path(safe_name).suffix and original_name.lower().endswith(".sql"):
+        safe_name += ".sql"
     meta = {
         "id": uid,
-        "filename": Path(filename).name or "site.zip",
+        "filename": safe_name,
+        "original_filename": original_name,
         "size": size,
         "site_name": site_name,
         "chunk_size": chunk_size,
@@ -68,6 +74,7 @@ def init_upload(
         "chunk_size": chunk_size,
         "total_chunks": total_chunks,
         "path": str(upload_dir),
+        "filename": safe_name,
     }
 
 

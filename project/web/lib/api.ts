@@ -1,5 +1,12 @@
 const TOKEN_KEY = "ai-helper-token";
 
+/** HTTP headers must be Latin-1 — Cyrillic filenames crash upload. */
+function safeHeaderFilename(name: string): string {
+  const base = name.split(/[/\\]/).pop() || "upload.bin";
+  const ascii = base.replace(/[^\x20-\x7E]/g, "_");
+  return ascii.replace(/\s+/g, "_") || "upload.bin";
+}
+
 export function getToken(): string {
   if (typeof window === "undefined") return "";
   return localStorage.getItem(TOKEN_KEY) || "";
@@ -317,7 +324,7 @@ export async function chunkedUploadFile(opts: {
             headers: {
               ...authHeaders(),
               "Content-Type": "application/octet-stream",
-              "X-Filename": file.name,
+              "X-Filename": safeHeaderFilename(file.name),
             },
             body: blob,
           },
@@ -398,7 +405,7 @@ async function chunkedMigrate(opts: {
             headers: {
               ...authHeaders(),
               "Content-Type": "application/octet-stream",
-              "X-Filename": file.name,
+              "X-Filename": safeHeaderFilename(file.name),
             },
             body: blob,
           },
@@ -451,7 +458,7 @@ async function uploadBinary<T>(path: string, file: File): Promise<T> {
     headers: {
       ...authHeaders(),
       "Content-Type": file.type || "application/octet-stream",
-      "X-Filename": file.name,
+      "X-Filename": safeHeaderFilename(file.name),
     },
     body: file,
   });

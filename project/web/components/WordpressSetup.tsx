@@ -221,11 +221,14 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
           {sqlFile ? sqlFile.name : "Выбрать dump.sql"}
           <input
             type="file"
-            accept=".sql,application/sql,text/plain"
+            accept=".sql,application/sql,text/plain,.txt"
             hidden
             onChange={(e) => setSqlFile(e.target.files?.[0] || null)}
           />
         </label>
+        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+          Если имя файла на русском — перед загрузкой переименуй в <span className="mono">dump.sql</span>
+        </p>
         <button className="btn" type="submit" disabled={busy || !sqlFile}>
           Загрузить и импортировать SQL
         </button>

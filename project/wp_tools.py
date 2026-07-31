@@ -176,47 +176,71 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
     if not sql_path.is_file():
         raise FileNotFoundError(str(sql_path))
     size = sql_path.stat().st_size
+    raw = sql_path.read_bytes()
+    text = None
+    used_encoding = "utf-8"
+    for enc in ("utf-8-sig", "utf-8", "cp1251", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            used_encoding = enc
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("utf-8", errors="replace")
+        used_encoding = "utf-8/replace"
+
     conn = _get_connection(database)
     statements = 0
     errors: List[str] = []
-    buf = []
+    buf: List[str] = []
     try:
-        with sql_path.open("r", encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                s = line.strip()
-                if not s or s.startswith("--") or s.startswith("/*"):
-                    # skip block comments roughly
-                    if s.startswith("/*") and "*/" not in s:
-                        # consume until */
-                        while True:
-                            nxt = fh.readline()
-                            if not nxt or "*/" in nxt:
-                                break
+        # Ensure connection talks utf8mb4
+        with conn.cursor() as cur:
+            cur.execute("SET NAMES utf8mb4")
+            cur.execute("SET CHARACTER SET utf8mb4")
+
+        for line in text.splitlines(keepends=True):
+            s = line.strip()
+            if not s or s.startswith("--"):
+                continue
+            if s.startswith("/*"):
+                if "*/" in s:
                     continue
-                buf.append(line)
-                if ";" in line:
-                    stmt = "".join(buf).strip()
-                    buf = []
-                    if not stmt:
-                        continue
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute(stmt)
-                        statements += 1
-                    except Exception as exc:
-                        msg = str(exc)
-                        # ignore common noise
-                        if "already exists" not in msg.lower():
-                            errors.append(msg[:200])
-                            if len(errors) > 30:
-                                break
+                # skip until end of block — handled loosely line by line
+                continue
+            if s.endswith("*/"):
+                continue
+            buf.append(line)
+            if ";" in line:
+                stmt = "".join(buf).strip()
+                buf = []
+                if not stmt or stmt == ";":
+                    continue
+                # skip pure comment blocks
+                if stmt.startswith("/*") and stmt.endswith("*/"):
+                    continue
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(stmt)
+                    statements += 1
+                except Exception as exc:
+                    msg = str(exc)
+                    if "already exists" not in msg.lower():
+                        # keep errors ASCII-safe for logs
+                        errors.append(msg.encode("utf-8", errors="replace").decode("utf-8")[:200])
+                        if len(errors) > 30:
+                            break
         return {
             "ok": len(errors) == 0 or statements > 0,
             "statements": statements,
             "errors": errors[:10],
             "size_bytes": size,
             "path": str(sql_path),
+            "encoding": used_encoding,
         }
+    finally:
+        conn.close()
     finally:
         conn.close()
 

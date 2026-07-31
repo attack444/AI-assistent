@@ -392,10 +392,10 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _send(self, code: int, body: bytes, content_type: str = "application/json") -> None:
         self.send_response(code)
-        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Filename")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
