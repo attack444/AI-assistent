@@ -125,44 +125,297 @@ def mysql_connect_params() -> Dict[str, Any]:
     }
 
 
-def _mysql_password(password: str):
-    """pymysql does str.encode('latin1') — Cyrillic MYSQL_PASSWORD crashes.
-
-    If password is not latin-1, pass UTF-8 bytes so pymysql skips that encode.
-    Matches how MySQL Docker stores Unicode passwords from env.
-    """
+def _password_variants(password: str) -> List[Any]:
+    """pymysql encodes str as latin-1; try encodings that match how MySQL stored the hash."""
+    if password is None:
+        return [""]
     if isinstance(password, bytes):
-        return password
-    text = password or ""
+        return [password]
+    text = str(password)
+    out: List[Any] = []
+    seen = set()
+
+    def add(val: Any) -> None:
+        key = val if isinstance(val, (bytes, bytearray)) else ("str", val)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(val)
+
+    # latin-1-safe → pass str (pymysql default)
     try:
         text.encode("latin-1")
-        return text
+        add(text)
     except UnicodeEncodeError:
-        return text.encode("utf-8")
+        pass
+    add(text.encode("utf-8"))
+    try:
+        add(text.encode("cp1251"))
+    except UnicodeEncodeError:
+        pass
+    add(text.encode("utf-8", errors="replace"))
+    return out or [""]
 
 
-def _get_connection(database: Optional[str] = None):
+def _pymysql():
     try:
         import pymysql
+        return pymysql
     except ImportError as exc:
         raise RuntimeError(
             "Нет pymysql. Добавь в requirements и пересобери Docker."
         ) from exc
+
+
+def _connect_raw(
+    *,
+    user: str,
+    password: Any,
+    database: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+):
+    pymysql = _pymysql()
     params = mysql_connect_params()
-    return pymysql.connect(
-        host=params["host"],
-        port=params["port"],
-        user=params["user"],
-        password=_mysql_password(params["password"]),
-        database=database or params["database"],
+    kwargs = dict(
+        host=host or params["host"],
+        port=port or params["port"],
+        user=user,
+        password=password if password is not None else "",
         charset="utf8mb4",
         autocommit=True,
-        connect_timeout=10,
+        connect_timeout=8,
     )
+    if database:
+        kwargs["database"] = database
+    return pymysql.connect(**kwargs)
+
+
+def _try_login(
+    user: str,
+    password: str,
+    database: Optional[str] = None,
+) -> Tuple[Any, Optional[str]]:
+    """Return (connection, None) or (None, error)."""
+    last_err = "unknown"
+    for pwd in _password_variants(password):
+        try:
+            conn = _connect_raw(user=user, password=pwd, database=database)
+            return conn, None
+        except Exception as exc:
+            last_err = str(exc)
+            # wrong password / unknown db — try next encoding
+            continue
+    # retry without selecting database (db may not exist yet)
+    if database:
+        for pwd in _password_variants(password):
+            try:
+                conn = _connect_raw(user=user, password=pwd, database=None)
+                return conn, None
+            except Exception as exc:
+                last_err = str(exc)
+                continue
+    return None, last_err
+
+
+def _root_password_candidates() -> List[str]:
+    params = mysql_connect_params()
+    candidates = [
+        params.get("root_password") or "",
+        "root_change_me",
+        "смени_root_пароль",
+        "strong_root_pass",
+        "root",
+        "password",
+        "",
+    ]
+    # unique preserve order
+    seen = set()
+    out = []
+    for c in candidates:
+        if c in seen:
+            continue
+        seen.add(c)
+        out.append(c)
+    return out
+
+
+def _sql_quote(value: str) -> str:
+    return "'" + str(value).replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def ensure_mysql_user(*, force: bool = False) -> Dict[str, Any]:
+    """Make sure MYSQL_USER can login with MYSQL_PASSWORD. Fix 1045 via root if needed."""
+    params = mysql_connect_params()
+    user = params["user"]
+    password = params["password"] or "wp_change_me"
+    database = params["database"]
+
+    # Fast path
+    if not force:
+        conn, err = _try_login(user, password, database)
+        if conn is not None:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                conn.close()
+                return {
+                    "ok": True,
+                    "healed": False,
+                    "user": user,
+                    "database": database,
+                    "message": "MySQL OK",
+                }
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    root_errors: List[str] = []
+    root_conn = None
+    used_root_pass = None
+    env_root = params.get("root_password") or ""
+    for root_pass in _root_password_candidates():
+        conn, err = _try_login("root", root_pass, None)
+        if conn is not None:
+            root_conn = conn
+            used_root_pass = root_pass
+            break
+        root_errors.append(f"root:{err}")
+
+    if root_conn is None:
+        return {
+            "ok": False,
+            "healed": False,
+            "user": user,
+            "database": database,
+            "error": (
+                "1045: не удалось войти ни как wp, ни как root. "
+                "Пароль в томе MySQL не совпадает с .env. "
+                "На VPS: bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit"
+            ),
+            "root_errors": root_errors[:5],
+            "hint": (
+                "bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit"
+            ),
+        }
+
+    try:
+        uq = _sql_quote(user)
+        pq = _sql_quote(password)
+        db_ident = "`" + database.replace("`", "``") + "`"
+        stmts = [
+            f"CREATE DATABASE IF NOT EXISTS {db_ident} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+            f"CREATE USER IF NOT EXISTS {uq}@'%' IDENTIFIED BY {pq}",
+            f"ALTER USER {uq}@'%' IDENTIFIED BY {pq}",
+            f"CREATE USER IF NOT EXISTS {uq}@'localhost' IDENTIFIED BY {pq}",
+            f"ALTER USER {uq}@'localhost' IDENTIFIED BY {pq}",
+            f"GRANT ALL PRIVILEGES ON {db_ident}.* TO {uq}@'%'",
+            f"GRANT ALL PRIVILEGES ON {db_ident}.* TO {uq}@'localhost'",
+            "FLUSH PRIVILEGES",
+        ]
+        # Also align root with current .env if we logged in with a fallback password
+        if env_root and used_root_pass != env_root:
+            rq = _sql_quote(env_root)
+            stmts.extend(
+                [
+                    f"ALTER USER 'root'@'%' IDENTIFIED BY {rq}",
+                    f"ALTER USER 'root'@'localhost' IDENTIFIED BY {rq}",
+                    "FLUSH PRIVILEGES",
+                ]
+            )
+        with root_conn.cursor() as cur:
+            for sql in stmts:
+                try:
+                    cur.execute(sql)
+                except Exception as exc:
+                    msg = str(exc).lower()
+                    if "exists" in msg or "duplicate" in msg:
+                        continue
+                    if sql.startswith("CREATE USER"):
+                        continue
+                    raise
+        root_conn.close()
+    except Exception as exc:
+        try:
+            root_conn.close()
+        except Exception:
+            pass
+        return {
+            "ok": False,
+            "healed": False,
+            "error": f"root вошёл, но сброс пароля не удался: {exc}",
+            "user": user,
+            "database": database,
+        }
+
+    conn2, err2 = _try_login(user, password, database)
+    if conn2 is None:
+        return {
+            "ok": False,
+            "healed": True,
+            "error": f"Пароль сброшен, но вход {user} всё ещё fail: {err2}",
+            "user": user,
+            "database": database,
+        }
+    conn2.close()
+    return {
+        "ok": True,
+        "healed": True,
+        "user": user,
+        "database": database,
+        "message": f"MySQL починен: пользователь {user} → пароль из .env",
+        "root_synced": bool(env_root and used_root_pass != env_root),
+    }
+
+
+def _get_connection(database: Optional[str] = None):
+    params = mysql_connect_params()
+    db = database or params["database"]
+    conn, err = _try_login(params["user"], params["password"], db)
+    if conn is not None:
+        # ensure default database selected
+        if db:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"USE `{db.replace('`', '``')}`")
+            except Exception:
+                pass
+        return conn
+
+    heal = ensure_mysql_user(force=True)
+    if not heal.get("ok"):
+        raise RuntimeError(heal.get("error") or err or "MySQL 1045")
+
+    conn2, err2 = _try_login(params["user"], params["password"], db)
+    if conn2 is None:
+        raise RuntimeError(err2 or "MySQL login failed after heal")
+    if db:
+        try:
+            with conn2.cursor() as cur:
+                cur.execute(f"USE `{db.replace('`', '``')}`")
+        except Exception:
+            pass
+    return conn2
 
 
 def test_db() -> Dict[str, Any]:
     params = mysql_connect_params()
+    heal = ensure_mysql_user(force=False)
+    if not heal.get("ok"):
+        # one forced attempt
+        heal = ensure_mysql_user(force=True)
+    if not heal.get("ok"):
+        return {
+            "ok": False,
+            "host": params["host"],
+            "database": params["database"],
+            "user": params["user"],
+            "error": heal.get("error"),
+            "hint": heal.get("hint"),
+            "healed": heal.get("healed"),
+        }
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
@@ -177,6 +430,8 @@ def test_db() -> Dict[str, Any]:
             "user": params["user"],
             "tables": len(tables),
             "sample_tables": tables[:15],
+            "healed": bool(heal.get("healed")),
+            "message": heal.get("message"),
         }
     except Exception as exc:
         return {
@@ -191,6 +446,19 @@ def test_db() -> Dict[str, Any]:
 def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str, Any]:
     if not sql_path.is_file():
         raise FileNotFoundError(str(sql_path))
+    # Always ensure credentials before import
+    heal = ensure_mysql_user(force=False)
+    if not heal.get("ok"):
+        heal = ensure_mysql_user(force=True)
+    if not heal.get("ok"):
+        return {
+            "ok": False,
+            "statements": 0,
+            "errors": [heal.get("error") or "MySQL 1045"],
+            "hint": heal.get("hint"),
+            "path": str(sql_path),
+        }
+
     size = sql_path.stat().st_size
     raw = sql_path.read_bytes()
     text = None
@@ -206,24 +474,37 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
         text = raw.decode("utf-8", errors="replace")
         used_encoding = "utf-8/replace"
 
+    # Hosting dumps often have DEFINER=`user`@`host` that break import
+    text = re.sub(
+        r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"DEFINER\s*=\s*'[^']+'@'[^']+'",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
     conn = _get_connection(database)
     statements = 0
     errors: List[str] = []
     buf: List[str] = []
     try:
-        # Ensure connection talks utf8mb4
         with conn.cursor() as cur:
             cur.execute("SET NAMES utf8mb4")
-            cur.execute("SET CHARACTER SET utf8mb4")
+            cur.execute("SET FOREIGN_KEY_CHECKS=0")
+            cur.execute("SET sql_mode='NO_ENGINE_SUBSTITUTION'")
 
         for line in text.splitlines(keepends=True):
             s = line.strip()
-            if not s or s.startswith("--"):
+            if not s or s.startswith("--") or s.startswith("#"):
                 continue
             if s.startswith("/*"):
                 if "*/" in s:
                     continue
-                # skip until end of block — handled loosely line by line
                 continue
             if s.endswith("*/"):
                 continue
@@ -233,8 +514,17 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
                 buf = []
                 if not stmt or stmt == ";":
                     continue
-                # skip pure comment blocks
                 if stmt.startswith("/*") and stmt.endswith("*/"):
+                    continue
+                # Skip noisy session settings from phpMyAdmin
+                upper = stmt.lstrip().upper()
+                if upper.startswith(("LOCK TABLES", "UNLOCK TABLES", "SET @@")):
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute(stmt)
+                        statements += 1
+                    except Exception:
+                        pass
                     continue
                 try:
                     with conn.cursor() as cur:
@@ -242,20 +532,27 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
                     statements += 1
                 except Exception as exc:
                     msg = str(exc)
-                    if "already exists" not in msg.lower():
-                        # keep errors ASCII-safe for logs
-                        errors.append(msg.encode("utf-8", errors="replace").decode("utf-8")[:200])
-                        if len(errors) > 30:
-                            break
+                    low = msg.lower()
+                    if "already exists" in low or "unknown database" in low:
+                        continue
+                    errors.append(msg.encode("utf-8", errors="replace").decode("utf-8")[:200])
+                    if len(errors) > 40:
+                        break
         return {
-            "ok": len(errors) == 0 or statements > 0,
+            "ok": statements > 0 and len(errors) < 40,
             "statements": statements,
             "errors": errors[:10],
             "size_bytes": size,
             "path": str(sql_path),
             "encoding": used_encoding,
+            "healed": bool(heal.get("healed")),
         }
     finally:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET FOREIGN_KEY_CHECKS=1")
+        except Exception:
+            pass
         conn.close()
 
 
@@ -264,18 +561,17 @@ def replace_site_url(old_url: str, new_url: str, table_prefix: str = "wp_") -> D
     new_url = new_url.rstrip("/")
     if not old_url or not new_url:
         raise ValueError("Нужны old_url и new_url")
+    ensure_mysql_user(force=False)
     conn = _get_connection()
     updated = {}
     try:
         with conn.cursor() as cur:
-            # options
             for opt in ("siteurl", "home"):
                 cur.execute(
                     f"UPDATE `{table_prefix}options` SET option_value=%s WHERE option_name=%s",
                     (new_url, opt),
                 )
                 updated[opt] = cur.rowcount
-            # rough search-replace in posts/content (serialized data may break — warn)
             for table, col in (
                 (f"{table_prefix}posts", "post_content"),
                 (f"{table_prefix}posts", "guid"),
@@ -304,7 +600,10 @@ def replace_site_url(old_url: str, new_url: str, table_prefix: str = "wp_") -> D
 
 
 def get_site_urls(table_prefix: str = "wp_") -> Dict[str, Any]:
-    conn = _get_connection()
+    try:
+        conn = _get_connection()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "table_prefix": table_prefix}
     try:
         with conn.cursor() as cur:
             cur.execute(

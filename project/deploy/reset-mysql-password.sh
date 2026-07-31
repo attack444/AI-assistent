@@ -1,9 +1,19 @@
 #!/bin/bash
-# Сброс пароля MySQL user wp (и при необходимости root) по значениям из .env
-# Нужен при ошибке: 1045 Access denied for user 'wp'@'...' (using password: YES)
+# Сброс пароля MySQL user wp под .env
+# Usage:
+#   bash reset-mysql-password.sh           # ALTER USER через root
+#   bash reset-mysql-password.sh --reinit  # УДАЛИТ том mysql и создаст заново (пустая БД)
 set -e
 
+REINIT=0
+if [ "${1:-}" = "--reinit" ] || [ "${1:-}" = "-f" ]; then
+  REINIT=1
+fi
+
 ENV_FILE="${ENV_FILE:-/opt/ai-helper/project/.env}"
+COMPOSE_DIR="${COMPOSE_DIR:-/opt/ai-helper/project/deploy}"
+COMPOSE_FILE="$COMPOSE_DIR/docker-compose.prod.yml"
+
 if [ ! -f "$ENV_FILE" ]; then
   echo "[!!] Нет $ENV_FILE"
   exit 1
@@ -11,7 +21,6 @@ fi
 
 # shellcheck disable=SC1090
 set -a
-# strip CR from Windows-edited .env
 source <(sed 's/\r$//' "$ENV_FILE")
 set +a
 
@@ -20,97 +29,115 @@ USER="${MYSQL_USER:-wp}"
 PASS="${MYSQL_PASSWORD:-}"
 ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
 
-if [ -z "$PASS" ]; then
-  echo "[!!] MYSQL_PASSWORD пустой в $ENV_FILE"
-  echo "    Задай латиницей, например: MYSQL_PASSWORD=wp_change_me"
+if [ -z "$PASS" ] || [ -z "$ROOT_PASS" ]; then
+  echo "[!!] Задай MYSQL_PASSWORD и MYSQL_ROOT_PASSWORD в $ENV_FILE (латиница!)"
+  echo "    Пример:"
+  echo "    MYSQL_ROOT_PASSWORD=RootPass123"
+  echo "    MYSQL_PASSWORD=WpPass123"
   exit 1
 fi
 
-if [ -z "$ROOT_PASS" ]; then
-  echo "[!!] MYSQL_ROOT_PASSWORD пустой в $ENV_FILE"
-  exit 1
+if printf '%s' "$PASS$ROOT_PASS" | grep -q '[^ -~]'; then
+  echo "[!!] В паролях кириллица. Меняю .env на латиницу автоматически…"
+  NEW_ROOT="RootPass$(date +%s | tail -c 5)"
+  NEW_WP="WpPass$(date +%s | tail -c 5)"
+  sed -i "s|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=${NEW_ROOT}|" "$ENV_FILE"
+  sed -i "s|^MYSQL_PASSWORD=.*|MYSQL_PASSWORD=${NEW_WP}|" "$ENV_FILE"
+  if ! grep -q '^MYSQL_ROOT_PASSWORD=' "$ENV_FILE"; then
+    echo "MYSQL_ROOT_PASSWORD=${NEW_ROOT}" >> "$ENV_FILE"
+  fi
+  if ! grep -q '^MYSQL_PASSWORD=' "$ENV_FILE"; then
+    echo "MYSQL_PASSWORD=${NEW_WP}" >> "$ENV_FILE"
+  fi
+  ROOT_PASS="$NEW_ROOT"
+  PASS="$NEW_WP"
+  echo "[OK] Новые пароли записаны в .env:"
+  echo "    MYSQL_ROOT_PASSWORD=$ROOT_PASS"
+  echo "    MYSQL_PASSWORD=$PASS"
+  REINIT=1
 fi
 
-# Cyrillic in password works via SQL, but prefer ASCII in .env for shells/scp
-if printf '%s' "$PASS" | grep -q '[^ -~]'; then
-  echo "[!!] MYSQL_PASSWORD содержит кириллицу — лучше латиница."
-  echo "    Сейчас всё равно попробую сбросить по .env…"
-fi
-
-echo "[>>] Проверяю контейнер ai-helper-mysql..."
-if ! docker ps --format '{{.Names}}' | grep -qx 'ai-helper-mysql'; then
-  echo "[!!] Контейнер ai-helper-mysql не запущен"
-  echo "    cd /opt/ai-helper/project/deploy && docker compose -f docker-compose.prod.yml up -d mysql"
-  exit 1
-fi
-
-# Escape single quotes for SQL: ' → ''
 sql_escape() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
+
+if [ "$REINIT" -eq 1 ]; then
+  echo "[!!] REINIT: удаляю том MySQL (база будет пустой — потом импорт SQL)."
+  cd "$COMPOSE_DIR"
+  docker compose -f docker-compose.prod.yml stop mysql app || true
+  docker compose -f docker-compose.prod.yml rm -f mysql || true
+  # volume name varies — wipe all project mysql volumes
+  for vol in $(docker volume ls -q | grep -E 'mysql_data|deploy_mysql' || true); do
+    echo "[>>] docker volume rm $vol"
+    docker volume rm "$vol" 2>/dev/null || true
+  done
+  docker compose -f docker-compose.prod.yml up -d mysql
+  echo "[>>] Жду готовности MySQL…"
+  for i in $(seq 1 60); do
+    if docker exec ai-helper-mysql mysqladmin ping -h127.0.0.1 -uroot -p"$ROOT_PASS" --silent 2>/dev/null; then
+      echo "[OK] MySQL готов"
+      break
+    fi
+    sleep 2
+    if [ "$i" -eq 60 ]; then
+      echo "[!!] MySQL не поднялся за 120с"
+      docker logs ai-helper-mysql --tail 40 || true
+      exit 1
+    fi
+  done
+fi
+
+echo "[>>] Синхронизирую пользователя $USER…"
 PASS_SQL=$(sql_escape "$PASS")
 USER_SQL=$(sql_escape "$USER")
 DB_SQL=$(sql_escape "$DB")
-
-echo "[>>] ALTER USER '$USER'@'%' … (пароль из .env)"
-# Try root with .env password; if that fails, try common leftovers
-run_root() {
-  docker exec -i ai-helper-mysql mysql -uroot -p"$1" -e "$2" 2>/dev/null
-}
+ROOT_SQL=$(sql_escape "$ROOT_PASS")
 
 SQL="
-CREATE DATABASE IF NOT EXISTS \`$DB_SQL\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '$USER_SQL'@'%' IDENTIFIED BY '$PASS_SQL';
 ALTER USER '$USER_SQL'@'%' IDENTIFIED BY '$PASS_SQL';
 CREATE USER IF NOT EXISTS '$USER_SQL'@'localhost' IDENTIFIED BY '$PASS_SQL';
 ALTER USER '$USER_SQL'@'localhost' IDENTIFIED BY '$PASS_SQL';
-GRANT ALL PRIVILEGES ON \`$DB_SQL\`.* TO '$USER_SQL'@'%';
-GRANT ALL PRIVILEGES ON \`$DB_SQL\`.* TO '$USER_SQL'@'localhost';
+GRANT ALL PRIVILEGES ON \`$DB\`.* TO '$USER_SQL'@'%';
+GRANT ALL PRIVILEGES ON \`$DB\`.* TO '$USER_SQL'@'localhost';
+ALTER USER 'root'@'%' IDENTIFIED BY '$ROOT_SQL';
+ALTER USER 'root'@'localhost' IDENTIFIED BY '$ROOT_SQL';
 FLUSH PRIVILEGES;
 "
 
 ok=0
-for candidate in "$ROOT_PASS" "root_change_me" "смени_root_пароль"; do
-  if [ -z "$candidate" ]; then
-    continue
-  fi
-  if run_root "$candidate" "$SQL"; then
-    echo "[OK] Пароль пользователя $USER обновлён через root"
+for candidate in "$ROOT_PASS" "root_change_me" "смени_root_пароль" "strong_root_pass" "root"; do
+  if [ -z "$candidate" ]; then continue; fi
+  if docker exec -i ai-helper-mysql mysql -uroot -p"$candidate" -e "$SQL" 2>/dev/null; then
+    echo "[OK] Пароли синхронизированы (root candidate matched)"
     ok=1
-    # If root from .env didn't work but a fallback did, sync root too
-    if [ "$candidate" != "$ROOT_PASS" ]; then
-      ROOT_SQL=$(sql_escape "$ROOT_PASS")
-      run_root "$candidate" "ALTER USER 'root'@'%' IDENTIFIED BY '$ROOT_SQL'; ALTER USER 'root'@'localhost' IDENTIFIED BY '$ROOT_SQL'; FLUSH PRIVILEGES;" \
-        && echo "[OK] MYSQL_ROOT_PASSWORD тоже синхронизирован с .env" \
-        || echo "[!!] root из .env не совпал со старым — пароль wp уже сброшен, root оставь как был или поправь .env"
-    fi
     break
   fi
 done
 
 if [ "$ok" -ne 1 ]; then
-  echo "[!!] Не удалось войти root-ом. Попробуй вручную:"
-  echo "  docker exec -it ai-helper-mysql mysql -uroot -p"
-  echo "  Затем:"
-  echo "  ALTER USER '$USER'@'%' IDENTIFIED BY 'ТВОЙ_ПАРОЛЬ_ИЗ_ENV';"
-  echo "  FLUSH PRIVILEGES;"
+  echo "[!!] root не подошёл. Принудительный reinit:"
+  echo "    bash $0 --reinit"
   exit 1
 fi
 
-echo "[>>] Проверка входа $USER…"
+echo "[>>] Проверка $USER…"
 if docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" -e "SELECT 1 AS ok;" "$DB" >/dev/null; then
   echo "[OK] $USER / $DB — вход работает"
 else
-  echo "[!!] Вход $USER всё ещё не работает — смотри пароль в .env и перезапусти app:"
-  echo "  cd /opt/ai-helper/project/deploy && docker compose -f docker-compose.prod.yml up -d --force-recreate app"
+  echo "[!!] Вход $USER не работает"
   exit 1
 fi
 
-echo "[>>] Перезапуск API (подхватит MYSQL_PASSWORD)…"
-cd /opt/ai-helper/project/deploy 2>/dev/null && \
-  docker compose -f docker-compose.prod.yml up -d --force-recreate app || \
-  docker restart ai-helper-app || true
+echo "[>>] Перезапуск app с новым .env…"
+cd "$COMPOSE_DIR"
+docker compose -f docker-compose.prod.yml up -d --force-recreate app
 
 echo ""
-echo "Готово. В панели: «Проверить MySQL», потом импорт SQL."
-echo "В wp-config DB_PASSWORD должен быть тот же, что MYSQL_PASSWORD в .env."
+echo "============================================"
+echo "  MySQL OK"
+echo "  MYSQL_PASSWORD=$PASS"
+echo "  В панели: Настроить WP → пароль тот же →"
+echo "  Сохранить wp-config → Проверить MySQL → импорт SQL"
+echo "============================================"

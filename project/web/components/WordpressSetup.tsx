@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   chunkedUploadFile,
+  fixWpDb,
   getWpStatus,
   importWpSql,
   patchWpConfig,
@@ -53,6 +54,7 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
       if (s.defaults?.db_name) setDbName(s.defaults.db_name);
       if (s.defaults?.db_user) setDbUser(s.defaults.db_user);
       if (s.defaults?.db_host) setDbHost(s.defaults.db_host);
+      if (s.defaults?.db_password) setDbPassword(s.defaults.db_password);
       if (s.defaults?.suggested_site_url) setNewUrl(s.defaults.suggested_site_url);
       if (s.urls?.urls?.siteurl) setOldUrl(String(s.urls.urls.siteurl));
     } catch (err) {
@@ -147,7 +149,41 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
     setError("");
     try {
       const res = await testWpDb();
-      setOkMsg(res.ok ? `MySQL OK · таблиц: ${res.tables}` : `MySQL ошибка: ${res.error}`);
+      if (res.ok) {
+        setOkMsg(
+          `MySQL OK · таблиц: ${res.tables}` +
+            (res.healed ? " (пароль wp синхронизирован)" : ""),
+        );
+      } else {
+        setError(
+          `${res.error || "MySQL ошибка"}` +
+            (res.hint ? `\n${res.hint}` : "") +
+            "\nНа VPS: bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit",
+        );
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onFixDb() {
+    setBusy(true);
+    setError("");
+    setOkMsg("");
+    try {
+      const res = await fixWpDb();
+      if (res.ok) {
+        setOkMsg(res.message || "MySQL починен");
+        await refresh();
+      } else {
+        setError(
+          (res.error || "Не удалось починить MySQL") +
+            (res.hint ? `\n${res.hint}` : "") +
+            "\nНа VPS: bash /opt/ai-helper/project/deploy/reset-mysql-password.sh --reinit",
+        );
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -202,8 +238,7 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
           type="password"
           value={dbPassword}
           onChange={(e) => setDbPassword(e.target.value)}
-          placeholder="DB_PASSWORD из .env"
-          required
+          placeholder="DB_PASSWORD (= MYSQL_PASSWORD из .env)"
         />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn" type="submit" disabled={busy}>
@@ -211,6 +246,9 @@ export function WordpressSetup({ siteName, serverIpHint = "ТВОЙ_IP", domainH
           </button>
           <button className="btn ghost" type="button" disabled={busy} onClick={onTestDb}>
             Проверить MySQL
+          </button>
+          <button className="btn ghost" type="button" disabled={busy} onClick={onFixDb}>
+            Починить MySQL (1045)
           </button>
         </div>
       </form>

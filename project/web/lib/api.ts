@@ -217,12 +217,13 @@ export function getWpStatus(name: string) {
     has_wp_config?: boolean;
     wp_config?: string | null;
     defines?: Record<string, string>;
-    db?: { ok: boolean; tables?: number; error?: string; sample_tables?: string[] };
+    db?: { ok: boolean; tables?: number; error?: string; sample_tables?: string[]; healed?: boolean };
     urls?: { ok?: boolean; urls?: Record<string, string>; error?: string };
     defaults?: {
       db_name?: string;
       db_user?: string;
       db_host?: string;
+      db_password?: string;
       suggested_site_url?: string;
       domain?: string;
     };
@@ -231,7 +232,29 @@ export function getWpStatus(name: string) {
 }
 
 export function testWpDb() {
-  return request<{ ok: boolean; tables?: number; error?: string; host?: string }>("/wp/db-test");
+  return request<{
+    ok: boolean;
+    tables?: number;
+    error?: string;
+    host?: string;
+    healed?: boolean;
+    message?: string;
+    hint?: string;
+  }>("/wp/db-test");
+}
+
+export function fixWpDb() {
+  return request<{
+    ok: boolean;
+    healed?: boolean;
+    message?: string;
+    error?: string;
+    hint?: string;
+    db?: { ok?: boolean; tables?: number; error?: string };
+  }>("/wp/fix-db", {
+    method: "POST",
+    body: JSON.stringify({ force: true }),
+  });
 }
 
 export function patchWpConfig(opts: {
@@ -242,10 +265,13 @@ export function patchWpConfig(opts: {
   db_host: string;
   table_prefix?: string;
 }) {
-  return request<{ ok: boolean; path: string; backup: string; changed: string[] }>("/wp/config", {
-    method: "POST",
-    body: JSON.stringify(opts),
-  });
+  return request<{ ok: boolean; path: string; backup: string; changed: string[]; mysql?: unknown }>(
+    "/wp/config",
+    {
+      method: "POST",
+      body: JSON.stringify(opts),
+    },
+  );
 }
 
 export function importWpSql(opts: { name: string; upload_id: string }) {

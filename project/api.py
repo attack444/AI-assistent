@@ -1195,6 +1195,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "db_name": os.environ.get("MYSQL_DATABASE", "wordpress"),
             "db_user": os.environ.get("MYSQL_USER", "wp"),
             "db_host": os.environ.get("MYSQL_HOST", "mysql"),
+            "db_password": os.environ.get("MYSQL_PASSWORD", ""),
             "suggested_site_url": (
                 f"https://{domain}" if domain else f"http://SERVER_IP/sites/{name}"
             ),
@@ -1213,18 +1214,37 @@ class APIHandler(BaseHTTPRequestHandler):
             if not root.is_dir():
                 self._send(404, _json({"error": "Сайт не найден"}))
                 return
+            # Empty password in form → use .env (never write blank DB_PASSWORD)
+            db_password = (body.get("db_password") or "").strip() or os.environ.get(
+                "MYSQL_PASSWORD", ""
+            )
+            # Heal MySQL user before writing config
+            heal = wpt.ensure_mysql_user(force=False)
+            if not heal.get("ok"):
+                heal = wpt.ensure_mysql_user(force=True)
             result = wpt.patch_wp_config(
                 root,
                 db_name=body.get("db_name") or os.environ.get("MYSQL_DATABASE", "wordpress"),
                 db_user=body.get("db_user") or os.environ.get("MYSQL_USER", "wp"),
-                db_password=body.get("db_password")
-                if body.get("db_password") is not None
-                else os.environ.get("MYSQL_PASSWORD", ""),
+                db_password=db_password,
                 db_host=body.get("db_host") or os.environ.get("MYSQL_HOST", "mysql"),
                 table_prefix=body.get("table_prefix"),
             )
+            result["mysql"] = heal
             _fix_site_perms(root)
             self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_wp_fix_db(self):
+        try:
+            body = self._read_body() if int(self.headers.get("Content-Length", 0) or 0) else {}
+            force = bool((body or {}).get("force", True))
+            result = wpt.ensure_mysql_user(force=force)
+            if result.get("ok"):
+                # verify with full test
+                result["db"] = wpt.test_db()
+            self._send(200 if result.get("ok") else 400, _json(result))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
@@ -1470,6 +1490,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/upload/chunk": self._post_upload_chunk,
             "/upload/complete": self._post_upload_complete,
             "/wp/config": self._post_wp_config,
+            "/wp/fix-db": self._post_wp_fix_db,
             "/wp/import-sql": self._post_wp_import_sql,
             "/wp/replace-url": self._post_wp_replace_url,
         }
@@ -1495,6 +1516,11 @@ class APIHandler(BaseHTTPRequestHandler):
 
 def main():
     _ensure_sites_root()
+    try:
+        heal = wpt.ensure_mysql_user(force=False)
+        print(f"[mysql] {heal.get('message') or heal.get('error') or heal}", flush=True)
+    except Exception as exc:
+        print(f"[mysql] skip ensure on boot: {exc}", flush=True)
     server = ThreadingHTTPServer((BIND_HOST, PORT), APIHandler)
     print(f"AI Helper API  →  http://{BIND_HOST}:{PORT}", flush=True)
     print(f"  sites root    →  {SITES_ROOT}", flush=True)
