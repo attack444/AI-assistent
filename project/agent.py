@@ -122,7 +122,7 @@ GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 # DeepSeek (OpenAI-compatible, best for code)
 DEEPSEEK_API_URL   = "https://api.deepseek.com/chat/completions"
-DEEPSEEK_DEFAULT_MODEL = "deepseek-coder"
+DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
 
 # OpenAI-compatible providers — mapped by key prefix or explicit name
 _PROVIDER_URLS: Dict[str, str] = {

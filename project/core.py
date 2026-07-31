@@ -112,7 +112,7 @@ class AppSettings:
     groq_model: str = "llama-3.3-70b-versatile"
     # DeepSeek API (best for code, cheap, register at platform.deepseek.com)
     deepseek_api_key: str = ""
-    deepseek_model: str = "deepseek-coder"
+    deepseek_model: str = "deepseek-chat"
     # HTTP proxy for cloud API calls (e.g. http://127.0.0.1:7890 for VPN/Russia)
     http_proxy: str = ""
 
@@ -380,13 +380,38 @@ def verify_ollama_for_indexing(
 def load_settings() -> AppSettings:
     ensure_dirs()
     if not SETTINGS_FILE.exists():
-        return AppSettings()
-    try:
-        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-        valid = {k: v for k, v in data.items() if k in AppSettings.__dataclass_fields__}
-        return AppSettings(**valid)
-    except Exception:
-        return AppSettings()
+        s = AppSettings()
+    else:
+        try:
+            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            valid = {k: v for k, v in data.items() if k in AppSettings.__dataclass_fields__}
+            s = AppSettings(**valid)
+        except Exception:
+            s = AppSettings()
+    # Env overrides from Docker .env (VPS)
+    import os
+
+    if os.environ.get("DEEPSEEK_API_KEY", "").strip():
+        s.deepseek_api_key = os.environ["DEEPSEEK_API_KEY"].strip()
+    if os.environ.get("DEEPSEEK_MODEL", "").strip():
+        s.deepseek_model = os.environ["DEEPSEEK_MODEL"].strip()
+    if os.environ.get("GROQ_API_KEY", "").strip():
+        s.groq_api_key = os.environ["GROQ_API_KEY"].strip()
+    if os.environ.get("GROQ_MODEL", "").strip():
+        s.groq_model = os.environ["GROQ_MODEL"].strip()
+    if os.environ.get("LLM_MODEL", "").strip():
+        s.llm_model = os.environ["LLM_MODEL"].strip()
+    proxy = (
+        os.environ.get("AI_HELPER_HTTP_PROXY")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("http_proxy")
+        or ""
+    ).strip()
+    if proxy:
+        s.http_proxy = proxy
+    return s
 
 
 def save_settings(s: AppSettings) -> None:

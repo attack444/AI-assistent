@@ -23,7 +23,7 @@ fi
 echo "[>>] DUMP=$DUMP ($(stat -c%s "$DUMP") bytes)"
 
 echo "[>>] Очищаю таблицы $DB…"
-docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" -e "
+docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" --ssl-mode=DISABLED -e "
 SET FOREIGN_KEY_CHECKS=0;
 CREATE DATABASE IF NOT EXISTS \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE \`$DB\`;
@@ -47,7 +47,7 @@ sed -E \
   "$DUMP" > "$TMP"
 
 echo "[>>] Import (это может занять несколько минут)…"
-docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --default-character-set=utf8mb4 "$DB" < "$TMP"
+docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED --default-character-set=utf8mb4 "$DB" < "$TMP"
 
 COUNT=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" "$DB" \
   -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB';" 2>/dev/null || echo 0)
@@ -58,7 +58,7 @@ SITEURL=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" "$DB" \
 echo "[info] siteurl=$SITEURL"
 
 # Point URLs to production domain
-docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" "$DB" -e "
+docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" -e "
 UPDATE wp0w_options SET option_value='https://5mb2.ru' WHERE option_name IN ('siteurl','home');
 " 2>/dev/null || true
 

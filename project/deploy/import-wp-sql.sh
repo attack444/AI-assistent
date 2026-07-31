@@ -54,9 +54,9 @@ fi
 
 echo "[>>] Import → DB=$DB user=$USER"
 # Prefer app user; fallback root
-if docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" "$DB" < "$TMP"; then
+if docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" < "$TMP"; then
   echo "[OK] Import via $USER"
-elif [ -n "$ROOT_PASS" ] && docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" "$DB" < "$TMP"; then
+elif [ -n "$ROOT_PASS" ] && docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" --ssl-mode=DISABLED "$DB" < "$TMP"; then
   echo "[OK] Import via root"
 else
   echo "[!!] Import failed"
@@ -64,7 +64,7 @@ else
 fi
 
 # Quick table count
-COUNT=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" "$DB" \
+COUNT=$(docker exec -i ai-helper-mysql mysql -N -u"$USER" -p"$PASS" --ssl-mode=DISABLED "$DB" \
   -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB';" 2>/dev/null || echo 0)
 echo "[OK] Tables in $DB: $COUNT"
 if [ "${COUNT:-0}" -lt 5 ]; then

@@ -540,6 +540,7 @@ def import_sql_file(
             }
 
     mysql_bin = shutil.which("mysql")
+    cli_error = ""
     if mysql_bin:
         # Stream-clean DEFINER / USE into a temp file, then mysql < file
         cleaned = Path(tempfile.mkstemp(prefix="wpimp-", suffix=".sql")[1])
@@ -547,19 +548,9 @@ def import_sql_file(
             with sql_path.open("rb") as src, cleaned.open("wb") as dst:
                 # Keep original bytes (utf8). Only rewrite ASCII markers.
                 data = src.read()
-            text = None
+            # Prefer utf-8; never latin-1 (corrupts Cyrillic). Invalid bytes → replace.
+            text = data.decode("utf-8", errors="replace")
             used_encoding = "utf-8"
-            # Prefer utf-8; latin-1 never fails but corrupts Cyrillic WP dumps
-            for enc in ("utf-8-sig", "utf-8", "cp1251"):
-                try:
-                    text = data.decode(enc)
-                    used_encoding = enc
-                    break
-                except UnicodeDecodeError:
-                    continue
-            if text is None:
-                text = data.decode("utf-8", errors="replace")
-                used_encoding = "utf-8/replace"
 
             text = re.sub(
                 r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
@@ -600,6 +591,8 @@ def import_sql_file(
                 "-u", str(params["user"]),
                 f"-p{params['password']}",
                 "--default-character-set=utf8mb4",
+                # MySQL 8 docker often presents self-signed cert — disable SSL for internal docker net
+                "--ssl-mode=DISABLED",
                 target_db,
             ]
             with cleaned.open("rb") as stdin:
@@ -623,31 +616,37 @@ def import_sql_file(
                 tables = [r[0] for r in cur.fetchall()]
             conn.close()
             ok = proc.returncode == 0 and len(tables) >= 5
-            return {
-                "ok": ok,
-                "statements": -1,
-                "tables": len(tables),
-                "sample_tables": tables[:20],
-                "errors": err_lines[:10],
-                "size_bytes": size,
-                "path": str(sql_path),
-                "encoding": used_encoding,
-                "method": "mysql-cli",
-                "healed": bool(heal.get("healed")),
-            }
+            if ok:
+                return {
+                    "ok": True,
+                    "statements": -1,
+                    "tables": len(tables),
+                    "sample_tables": tables[:20],
+                    "errors": err_lines[:10],
+                    "size_bytes": size,
+                    "path": str(sql_path),
+                    "encoding": used_encoding,
+                    "method": "mysql-cli",
+                    "healed": bool(heal.get("healed")),
+                }
+            # Fall through to pymysql if CLI failed (e.g. SSL) or too few tables
+            cli_error = "; ".join(err_lines[:3]) or f"mysql exit {proc.returncode}, tables={len(tables)}"
         finally:
             try:
                 cleaned.unlink()
             except OSError:
                 pass
-
     # Fallback: pymysql with quote-aware splitter + utf-8
-    return _import_sql_pymysql(
+    result = _import_sql_pymysql(
         sql_path,
         target_db=target_db,
         size=size,
         heal=heal,
     )
+    if cli_error:
+        result["cli_error"] = cli_error
+        result["method"] = f"pymysql-fallback"
+    return result
 
 
 def _split_sql_statements(text: str) -> List[str]:
@@ -698,7 +697,6 @@ def _split_sql_statements(text: str) -> List[str]:
                 continue
 
         if ch == "'" and not in_double:
-            # handle escaped '' inside single quotes
             if in_single and nxt == "'":
                 buf.append(ch)
                 buf.append(nxt)
@@ -747,18 +745,8 @@ def _import_sql_pymysql(
     heal: Dict[str, Any],
 ) -> Dict[str, Any]:
     data = sql_path.read_bytes()
-    text = None
+    text = data.decode("utf-8", errors="replace")
     used_encoding = "utf-8"
-    for enc in ("utf-8-sig", "utf-8", "cp1251"):
-        try:
-            text = data.decode(enc)
-            used_encoding = enc
-            break
-        except UnicodeDecodeError:
-            continue
-    if text is None:
-        text = data.decode("utf-8", errors="replace")
-        used_encoding = "utf-8/replace"
 
     text = re.sub(r"DEFINER\s*=\s*`[^`]+`@`[^`]+`", "", text, flags=re.I)
     text = re.sub(r"DEFINER\s*=\s*'[^']+'@'[^']+'", "", text, flags=re.I)
