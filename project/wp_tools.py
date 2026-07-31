@@ -452,10 +452,19 @@ def test_db() -> Dict[str, Any]:
         }
 
 
-def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str, Any]:
+def import_sql_file(
+    sql_path: Path,
+    database: Optional[str] = None,
+    *,
+    drop_existing: bool = True,
+) -> Dict[str, Any]:
+    """Import a .sql dump into MySQL. Prefer mysql CLI (correct encoding + quotes)."""
+    import shutil
+    import subprocess
+    import tempfile
+
     if not sql_path.is_file():
         raise FileNotFoundError(str(sql_path))
-    # Always ensure credentials before import
     heal = ensure_mysql_user(force=False)
     if not heal.get("ok"):
         heal = ensure_mysql_user(force=True)
@@ -474,130 +483,331 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
             "ok": False,
             "statements": 0,
             "errors": [
-                f"SQL-файл слишком маленький ({size} байт). "
-                "Это не полный дамп — в phpMyAdmin Export выбери базу сайта "
-                "u3406909_wp736 (не information_schema), SQL, структура+данные."
+                f"SQL-файл слишком маленький ({size} байт) — не полный дамп сайта."
             ],
             "path": str(sql_path),
             "size_bytes": size,
         }
-    raw = sql_path.read_bytes()
-    head = raw[:5000].decode("utf-8", errors="ignore").lower()
-    if "information_schema" in head and "wp_" not in head and "wp0w_" not in head:
-        return {
-            "ok": False,
-            "statements": 0,
-            "errors": [
-                "Залит дамп information_schema — это системная БД MySQL, не сайт. "
-                "В phpMyAdmin слева выбери базу u3406909_wp736 → Export → SQL → структура+данные."
-            ],
-            "path": str(sql_path),
-            "size_bytes": size,
-        }
+
+    raw_head = sql_path.read_bytes()[:8000]
+    head = raw_head.decode("utf-8", errors="ignore").lower()
+    if "information_schema" in head and "wp0w_" not in head and "`wp_" not in head:
+        # peek a bit more for wp tables later in file — cheap check only on head
+        sample = sql_path.read_bytes()[:200_000].decode("utf-8", errors="ignore").lower()
+        if "wp0w_" not in sample and "create table `wp_" not in sample:
+            return {
+                "ok": False,
+                "statements": 0,
+                "errors": [
+                    "Дамп похож на information_schema, не на WordPress. "
+                    "Нужна база сайта (таблицы wp0w_*)."
+                ],
+                "path": str(sql_path),
+                "size_bytes": size,
+            }
+
+    params = mysql_connect_params()
+    target_db = database or params["database"]
+
+    if drop_existing:
+        try:
+            # Prefer root to DROP/CREATE database cleanly
+            root_conn = None
+            for root_pass in _root_password_candidates():
+                root_conn, _err = _try_login("root", root_pass, None)
+                if root_conn is not None:
+                    break
+            conn = root_conn or _get_connection(None)
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"CREATE DATABASE IF NOT EXISTS `{target_db}` "
+                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+                cur.execute(f"USE `{target_db}`")
+                cur.execute("SET FOREIGN_KEY_CHECKS=0")
+                cur.execute("SHOW TABLES")
+                tables = [r[0] for r in cur.fetchall()]
+                for tbl in tables:
+                    cur.execute(f"DROP TABLE IF EXISTS `{tbl}`")
+                cur.execute("SET FOREIGN_KEY_CHECKS=1")
+            conn.close()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "statements": 0,
+                "errors": [f"Не удалось очистить БД перед импортом: {exc}"],
+                "path": str(sql_path),
+            }
+
+    mysql_bin = shutil.which("mysql")
+    if mysql_bin:
+        # Stream-clean DEFINER / USE into a temp file, then mysql < file
+        cleaned = Path(tempfile.mkstemp(prefix="wpimp-", suffix=".sql")[1])
+        try:
+            with sql_path.open("rb") as src, cleaned.open("wb") as dst:
+                # Keep original bytes (utf8). Only rewrite ASCII markers.
+                data = src.read()
+            text = None
+            used_encoding = "utf-8"
+            # Prefer utf-8; latin-1 never fails but corrupts Cyrillic WP dumps
+            for enc in ("utf-8-sig", "utf-8", "cp1251"):
+                try:
+                    text = data.decode(enc)
+                    used_encoding = enc
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if text is None:
+                text = data.decode("utf-8", errors="replace")
+                used_encoding = "utf-8/replace"
+
+            text = re.sub(
+                r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
+                "",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"DEFINER\s*=\s*'[^']+'@'[^']+'",
+                "",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"CREATE\s+DATABASE\s+.*?;",
+                f"CREATE DATABASE IF NOT EXISTS `{target_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            text = re.sub(
+                r"USE\s+`[^`]+`\s*;",
+                f"USE `{target_db}`;",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"USE\s+[a-zA-Z0-9_]+\s*;",
+                f"USE `{target_db}`;",
+                text,
+                flags=re.IGNORECASE,
+            )
+            cleaned.write_text(text, encoding="utf-8")
+
+            cmd = [
+                mysql_bin,
+                "-h", str(params["host"]),
+                "-P", str(params["port"]),
+                "-u", str(params["user"]),
+                f"-p{params['password']}",
+                "--default-character-set=utf8mb4",
+                target_db,
+            ]
+            with cleaned.open("rb") as stdin:
+                proc = subprocess.run(
+                    cmd,
+                    stdin=stdin,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=max(120, size // (512 * 1024) + 120),
+                )
+            err = (proc.stderr or b"").decode("utf-8", errors="replace")
+            # mysql prints password warning to stderr
+            err_lines = [
+                ln for ln in err.splitlines()
+                if ln.strip() and "Using a password" not in ln
+            ]
+            # count tables
+            conn = _get_connection(target_db)
+            with conn.cursor() as cur:
+                cur.execute("SHOW TABLES")
+                tables = [r[0] for r in cur.fetchall()]
+            conn.close()
+            ok = proc.returncode == 0 and len(tables) >= 5
+            return {
+                "ok": ok,
+                "statements": -1,
+                "tables": len(tables),
+                "sample_tables": tables[:20],
+                "errors": err_lines[:10],
+                "size_bytes": size,
+                "path": str(sql_path),
+                "encoding": used_encoding,
+                "method": "mysql-cli",
+                "healed": bool(heal.get("healed")),
+            }
+        finally:
+            try:
+                cleaned.unlink()
+            except OSError:
+                pass
+
+    # Fallback: pymysql with quote-aware splitter + utf-8
+    return _import_sql_pymysql(
+        sql_path,
+        target_db=target_db,
+        size=size,
+        heal=heal,
+    )
+
+
+def _split_sql_statements(text: str) -> List[str]:
+    """Split SQL on semicolons outside quotes/comments."""
+    stmts: List[str] = []
+    buf: List[str] = []
+    i = 0
+    n = len(text)
+    in_single = False
+    in_double = False
+    in_line_comment = False
+    in_block_comment = False
+    while i < n:
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+
+        if in_line_comment:
+            buf.append(ch)
+            if ch == "\n":
+                in_line_comment = False
+            i += 1
+            continue
+        if in_block_comment:
+            buf.append(ch)
+            if ch == "*" and nxt == "/":
+                buf.append(nxt)
+                i += 2
+                in_block_comment = False
+                continue
+            i += 1
+            continue
+
+        if not in_single and not in_double:
+            if ch == "-" and nxt == "-":
+                in_line_comment = True
+                buf.append(ch)
+                i += 1
+                continue
+            if ch == "#":
+                in_line_comment = True
+                buf.append(ch)
+                i += 1
+                continue
+            if ch == "/" and nxt == "*":
+                in_block_comment = True
+                buf.append(ch)
+                i += 1
+                continue
+
+        if ch == "'" and not in_double:
+            # handle escaped '' inside single quotes
+            if in_single and nxt == "'":
+                buf.append(ch)
+                buf.append(nxt)
+                i += 2
+                continue
+            in_single = not in_single
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == "\\" and (in_single or in_double):
+            buf.append(ch)
+            if nxt:
+                buf.append(nxt)
+                i += 2
+                continue
+            i += 1
+            continue
+
+        if ch == ";" and not in_single and not in_double:
+            stmt = "".join(buf).strip()
+            buf = []
+            if stmt:
+                stmts.append(stmt)
+            i += 1
+            continue
+
+        buf.append(ch)
+        i += 1
+
+    tail = "".join(buf).strip()
+    if tail:
+        stmts.append(tail)
+    return stmts
+
+
+def _import_sql_pymysql(
+    sql_path: Path,
+    *,
+    target_db: str,
+    size: int,
+    heal: Dict[str, Any],
+) -> Dict[str, Any]:
+    data = sql_path.read_bytes()
     text = None
     used_encoding = "utf-8"
-    for enc in ("utf-8-sig", "utf-8", "cp1251", "latin-1"):
+    for enc in ("utf-8-sig", "utf-8", "cp1251"):
         try:
-            text = raw.decode(enc)
+            text = data.decode(enc)
             used_encoding = enc
             break
         except UnicodeDecodeError:
             continue
     if text is None:
-        text = raw.decode("utf-8", errors="replace")
+        text = data.decode("utf-8", errors="replace")
         used_encoding = "utf-8/replace"
 
-    # Hosting dumps often have DEFINER=`user`@`host` that break import
-    text = re.sub(
-        r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        r"DEFINER\s*=\s*'[^']+'@'[^']+'",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
-    # Old hosting DB name (e.g. u3406909_default) → our MYSQL_DATABASE
-    target_db = database or mysql_connect_params()["database"]
+    text = re.sub(r"DEFINER\s*=\s*`[^`]+`@`[^`]+`", "", text, flags=re.I)
+    text = re.sub(r"DEFINER\s*=\s*'[^']+'@'[^']+'", "", text, flags=re.I)
     text = re.sub(
         r"CREATE\s+DATABASE\s+.*?;",
         f"CREATE DATABASE IF NOT EXISTS `{target_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
         text,
-        flags=re.IGNORECASE | re.DOTALL,
+        flags=re.I | re.S,
     )
-    text = re.sub(
-        r"USE\s+`[^`]+`\s*;",
-        f"USE `{target_db}`;",
-        text,
-        flags=re.IGNORECASE,
-    )
-    text = re.sub(
-        r"USE\s+[a-zA-Z0-9_]+\s*;",
-        f"USE `{target_db}`;",
-        text,
-        flags=re.IGNORECASE,
-    )
+    text = re.sub(r"USE\s+`[^`]+`\s*;", f"USE `{target_db}`;", text, flags=re.I)
+    text = re.sub(r"USE\s+[a-zA-Z0-9_]+\s*;", f"USE `{target_db}`;", text, flags=re.I)
 
-    conn = _get_connection(database)
     statements = 0
     errors: List[str] = []
-    buf: List[str] = []
+    conn = _get_connection(target_db)
     try:
         with conn.cursor() as cur:
             cur.execute("SET NAMES utf8mb4")
             cur.execute("SET FOREIGN_KEY_CHECKS=0")
             cur.execute("SET sql_mode='NO_ENGINE_SUBSTITUTION'")
-
-        for line in text.splitlines(keepends=True):
-            s = line.strip()
-            if not s or s.startswith("--") or s.startswith("#"):
+        for stmt in _split_sql_statements(text):
+            upper = stmt.lstrip().upper()
+            if upper.startswith(("/*", "--")):
                 continue
-            if s.startswith("/*"):
-                if "*/" in s:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(stmt)
+                statements += 1
+            except Exception as exc:
+                msg = str(exc)
+                low = msg.lower()
+                if "already exists" in low:
                     continue
-                continue
-            if s.endswith("*/"):
-                continue
-            buf.append(line)
-            if ";" in line:
-                stmt = "".join(buf).strip()
-                buf = []
-                if not stmt or stmt == ";":
-                    continue
-                if stmt.startswith("/*") and stmt.endswith("*/"):
-                    continue
-                # Skip noisy session settings from phpMyAdmin
-                upper = stmt.lstrip().upper()
-                if upper.startswith(("LOCK TABLES", "UNLOCK TABLES", "SET @@")):
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute(stmt)
-                        statements += 1
-                    except Exception:
-                        pass
-                    continue
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute(stmt)
-                    statements += 1
-                except Exception as exc:
-                    msg = str(exc)
-                    low = msg.lower()
-                    if "already exists" in low or "unknown database" in low:
-                        continue
-                    errors.append(msg.encode("utf-8", errors="replace").decode("utf-8")[:200])
-                    if len(errors) > 40:
-                        break
+                errors.append(msg.encode("utf-8", errors="replace").decode("utf-8")[:200])
+                if len(errors) > 40:
+                    break
+        with conn.cursor() as cur:
+            cur.execute("SHOW TABLES")
+            tables = [r[0] for r in cur.fetchall()]
         return {
-            "ok": statements > 0 and len(errors) < 40,
+            "ok": len(tables) >= 5,
             "statements": statements,
+            "tables": len(tables),
+            "sample_tables": tables[:20],
             "errors": errors[:10],
             "size_bytes": size,
             "path": str(sql_path),
             "encoding": used_encoding,
+            "method": "pymysql",
             "healed": bool(heal.get("healed")),
         }
     finally:
@@ -607,6 +817,7 @@ def import_sql_file(sql_path: Path, database: Optional[str] = None) -> Dict[str,
         except Exception:
             pass
         conn.close()
+
 
 
 def replace_site_url(old_url: str, new_url: str, table_prefix: str = "wp_") -> Dict[str, Any]:

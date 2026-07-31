@@ -597,7 +597,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "1.4",
+            "version": "1.5",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1307,7 +1307,8 @@ class APIHandler(BaseHTTPRequestHandler):
             if not str(sql_path).lower().endswith((".sql", ".txt")) and sql_path.suffix.lower() not in {".sql", ".txt", ""}:
                 # still try — some dumps have no extension
                 pass
-            result = wpt.import_sql_file(sql_path)
+            drop_existing = bool(body.get("drop_existing", True))
+            result = wpt.import_sql_file(sql_path, drop_existing=drop_existing)
             result["site"] = name
             self._send(200 if result.get("ok") else 400, _json(result))
         except Exception as exc:
