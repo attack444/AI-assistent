@@ -65,8 +65,15 @@ function quickPrompts(site: string, ctx: SiteContext | null): { label: string; t
     ];
   }
   const base = [
-    { label: "Статус сайта", text: "Проверь статус сайта через site_status и кратко скажи что не так, если есть проблемы." },
-    { label: "Список файлов", text: "Покажи структуру корня сайта (list_dir) и что можно править." },
+    {
+      label: "О сайте",
+      text:
+        "Что скажешь о этом сайте? Разбери по файлам на сервере: тип (WP/статика), структура, домен, проблемы, что улучшить. Конкретно, без отговорок про отсутствие доступа.",
+    },
+    {
+      label: "Статус",
+      text: "Проверь статус сайта (site_status): WordPress?, БД, siteurl/home, index. Краткий отчёт и что чинить.",
+    },
     { label: "Права 755/644", text: "Выставь права на файлы сайта через site_fix_perms." },
   ];
   if (ctx?.is_wordpress) {
@@ -86,7 +93,7 @@ function quickPrompts(site: string, ctx: SiteContext | null): { label: string; t
     ...base,
     {
       label: "Поправь index",
-      text: "Прочитай index.html (или index.php) и скажи что можно улучшить в первом экране.",
+      text: "Прочитай index.html (или index.php) и предложи 3 конкретные правки для первого экрана. Если скажу «делай» — внеси их.",
     },
   ];
 }

@@ -31,15 +31,16 @@ class AgentEvent:
 # Smart query routing
 # ---------------------------------------------------------------------------
 
-# Keywords that indicate the agent MUST use tools
+# Keywords that indicate the agent MUST use tools (actions / ops)
+# Note: bare "сайт" is NOT here — review questions use prefetched context instead.
 _TOOL_TRIGGERS = frozenset([
     "файл", "прочитай", "открой", "создай", "удали", "запиши", "папк",
-    "директор", "список файл", "покажи файл", "посмотри", "проверь",
+    "директор", "список файл", "покажи файл", "посмотри файл",
     "исправь", "измени", "замени", "отредактируй", "редактир", "поправ",
     "добавь", "вставь", "убери", "html", "css", "php", "js", "index.",
-    "что не так", "проблем", "сайт", "wordpress", "wp-", "белый экран",
-    "siteurl", "права", "permission", "nginx", "mysql", "базу",
-    "переимен", "скопир", "перемес",
+    "что не так", "проблем", "белый экран", "почини", "починить",
+    "wordpress", "wp-", "siteurl", "права", "permission", "nginx", "mysql", "базу",
+    "переимен", "скопир", "перемес", "замени url", "поставь",
     "git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
     "запусти", "команд", "powershell", "terminal", "тест", "pytest",
     "процесс", "диск", "переменн", ".exe", "реестр",
@@ -50,7 +51,16 @@ _TOOL_TRIGGERS = frozenset([
     "уведомлен",
     "улучши себя", "обнови модель", "бэкап", "бекап",
     "read_file", "write_file", "list_dir", "str_replace", "apply_edits",
+    "site_status", "wp_replace", "fix_perms",
 ])
+
+# Soft site-review questions → answer from prefetched server data (no tool drama)
+_SITE_REVIEW_HINTS = (
+    "о сайте", "про сайт", "что скажешь", "что думаешь", "оцени",
+    "обзор", "как сайт", "как выглядит", "расскажи о", "разбери сайт",
+    "что с сайтом", "проанализируй", "анализ сайта", "что улучшить",
+    "как тебе сайт", "посмотри сайт", "посмотри на сайт",
+)
 
 # Tool names grouped by category — only relevant ones sent per request
 _TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "str_replace",
@@ -107,6 +117,93 @@ _SCHEMA_BY_NAME: Dict[str, Dict] = {s["function"]["name"]: s for s in TOOLS_SCHE
 def _needs_tools(text: str) -> bool:
     lower = text.lower()
     return any(kw in lower for kw in _TOOL_TRIGGERS)
+
+
+def _is_site_review(text: str) -> bool:
+    lower = text.lower().strip()
+    if any(h in lower for h in _SITE_REVIEW_HINTS):
+        return True
+    # Short vague asks while a site is open: "ну как?", "и что?", "оцени"
+    if len(lower) <= 40 and any(
+        w in lower for w in ("сайт", "оцени", "как", "что скаж", "нормальн")
+    ):
+        return True
+    return False
+
+
+def _looks_like_access_refusal(text: str) -> bool:
+    lower = (text or "").lower()
+    markers = (
+        "не могу получить доступ",
+        "нет доступа к",
+        "не имею доступа",
+        "не могу получить информацию о конкретном",
+        "cannot access",
+        "don't have access",
+        "do not have access",
+        "не могу открыть сайт",
+        "не могу зайти на сайт",
+    )
+    return any(m in lower for m in markers)
+
+
+def prefetch_workspace(project_root: Optional[Path]) -> str:
+    """
+    Read site facts from disk BEFORE the LLM answers.
+    Small models often refuse or skip tools — this grounds them.
+    """
+    if not project_root or not project_root.is_dir():
+        return ""
+    parts: List[str] = [
+        "ДАННЫЕ С СЕРВЕРА (уже прочитаны за тебя — используй как факт):",
+        f"Рабочая папка: {project_root}",
+    ]
+    try:
+        from hosting_tools import build_site_card, site_status
+        card = build_site_card(project_root)
+        if card:
+            parts.append(card)
+        st = site_status(str(project_root))
+        if st.get("ok") and st.get("wordpress"):
+            parts.append(
+                "WordPress JSON: "
+                + json.dumps(st["wordpress"], ensure_ascii=False)[:2500]
+            )
+    except Exception as exc:
+        parts.append(f"(status: {exc})")
+
+    try:
+        from tools import list_dir, read_file
+        ld = list_dir(str(project_root), recursive=False)
+        if ld.get("ok"):
+            items = list(ld.get("items") or [])[:45]
+            parts.append("Корень сайта:\n" + "\n".join(f"  {x}" for x in items))
+        # shallow recursive for structure feel
+        ld2 = list_dir(str(project_root), recursive=True, extensions=".html,.php,.css,.js,.htm")
+        if ld2.get("ok"):
+            items2 = list(ld2.get("items") or [])[:35]
+            if items2:
+                parts.append("Ключевые файлы:\n" + "\n".join(f"  {x}" for x in items2))
+        for name in ("index.html", "index.php", "index.htm", "style.css", "styles.css"):
+            p = project_root / name
+            if not p.is_file():
+                # also check common nested
+                for sub in ("public_html", "www", "wordpress"):
+                    cand = project_root / sub / name
+                    if cand.is_file():
+                        p = cand
+                        break
+            if p.is_file():
+                r = read_file(str(p))
+                if r.get("ok"):
+                    rel = str(p.relative_to(project_root)).replace("\\", "/")
+                    parts.append(f"--- {rel} (начало) ---\n{(r.get('content') or '')[:4000]}")
+                if name.startswith("index"):
+                    break
+    except Exception as exc:
+        parts.append(f"(files: {exc})")
+
+    return "\n\n".join(parts)
 
 
 def _select_tools(text: str, *, force_workspace: bool = False) -> List[Dict[str, Any]]:
@@ -451,11 +548,25 @@ def _fast_prompt(
     profile: UserProfile,
     project_root: Optional[Path],
     mem_ctx: str,
+    prefetched: str = "",
 ) -> str:
     snapshot = _project_snapshot(project_root)
+    access = ""
+    if project_root:
+        access = (
+            f"У тебя УЖЕ есть доступ к сайту «{project_root.name}» на этом сервере. "
+            "ЗАПРЕЩЕНО говорить что нет доступа / не можешь открыть сайт. "
+            "Отвечай только по данным ниже: структура, проблемы, что улучшить — конкретно."
+        )
+    else:
+        access = (
+            "Если спрашивают про сайт, а рабочая папка не выбрана — попроси выбрать сайт в чате слева."
+        )
     return "\n".join(filter(None, [
-        f"Ты — AI-ассистент программиста. Пользователь: {profile.name}.",
+        f"Ты — AI-ассистент владельца VPS. Пользователь: {profile.name}.",
         "Отвечай кратко, конкретно, по-русски. Код — в ```блоках```.",
+        access,
+        prefetched,
         snapshot,
         mem_ctx.strip() or "",
     ])).strip()
@@ -466,6 +577,7 @@ def build_system_prompt(
     memory: MemoryStore,
     project_root: Optional[Path],
     query: str,
+    prefetched: str = "",
 ) -> str:
     proj_name = project_root.name if project_root else "нет"
     proj_path = str(project_root) if project_root else "нет"
@@ -473,27 +585,23 @@ def build_system_prompt(
     langs     = ", ".join(profile.preferred_languages) if profile.preferred_languages else "любые"
     confirm   = "без подтверждения" if not profile.confirm_before_apply else "с подтверждением"
     rules_txt = ("\nПравила:\n" + "\n".join(f"- {r}" for r in profile.rules)) if profile.rules else ""
-    snapshot  = _project_snapshot(project_root, max_files=50)
-    site_card = ""
-    if project_root:
-        try:
-            from hosting_tools import build_site_card
-            site_card = build_site_card(project_root)
-        except Exception:
-            site_card = ""
+    snapshot  = _project_snapshot(project_root, max_files=40)
 
     workspace_rules = ""
     if project_root:
         workspace_rules = f"""
 РАБОЧАЯ ПАПКА САЙТА (на сервере): {proj_path}
-- Пути относительные: index.html, wp-config.php, wp-content/...
-- Правки РЕАЛЬНЫЕ на диске: str_replace / apply_edits / write_file
-- Несколько файлов сразу → apply_edits
+- У тебя ЕСТЬ доступ к файлам этого сайта на диске сервера (не интернет-браузер)
+- ЗАПРЕЩЕНО отвечать «нет доступа к сайту» / «не могу получить информацию о сайте»
+- Вопросы «что скажешь о сайте?» → опирайся на блок ДАННЫЕ С СЕРВЕРА ниже
+- Правки на диске: str_replace / apply_edits / write_file
 - Проблемы сайта → site_status; URL WP → wp_replace_urls; права → site_fix_perms
-- Вложенный public_html → flatten_site_layout
-- PHP синтаксис → php_lint
 - Не выходи за пределы рабочей папки
 """
+    else:
+        workspace_rules = (
+            "\nСайт не выбран. Если вопрос про конкретный сайт — скажи выбрать сайт слева в чате.\n"
+        )
 
     return f"""Ты — автономный AI-ассистент владельца VPS. Пользователь: {profile.name}.
 Стиль: {profile.style} | Изменения: {confirm}
@@ -503,16 +611,59 @@ def build_system_prompt(
 
 ПРАВИЛА:
 - НИКОГДА не проси показать код — читай сам через read_file / list_dir
-- Действуй сразу инструментами, не описывай план вместо действия
-- Частичные правки: str_replace или apply_edits; новые файлы: create_file/write_file
-- Кратко: факт → действие → результат
+- Действуй сразу инструментами, когда нужна правка или диагностика с командами
+- На обзорные вопросы отвечай по уже загруженным данным с сервера
+- Кратко: факт → вывод → что сделать дальше
 - Пиши по-русски
 
-{site_card}
+{prefetched}
 
 {snapshot}
 
 {mem_ctx}""".strip()
+
+
+def _augment_user_message(user_message: str, project_root: Optional[Path]) -> str:
+    if not project_root:
+        return user_message
+    return (
+        f"{user_message}\n\n"
+        f"[Служебно: активный сайт «{project_root.name}» уже открыт на сервере. "
+        f"Отвечай по фактам из системного контекста. "
+        f"Нельзя говорить, что у тебя нет доступа к сайту.]"
+    )
+
+
+def _offline_site_review(project_root: Path, prefetched: str) -> str:
+    """Deterministic review if the LLM refuses access."""
+    name = project_root.name
+    lines = [
+        f"Краткий разбор сайта «{name}» по файлам на сервере:",
+        "",
+    ]
+    is_wp = (project_root / "wp-content").is_dir() or (project_root / "wp-config.php").is_file()
+    has_index = any((project_root / n).is_file() for n in ("index.html", "index.php", "index.htm"))
+    domain_f = project_root / ".ai-helper-domain"
+    domain = domain_f.read_text(encoding="utf-8", errors="ignore").strip() if domain_f.is_file() else ""
+    lines.append(f"- Тип: {'WordPress' if is_wp else 'статика / другой стек'}")
+    lines.append(f"- index в корне: {'да' if has_index else 'нет — возможно нужен flatten_site_layout'}")
+    if domain:
+        lines.append(f"- Домен: {domain}")
+    lines.append(f"- Папка: {project_root}")
+    lines.append("")
+    lines.append("Что могу сделать дальше по команде:")
+    lines.append("• починить URL WordPress")
+    lines.append("• выставить права 755/644")
+    lines.append("• править index/шаблон/CSS")
+    lines.append("• найти ошибку (белый экран / php -l)")
+    if prefetched:
+        # keep response useful but short — pull first card lines
+        card_lines = [ln for ln in prefetched.splitlines() if ln.startswith(("Карточка", "WordPress", "Домен", "DB:", "MySQL", "siteurl", "Корень"))]
+        if card_lines:
+            lines.append("")
+            lines.append("Факты:")
+            lines.extend(f"  {ln}" for ln in card_lines[:12])
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -669,9 +820,28 @@ def run_agent(
     """
     agent_model = llm_model
     chat_model  = fast_llm_model.strip() or llm_model
-    # With an active site/project workspace — always enable file tools
-    use_tools   = _needs_tools(user_message) or bool(project_root)
     force_ws    = bool(project_root)
+
+    # Prefetch site files so review answers are grounded (even without tool calls)
+    prefetched = ""
+    if project_root:
+        try:
+            prefetched = prefetch_workspace(project_root)
+            yield AgentEvent(type="info", content="prefetch:site")
+        except Exception as exc:
+            yield AgentEvent(type="info", content=f"prefetch_error:{exc}")
+
+    # Tools only for real actions. Site reviews use prefetched context (fast path).
+    wants_action = _needs_tools(user_message)
+    is_review = (not wants_action) and (
+        _is_site_review(user_message) or bool(project_root and not wants_action)
+    )
+    # If user asks to fix/check WP etc. → tools. Pure "what about the site?" → grounded chat.
+    use_tools = wants_action
+    # Soft: "проверь сайт" / "белый экран" already in triggers → tools. Good.
+    # For free tiny models, prefer grounded chat when review-like even if "проверь" — keep as is.
+
+    user_for_llm = _augment_user_message(user_message, project_root)
 
     # ── FREE LOCAL (Ollama) first — когда LLM_PREFER_FREE=1 ──────────────────
     skip_cloud = False
@@ -685,18 +855,30 @@ def run_agent(
                 mem_ctx0 = memory.get_context(
                     user_message, project=str(project_root) if project_root else ""
                 )
-                if not use_tools:
-                    sys_msg0 = _fast_prompt(profile, project_root, mem_ctx0)
+                # Tiny free models are weak at tool-calling — for site chat prefer grounded answers
+                free_use_tools = use_tools and not (project_root and is_review)
+                if project_root and not wants_action:
+                    free_use_tools = False  # always grounded for non-action site questions
+                if not free_use_tools:
+                    sys_msg0 = _fast_prompt(profile, project_root, mem_ctx0, prefetched)
                     messages0: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg0}]
                     for msg in chat_history[-6:]:
                         messages0.append({"role": msg["role"], "content": msg["content"]})
-                    messages0.append({"role": "user", "content": user_message})
+                    messages0.append({"role": "user", "content": user_for_llm})
                     yield AgentEvent(type="info", content=f"free:{used_model}")
                     try:
+                        collected = []
                         for chunk in _free.stream_ollama(
                             messages0, host=ollama_host, model=used_model
                         ):
+                            collected.append(chunk)
                             yield AgentEvent(type="text", content=chunk)
+                        text_out = "".join(collected)
+                        if project_root and _looks_like_access_refusal(text_out):
+                            # Hard fallback: structured review without LLM fluff
+                            yield AgentEvent(type="info", content="refusal_fallback")
+                            fallback = _offline_site_review(project_root, prefetched)
+                            yield AgentEvent(type="text", content="\n\n" + fallback)
                         yield AgentEvent(type="done")
                         return
                     except Exception as exc:
@@ -714,18 +896,22 @@ def run_agent(
     if deepseek_api_key.strip() and not skip_cloud:
         mem_ctx = memory.get_context(user_message, project=str(project_root) if project_root else "")
         if not use_tools:
-            sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
+            sys_msg  = _fast_prompt(profile, project_root, mem_ctx, prefetched)
             messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
             for msg in chat_history[-6:]:
                 messages.append({"role": msg["role"], "content": msg["content"]})
-            messages.append({"role": "user", "content": user_message})
+            messages.append({"role": "user", "content": user_for_llm})
             yield AgentEvent(type="info", content=f"deepseek:{deepseek_model}")
             try:
+                collected: List[str] = []
                 for chunk in _groq_stream(
                     deepseek_api_key, deepseek_model, messages,
                     proxy=http_proxy, _api_url=DEEPSEEK_API_URL
                 ):
+                    collected.append(chunk)
                     yield AgentEvent(type="text", content=chunk)
+                if project_root and _looks_like_access_refusal("".join(collected)):
+                    yield AgentEvent(type="text", content="\n\n" + _offline_site_review(project_root, prefetched))
             except GroqAuthError as exc:
                 yield AgentEvent(type="error", content=str(exc))
             except Exception as exc:
@@ -735,11 +921,13 @@ def run_agent(
         else:
             # DeepSeek agent path
             relevant_tools = _select_tools(user_message, force_workspace=force_ws)
-            system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
+            system_prompt  = build_system_prompt(
+                profile, memory, project_root, user_message, prefetched
+            )
             messages = [{"role": "system", "content": system_prompt}]
             for msg in chat_history[-8:]:
                 messages.append({"role": msg["role"], "content": msg["content"]})
-            messages.append({"role": "user", "content": user_message})
+            messages.append({"role": "user", "content": user_for_llm})
             yield AgentEvent(type="info", content=f"deepseek-agent:{deepseek_model}")
             steps = 0
             tool_calls_made = False
@@ -792,16 +980,20 @@ def run_agent(
 
     # ── GROQ PATH ────────────────────────────────────────────────────────────
     if groq_api_key.strip() and not use_tools and not skip_cloud:
-        sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
+        sys_msg  = _fast_prompt(profile, project_root, mem_ctx, prefetched)
         messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg}]
         for msg in chat_history[-6:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
-        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "user", "content": user_for_llm})
 
         yield AgentEvent(type="info", content=f"groq:{groq_model}")
         try:
+            collected = []
             for chunk in _groq_stream(groq_api_key, groq_model, messages, proxy=http_proxy):
+                collected.append(chunk)
                 yield AgentEvent(type="text", content=chunk)
+            if project_root and _looks_like_access_refusal("".join(collected)):
+                yield AgentEvent(type="text", content="\n\n" + _offline_site_review(project_root, prefetched))
         except GroqAuthError as exc:
             # Auth error — show clear message, DO NOT silently fall back
             yield AgentEvent(type="error", content=str(exc))
@@ -809,11 +1001,11 @@ def run_agent(
             # Other Groq error → fall back to local fast model silently
             yield AgentEvent(type="info", content=f"groq_fallback:{chat_model}")
             fast_opts = {"temperature": 0.1, "num_ctx": 4096, "num_predict": 768, "top_k": 20}
-            sys_msg2  = _fast_prompt(profile, project_root, mem_ctx)
+            sys_msg2  = _fast_prompt(profile, project_root, mem_ctx, prefetched)
             msgs2: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg2}]
             for m in chat_history[-6:]:
                 msgs2.append({"role": m["role"], "content": m["content"]})
-            msgs2.append({"role": "user", "content": user_message})
+            msgs2.append({"role": "user", "content": user_for_llm})
             try:
                 for chunk in _stream_chat(ollama_host, chat_model, msgs2, fast_opts):
                     yield AgentEvent(type="text", content=chunk)
@@ -825,11 +1017,13 @@ def run_agent(
     # ── GROQ AGENT PATH (Groq key set + tools needed) ────────────────────────
     if groq_api_key.strip() and use_tools and not skip_cloud:
         relevant_tools = _select_tools(user_message, force_workspace=force_ws)
-        system_prompt  = build_system_prompt(profile, memory, project_root, user_message)
+        system_prompt  = build_system_prompt(
+            profile, memory, project_root, user_message, prefetched
+        )
         messages = [{"role": "system", "content": system_prompt}]
         for msg in chat_history[-8:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
-        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "user", "content": user_for_llm})
 
         yield AgentEvent(type="info", content=f"groq-agent:{groq_model}")
 
@@ -896,16 +1090,20 @@ def run_agent(
             "top_k":       20,
             "top_p":       0.9,
         }
-        sys_msg  = _fast_prompt(profile, project_root, mem_ctx)
+        sys_msg  = _fast_prompt(profile, project_root, mem_ctx, prefetched)
         messages = [{"role": "system", "content": sys_msg}]
         for msg in chat_history[-6:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
-        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "user", "content": user_for_llm})
 
         yield AgentEvent(type="info", content=f"fast:{chat_model}")
         try:
+            collected = []
             for chunk in _stream_chat(ollama_host, chat_model, messages, fast_opts):
+                collected.append(chunk)
                 yield AgentEvent(type="text", content=chunk)
+            if project_root and _looks_like_access_refusal("".join(collected)):
+                yield AgentEvent(type="text", content="\n\n" + _offline_site_review(project_root, prefetched))
         except Exception as exc:
             yield AgentEvent(type="error", content=f"Ollama: {exc}")
         yield AgentEvent(type="done")
@@ -923,11 +1121,13 @@ def run_agent(
 
     yield AgentEvent(type="info", content=f"agent:{agent_model}")
 
-    system_prompt = build_system_prompt(profile, memory, project_root, user_message)
+    system_prompt = build_system_prompt(
+        profile, memory, project_root, user_message, prefetched
+    )
     messages = [{"role": "system", "content": system_prompt}]
     for msg in chat_history[-8:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append({"role": "user", "content": user_message})
+    messages.append({"role": "user", "content": user_for_llm})
 
     steps           = 0
     tool_calls_made = False
