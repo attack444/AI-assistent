@@ -34,12 +34,14 @@ bash /opt/ai-helper/project/deploy/fix-sites-403.sh
 В `.env` добавь (если нет):
 
 ```bash
-MYSQL_ROOT_PASSWORD=надежный_root
+MYSQL_ROOT_PASSWORD=strong_root_pass
 MYSQL_DATABASE=wordpress
 MYSQL_USER=wp
-MYSQL_PASSWORD=надежный_wp
-PANEL_PASSWORD=пароль_панели
+MYSQL_PASSWORD=strong_wp_pass
+PANEL_PASSWORD=panel_password
 ```
+
+> Пароли MySQL — **латиница/цифры**. Кириллица в `MYSQL_PASSWORD` давала ошибку `latin-1` при импорте SQL.
 
 ### 2. Залей ZIP в панели
 
