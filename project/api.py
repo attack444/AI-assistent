@@ -632,7 +632,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.4",
+            "version": "2.5",
         }))
 
     # ── GET /project/files ───────────────────────────────────────
@@ -1727,25 +1727,38 @@ class APIHandler(BaseHTTPRequestHandler):
     def _get_context(self):
         """Site/project snapshot for the panel chat UI."""
         from agent import _project_snapshot
+        from hosting_tools import build_site_card
 
         qs = self._qs()
         site = (qs.get("site") or "").strip()
         proj = (qs.get("project") or "").strip()
         settings, profile, memory, project_root = self._load_context(proj, site)
         snapshot = _project_snapshot(project_root, max_files=80) if project_root else ""
+        card = build_site_card(project_root) if project_root else ""
         tree: List[str] = []
+        info: Dict[str, Any] = {}
         if project_root and project_root.is_dir():
             r = list_dir(str(project_root), recursive=False)
             if r.get("ok"):
                 tree = list(r.get("items") or [])[:80]
+            if site and _SAFE_NAME.match(site):
+                try:
+                    info = _site_info(site)
+                except Exception:
+                    info = {}
         self._send(200, _json({
             "ok": True,
             "site": site or None,
             "project": project_root.name if project_root else None,
             "project_root": str(project_root) if project_root else None,
             "snapshot": snapshot,
+            "card": card,
             "tree": tree,
             "can_edit": bool(project_root),
+            "is_wordpress": bool(info.get("is_wordpress")),
+            "domain": info.get("domain"),
+            "has_index": info.get("has_index"),
+            "url": info.get("url"),
         }))
 
     # ── POST /chat ───────────────────────────────────────────────

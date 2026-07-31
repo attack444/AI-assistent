@@ -302,6 +302,128 @@ def delete_file(path: str) -> Dict[str, Any]:
     return r
 
 
+def mkdir_path(path: str) -> Dict[str, Any]:
+    """Создаёт папку (включая родителей)."""
+    args = {"path": path}
+    try:
+        p = Path(path).expanduser().resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        r: Dict[str, Any] = {"ok": True, "path": str(p), "edited": True}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("mkdir_path", args, r)
+    return r
+
+
+def copy_path(src: str, dst: str) -> Dict[str, Any]:
+    """Копирует файл или папку."""
+    args = {"src": src, "dst": dst}
+    try:
+        s = Path(src).expanduser().resolve()
+        d = Path(dst).expanduser().resolve()
+        if not s.exists():
+            r: Dict[str, Any] = {"ok": False, "error": f"Источник не найден: {s}"}
+        else:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            if s.is_dir():
+                if d.exists():
+                    r = {"ok": False, "error": f"Папка назначения уже есть: {d}"}
+                else:
+                    shutil.copytree(s, d)
+                    r = {"ok": True, "src": str(s), "dst": str(d), "edited": True, "type": "dir"}
+            else:
+                shutil.copy2(s, d)
+                r = {"ok": True, "src": str(s), "path": str(d), "dst": str(d),
+                     "edited": True, "type": "file"}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("copy_path", args, r)
+    return r
+
+
+def move_path(src: str, dst: str) -> Dict[str, Any]:
+    """Перемещает или переименовывает файл/папку."""
+    args = {"src": src, "dst": dst}
+    try:
+        s = Path(src).expanduser().resolve()
+        d = Path(dst).expanduser().resolve()
+        if not s.exists():
+            r: Dict[str, Any] = {"ok": False, "error": f"Источник не найден: {s}"}
+        else:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            if d.exists():
+                r = {"ok": False, "error": f"Назначение уже существует: {d}"}
+            else:
+                shutil.move(str(s), str(d))
+                r = {"ok": True, "src": str(s), "path": str(d), "dst": str(d), "edited": True}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("move_path", args, r)
+    return r
+
+
+def apply_edits(edits: Any) -> Dict[str, Any]:
+    """
+    Пакетная точечная правка нескольких файлов.
+    edits: список {path, old_string, new_string, replace_all?} или JSON-строка.
+    """
+    args = {"count": 0}
+    try:
+        items = edits
+        if isinstance(edits, str):
+            items = json.loads(edits)
+        if not isinstance(items, list) or not items:
+            r: Dict[str, Any] = {"ok": False, "error": "edits должен быть непустым списком"}
+            _log("apply_edits", args, r)
+            return r
+        results: List[Dict[str, Any]] = []
+        ok_count = 0
+        for i, item in enumerate(items[:40]):
+            if not isinstance(item, dict):
+                results.append({"ok": False, "index": i, "error": "элемент не объект"})
+                continue
+            path = str(item.get("path") or "")
+            old = item.get("old_string")
+            new = item.get("new_string")
+            if old is None or new is None:
+                results.append({"ok": False, "index": i, "path": path,
+                                "error": "нужны old_string и new_string"})
+                continue
+            one = str_replace(
+                path,
+                str(old),
+                str(new),
+                replace_all=bool(item.get("replace_all", False)),
+            )
+            one["index"] = i
+            results.append({
+                "ok": one.get("ok"),
+                "index": i,
+                "path": one.get("path") or path,
+                "replaced": one.get("replaced"),
+                "added": one.get("added"),
+                "removed": one.get("removed"),
+                "error": one.get("error"),
+                "diff": (one.get("diff") or "")[:800],
+                "edited": bool(one.get("edited")),
+            })
+            if one.get("ok"):
+                ok_count += 1
+        r = {
+            "ok": ok_count == len(results) and ok_count > 0,
+            "applied": ok_count,
+            "total": len(results),
+            "results": results,
+            "edited": ok_count > 0,
+            "path": next((x["path"] for x in results if x.get("ok")), None),
+        }
+        args["count"] = len(results)
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("apply_edits", args, r)
+    return r
+
+
 def list_dir(path: str, recursive: bool = False, extensions: str = "") -> Dict[str, Any]:
     """
     Список файлов в директории.
@@ -1264,6 +1386,81 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "mkdir_path",
+            "description": "Создаёт папку (включая родителей) в корне сайта.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Относительный путь папки"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "copy_path",
+            "description": "Копирует файл или папку внутри сайта.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                },
+                "required": ["src", "dst"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_path",
+            "description": "Перемещает или переименовывает файл/папку внутри сайта.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                },
+                "required": ["src", "dst"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_edits",
+            "description": (
+                "Пакетная правка нескольких файлов за один вызов. "
+                "Передай список {path, old_string, new_string}. "
+                "Предпочтительнее нескольких str_replace подряд."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "edits": {
+                        "type": "array",
+                        "description": "Список правок",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "old_string": {"type": "string"},
+                                "new_string": {"type": "string"},
+                                "replace_all": {"type": "boolean"},
+                            },
+                            "required": ["path", "old_string", "new_string"],
+                        },
+                    },
+                },
+                "required": ["edits"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_dir",
             "description": (
                 "Список файлов и папок сайта/проекта. "
@@ -1663,6 +1860,94 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    # ── Hosting / WordPress (VPS panel) ───────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "site_status",
+            "description": (
+                "Статус текущего сайта: WordPress?, домен, index, MySQL, siteurl/home. "
+                "Вызывай первым при проблемах с сайтом."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": ".", "description": "Корень сайта (обычно '.')"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "wp_replace_urls",
+            "description": (
+                "WordPress: заменить siteurl/home и URL в постах. "
+                "old_url='AUTO' — взять из БД. new_url например http://5mb2.ru"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "new_url": {"type": "string"},
+                    "old_url": {"type": "string", "default": "AUTO"},
+                    "table_prefix": {"type": "string", "default": ""},
+                    "path": {"type": "string", "default": "."},
+                },
+                "required": ["new_url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "site_fix_perms",
+            "description": "Выставить права 755/644 на файлы сайта (nginx не видит файлы).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "flatten_site_layout",
+            "description": (
+                "Разворачивает вложенный public_html/www/wordpress в корень сайта "
+                "(после кривого ZIP с хостинга)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "php_lint",
+            "description": "Проверка синтаксиса PHP (php -l).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Путь к .php файлу"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nginx_test",
+            "description": "Проверить конфиг nginx (nginx -t), если доступен.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
     # ── Self-evolution ────────────────────────────────────────────────────────
     {
         "type": "function",
@@ -1740,6 +2025,18 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     },
 ]
 
+def _hosting_fns() -> Dict[str, Any]:
+    import hosting_tools as ht
+    return {
+        "site_status": ht.site_status,
+        "wp_replace_urls": ht.wp_replace_urls,
+        "site_fix_perms": ht.site_fix_perms,
+        "flatten_site_layout": ht.flatten_site_layout,
+        "php_lint": ht.php_lint,
+        "nginx_test": ht.nginx_test,
+    }
+
+
 TOOL_FUNCTIONS: Dict[str, Any] = {
     "read_file": read_file,
     "read_file_lines": read_file_lines,
@@ -1747,6 +2044,10 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "str_replace": str_replace,
     "create_file": create_file,
     "delete_file": delete_file,
+    "mkdir_path": mkdir_path,
+    "copy_path": copy_path,
+    "move_path": move_path,
+    "apply_edits": apply_edits,
     "list_dir": list_dir,
     "find_files": find_files,
     "search_code": search_code,
@@ -1774,6 +2075,8 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "notify_windows": notify_windows,
     "format_code": format_code,
     "check_deps": check_deps,
+    # hosting / wordpress
+    **_hosting_fns(),
     # self-evolution
     "apply_self_improvement": apply_self_improvement,
     "self_update_check": self_update_check,

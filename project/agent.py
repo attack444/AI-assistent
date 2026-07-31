@@ -13,8 +13,9 @@ from memory import MemoryStore
 from profile import UserProfile
 from tools import TOOL_FUNCTIONS, TOOLS_SCHEMA, resolve_workspace_path
 
-MAX_STEPS = 8
+MAX_STEPS = 12
 SELF_DIR  = Path(__file__).resolve().parent
+_IS_LINUX = __import__("platform").system() != "Windows"
 
 
 @dataclass
@@ -36,7 +37,9 @@ _TOOL_TRIGGERS = frozenset([
     "директор", "список файл", "покажи файл", "посмотри", "проверь",
     "исправь", "измени", "замени", "отредактируй", "редактир", "поправ",
     "добавь", "вставь", "убери", "html", "css", "php", "js", "index.",
-    "что не так", "проблем", "сайт", "wordpress", "wp-",
+    "что не так", "проблем", "сайт", "wordpress", "wp-", "белый экран",
+    "siteurl", "права", "permission", "nginx", "mysql", "базу",
+    "переимен", "скопир", "перемес",
     "git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
     "запусти", "команд", "powershell", "terminal", "тест", "pytest",
     "процесс", "диск", "переменн", ".exe", "реестр",
@@ -46,13 +49,16 @@ _TOOL_TRIGGERS = frozenset([
     "буфер", "clipboard", "скопируй в буфер",
     "уведомлен",
     "улучши себя", "обнови модель", "бэкап", "бекап",
-    "read_file", "write_file", "list_dir", "str_replace",
+    "read_file", "write_file", "list_dir", "str_replace", "apply_edits",
 ])
 
 # Tool names grouped by category — only relevant ones sent per request
 _TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "str_replace",
-                  "create_file", "delete_file", "list_dir", "find_files"}
-_TOOLS_CODE    = {"search_code", "format_code", "str_replace", "diff_preview"}
+                  "create_file", "delete_file", "mkdir_path", "copy_path",
+                  "move_path", "apply_edits", "list_dir", "find_files"}
+_TOOLS_CODE    = {"search_code", "format_code", "str_replace", "diff_preview", "apply_edits"}
+_TOOLS_HOST    = {"site_status", "wp_replace_urls", "site_fix_perms",
+                  "flatten_site_layout", "php_lint", "nginx_test"}
 _TOOLS_GIT     = {"git_run", "diff_preview"}
 _TOOLS_CMD     = {"run_command", "run_powershell", "run_tests"}
 _TOOLS_WIN     = {"get_env_var", "set_env_var", "get_windows_info",
@@ -69,9 +75,14 @@ _CATEGORY_KEYWORDS: List[tuple[frozenset[str], frozenset[str]]] = [
     (frozenset(["файл", "прочитай", "открой", "создай", "удали", "запиши",
                 "папк", "директор", "список", "дерев", "покажи файл",
                 "измени", "замени", "редактир", "поправ", "добавь",
-                "html", "css", "php", "сайт", "wordpress"]), _TOOLS_FILE | _TOOLS_CODE),
+                "переимен", "скопир", "перемес", "html", "css", "php",
+                "сайт"]), _TOOLS_FILE | _TOOLS_CODE),
     (frozenset(["код", "исправь", "найди в коде", "форматир", "pylint",
-                "ошибк в коде", "что не так", "str_replace"]),           _TOOLS_CODE | _TOOLS_FILE),
+                "ошибк в коде", "что не так", "str_replace", "apply_edits"]),
+     _TOOLS_CODE | _TOOLS_FILE),
+    (frozenset(["wordpress", "wp-", "siteurl", "белый экран", "mysql",
+                "базу", "права", "permission", "nginx", "public_html",
+                "хостинг", "домен"]), _TOOLS_HOST | _TOOLS_FILE),
     (frozenset(["git", "коммит", "ветка", "diff", "пуш", "пул", "stash",
                 "merge", "rebase"]),                                      _TOOLS_GIT),
     (frozenset(["команд", "запусти", "powershell", "terminal",
@@ -111,12 +122,16 @@ def _select_tools(text: str, *, force_workspace: bool = False) -> List[Dict[str,
     selected.add("save_memory")
 
     if force_workspace:
-        # Site/project chat: file tools always available for server edits
-        selected |= _TOOLS_FILE | _TOOLS_CODE | {"run_command"}
+        # Site/project chat: file + hosting tools always available
+        selected |= _TOOLS_FILE | _TOOLS_CODE | _TOOLS_HOST | {"run_command"}
 
     if not selected:
         # Fallback: minimal set for unknown complex queries
         selected = _TOOLS_FILE | _TOOLS_CODE | {"web_search", "save_memory"}
+
+    # On Linux VPS / site workspace — drop Windows-only noise
+    if _IS_LINUX or force_workspace:
+        selected -= _TOOLS_WIN | _TOOLS_CLIP | _TOOLS_NOTIFY | {"run_powershell"}
 
     return [_SCHEMA_BY_NAME[n] for n in selected if n in _SCHEMA_BY_NAME]
 
@@ -458,20 +473,29 @@ def build_system_prompt(
     langs     = ", ".join(profile.preferred_languages) if profile.preferred_languages else "любые"
     confirm   = "без подтверждения" if not profile.confirm_before_apply else "с подтверждением"
     rules_txt = ("\nПравила:\n" + "\n".join(f"- {r}" for r in profile.rules)) if profile.rules else ""
-    snapshot  = _project_snapshot(project_root, max_files=60)
+    snapshot  = _project_snapshot(project_root, max_files=50)
+    site_card = ""
+    if project_root:
+        try:
+            from hosting_tools import build_site_card
+            site_card = build_site_card(project_root)
+        except Exception:
+            site_card = ""
 
     workspace_rules = ""
     if project_root:
         workspace_rules = f"""
 РАБОЧАЯ ПАПКА САЙТА (на сервере): {proj_path}
-- Все пути относительные к этой папке: index.html, css/style.css, wp-config.php
-- Редактирование на сервере РЕАЛЬНОЕ: str_replace / write_file / create_file пишут на диск
-- Алгоритм правки: list_dir('.') → read_file → str_replace (точечно) или write_file (целиком)
-- После правки кратко скажи что изменил и путь файла
+- Пути относительные: index.html, wp-config.php, wp-content/...
+- Правки РЕАЛЬНЫЕ на диске: str_replace / apply_edits / write_file
+- Несколько файлов сразу → apply_edits
+- Проблемы сайта → site_status; URL WP → wp_replace_urls; права → site_fix_perms
+- Вложенный public_html → flatten_site_layout
+- PHP синтаксис → php_lint
 - Не выходи за пределы рабочей папки
 """
 
-    return f"""Ты — автономный AI-ассистент владельца сервера. Пользователь: {profile.name}.
+    return f"""Ты — автономный AI-ассистент владельца VPS. Пользователь: {profile.name}.
 Стиль: {profile.style} | Изменения: {confirm}
 Активный сайт/проект: {proj_name} ({proj_path}) | Языки: {langs}
 {rules_txt}
@@ -480,9 +504,11 @@ def build_system_prompt(
 ПРАВИЛА:
 - НИКОГДА не проси показать код — читай сам через read_file / list_dir
 - Действуй сразу инструментами, не описывай план вместо действия
-- Для частичных правок — str_replace; для новых файлов — create_file/write_file
+- Частичные правки: str_replace или apply_edits; новые файлы: create_file/write_file
 - Кратко: факт → действие → результат
 - Пиши по-русски
+
+{site_card}
 
 {snapshot}
 
@@ -500,11 +526,19 @@ _PATH_ARG_KEYS: Dict[str, tuple[str, ...]] = {
     "str_replace": ("path",),
     "create_file": ("path",),
     "delete_file": ("path",),
+    "mkdir_path": ("path",),
+    "copy_path": ("src", "dst"),
+    "move_path": ("src", "dst"),
     "list_dir": ("path",),
     "find_files": ("root",),
     "search_code": ("root",),
     "diff_preview": ("path",),
     "format_code": ("path",),
+    "php_lint": ("path",),
+    "site_status": ("path",),
+    "wp_replace_urls": ("path",),
+    "site_fix_perms": ("path",),
+    "flatten_site_layout": ("path",),
     "git_run": ("repo_path",),
     "run_tests": ("project_root",),
     "check_deps": ("project_path",),
@@ -522,7 +556,10 @@ def _dispatch(
 ) -> Dict[str, Any]:
     args = dict(args or {})
 
-    if name == "list_dir" and not str(args.get("path") or "").strip() and project_root:
+    _default_dot = {
+        "list_dir", "site_status", "site_fix_perms", "flatten_site_layout", "wp_replace_urls",
+    }
+    if name in _default_dot and not str(args.get("path") or "").strip() and project_root:
         args["path"] = "."
     if name == "find_files" and not str(args.get("root") or "").strip() and project_root:
         args["root"] = "."
@@ -539,11 +576,33 @@ def _dispatch(
     if name == "check_deps" and not str(args.get("project_path") or "").strip() and project_root:
         args["project_path"] = str(project_root)
 
+    # Sandbox paths inside apply_edits before calling
+    if name == "apply_edits" and project_root:
+        raw_edits = args.get("edits")
+        if isinstance(raw_edits, str):
+            try:
+                raw_edits = json.loads(raw_edits)
+            except Exception:
+                pass
+        if isinstance(raw_edits, list):
+            fixed = []
+            for item in raw_edits:
+                if not isinstance(item, dict):
+                    fixed.append(item)
+                    continue
+                item = dict(item)
+                try:
+                    item["path"] = str(resolve_workspace_path(str(item.get("path") or ""), project_root))
+                except Exception as exc:
+                    return {"ok": False, "error": str(exc), "tool": "apply_edits"}
+                fixed.append(item)
+            args["edits"] = fixed
+
     # Sandbox + resolve relative paths into the site workspace
     for key in _PATH_ARG_KEYS.get(name, ()):
         raw = args.get(key)
         if raw is None or (isinstance(raw, str) and not raw.strip()):
-            if name == "list_dir" and project_root and key == "path":
+            if name in _default_dot and project_root and key == "path":
                 raw = "."
             else:
                 continue
@@ -551,7 +610,7 @@ def _dispatch(
             resolved = resolve_workspace_path(
                 str(raw),
                 project_root,
-                default_to_root=(name == "list_dir"),
+                default_to_root=(name in _default_dot),
             )
             args[key] = str(resolved)
         except Exception as exc:

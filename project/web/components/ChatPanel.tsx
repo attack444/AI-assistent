@@ -1,16 +1,18 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   createChat,
   deleteChat,
   getChat,
   getSiteContext,
   listChats,
+  listSites,
   streamChat,
   type ChatSummary,
   type SiteContext,
+  type SiteInfo,
 } from "@/lib/api";
 
 type Msg =
@@ -21,6 +23,7 @@ type Msg =
       content: string;
       ok?: boolean;
       edited?: boolean;
+      path?: string;
       diff?: string;
     };
 
@@ -46,9 +49,53 @@ function formatToolLine(
   return `${mark} ${name}${path}${stats}`;
 }
 
+function filesHref(absPath: string, site: string) {
+  // Prefer site-relative open in file manager
+  if (site && absPath.includes(`/sites/${site}`)) {
+    return `/files?path=${encodeURIComponent(absPath)}`;
+  }
+  if (absPath) return `/files?path=${encodeURIComponent(absPath)}`;
+  return "/files";
+}
+
+function quickPrompts(site: string, ctx: SiteContext | null): { label: string; text: string }[] {
+  if (!site) {
+    return [
+      { label: "Что умеешь?", text: "Кратко перечисли что умеешь на сервере с сайтами и файлами." },
+    ];
+  }
+  const base = [
+    { label: "Статус сайта", text: "Проверь статус сайта через site_status и кратко скажи что не так, если есть проблемы." },
+    { label: "Список файлов", text: "Покажи структуру корня сайта (list_dir) и что можно править." },
+    { label: "Права 755/644", text: "Выставь права на файлы сайта через site_fix_perms." },
+  ];
+  if (ctx?.is_wordpress) {
+    return [
+      ...base,
+      {
+        label: "WP URL",
+        text: "Проверь WordPress siteurl/home. Если нужно — предложи wp_replace_urls на актуальный адрес сайта.",
+      },
+      {
+        label: "Белый экран",
+        text: "Сайт WordPress белый экран / не открывается. Диагностируй: site_status, wp-config, php_lint ключевых файлов.",
+      },
+    ];
+  }
+  return [
+    ...base,
+    {
+      label: "Поправь index",
+      text: "Прочитай index.html (или index.php) и скажи что можно улучшить в первом экране.",
+    },
+  ];
+}
+
 export function ChatPanel() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const site = (searchParams.get("site") || "").trim();
+  const [sites, setSites] = useState<SiteInfo[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chatId, setChatId] = useState<string>("");
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -70,6 +117,12 @@ export function ChatPanel() {
   }, [site]);
 
   useEffect(() => {
+    listSites()
+      .then((r) => setSites(r.sites || []))
+      .catch(() => setSites([]));
+  }, []);
+
+  useEffect(() => {
     refreshChats();
     getSiteContext(site || undefined)
       .then(setCtx)
@@ -81,6 +134,12 @@ export function ChatPanel() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
+
+  function selectSite(name: string) {
+    if (busy) return;
+    if (!name) router.push("/chat");
+    else router.push(`/chat?site=${encodeURIComponent(name)}`);
+  }
 
   async function openChat(id: string) {
     if (busy) return;
@@ -97,6 +156,7 @@ export function ChatPanel() {
             content: m.content,
             ok: Boolean(meta.ok),
             edited: Boolean(meta.edited),
+            path: typeof meta.path === "string" ? meta.path : undefined,
             diff: typeof meta.diff === "string" ? meta.diff : undefined,
           };
         }
@@ -138,14 +198,13 @@ export function ChatPanel() {
     }
   }
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || busy) return;
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || busy) return;
 
     setError("");
     setInput("");
-    const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content: text };
+    const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content: trimmed };
     setMessages((m) => [...m, userMsg]);
     setBusy(true);
 
@@ -164,7 +223,7 @@ export function ChatPanel() {
 
     try {
       await streamChat(
-        text,
+        trimmed,
         history.slice(0, -1),
         (ev) => {
           if (ev.type === "chat" && ev.chat_id) {
@@ -189,6 +248,7 @@ export function ChatPanel() {
             ]);
           } else if (ev.type === "tool_result") {
             const line = formatToolLine(ev.name, ev.result);
+            const path = ev.result?.path;
             setMessages((m) => {
               const next = [...m];
               for (let i = next.length - 1; i >= 0; i--) {
@@ -200,6 +260,7 @@ export function ChatPanel() {
                     content: line,
                     ok: ev.result?.ok,
                     edited: ev.result?.edited,
+                    path: typeof path === "string" ? path : undefined,
                     diff: ev.result?.diff,
                   };
                   return next;
@@ -211,6 +272,7 @@ export function ChatPanel() {
                 content: line,
                 ok: ev.result?.ok,
                 edited: ev.result?.edited,
+                path: typeof path === "string" ? path : undefined,
                 diff: ev.result?.diff,
               });
               return next;
@@ -237,6 +299,13 @@ export function ChatPanel() {
     }
   }
 
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    await sendMessage(input);
+  }
+
+  const prompts = quickPrompts(site, ctx);
+
   return (
     <div className="panel chat-shell">
       <aside className="chat-history">
@@ -246,6 +315,21 @@ export function ChatPanel() {
             +
           </button>
         </div>
+        <label className="chat-site-pick">
+          <span className="muted">Сайт</span>
+          <select
+            value={site}
+            disabled={busy}
+            onChange={(e) => selectSite(e.target.value)}
+          >
+            <option value="">— без сайта —</option>
+            {sites.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}{s.is_wordpress ? " (WP)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="chat-history-list">
           {chats.length === 0 ? (
             <div className="muted" style={{ padding: 10, fontSize: "0.85rem" }}>
@@ -280,22 +364,20 @@ export function ChatPanel() {
           {site ? (
             <span>
               Сайт <strong className="mono">{site}</strong>
-              {ctx?.can_edit ? " · правки файлов на сервере включены" : ""}
-              {" · "}
-              <a href="/chat">сбросить</a>
+              {ctx?.is_wordpress ? " · WordPress" : ""}
+              {ctx?.domain ? ` · ${ctx.domain}` : ""}
+              {ctx?.can_edit ? " · правки на сервере" : ""}
               {ctx?.tree?.length ? (
                 <>
                   {" · "}
                   <button type="button" className="linkish" onClick={() => setShowTree((v) => !v)}>
-                    {showTree ? "скрыть файлы" : "файлы сайта"}
+                    {showTree ? "скрыть файлы" : "файлы"}
                   </button>
                 </>
               ) : null}
             </span>
           ) : (
-            <span className="muted">
-              Выбери сайт в «Сайты» → «Чат», чтобы ассистент редактировал файлы в его папке.
-            </span>
+            <span className="muted">Выбери сайт слева — ассистент сможет править его файлы на сервере.</span>
           )}
         </div>
         {showTree && ctx?.tree?.length ? (
@@ -309,9 +391,24 @@ export function ChatPanel() {
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div className="empty">
-              {site
-                ? `Спроси про файлы «${site}» — ассистент читает и правит их на сервере (str_replace / write_file). Чаты сохраняются.`
-                : "Спроси про код или перенос сайта. Из «Сайты» открой чат по сайту — тогда доступно редактирование файлов."}
+              <div style={{ marginBottom: 12 }}>
+                {site
+                  ? `Ассистент работает в папке «${site}»: читает/правит файлы, WP-статус, права, URL.`
+                  : "Выбери сайт или просто спроси. Для правок на диске нужен выбранный сайт."}
+              </div>
+              <div className="chat-chips">
+                {prompts.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    className="chat-chip"
+                    disabled={busy}
+                    onClick={() => sendMessage(p.text)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             messages.map((m) => (
@@ -322,6 +419,11 @@ export function ChatPanel() {
                 }`}
               >
                 {m.content || (busy && m.role === "assistant" ? "…" : "")}
+                {m.role === "tool" && m.path && m.edited ? (
+                  <div className="tool-actions">
+                    <a href={filesHref(m.path, site)}>Открыть в файлах</a>
+                  </div>
+                ) : null}
                 {m.role === "tool" && m.diff ? (
                   <pre className="tool-diff">{m.diff}</pre>
                 ) : null}
@@ -330,6 +432,20 @@ export function ChatPanel() {
           )}
           <div ref={bottomRef} />
         </div>
+        {messages.length > 0 && !busy ? (
+          <div className="chat-chips chat-chips-bar">
+            {prompts.slice(0, 3).map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                className="chat-chip"
+                onClick={() => sendMessage(p.text)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <form className="chat-compose" onSubmit={onSubmit}>
           <textarea
             className="textarea"
@@ -338,7 +454,7 @@ export function ChatPanel() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               site
-                ? `Про сайт ${site}: «поменяй заголовок в index.html»…`
+                ? `Про сайт ${site}: «поменяй заголовок», «проверь WP», «почини URL»…`
                 : "Напиши сообщение…"
             }
             disabled={busy}

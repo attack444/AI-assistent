@@ -532,8 +532,13 @@ export type SiteContext = {
   project?: string | null;
   project_root?: string | null;
   snapshot?: string;
+  card?: string;
   tree?: string[];
   can_edit?: boolean;
+  is_wordpress?: boolean;
+  domain?: string | null;
+  has_index?: boolean;
+  url?: string;
 };
 
 export type ChatEvent =
