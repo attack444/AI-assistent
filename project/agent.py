@@ -426,6 +426,14 @@ def _groq_stream_agent_summary(
 # Ollama Raw HTTP helpers
 # ---------------------------------------------------------------------------
 
+def _ollama_error_text(exc: BaseException) -> str:
+    try:
+        import free_llm as _free
+        return _free.http_error_detail(exc)
+    except Exception:
+        return str(exc)
+
+
 def _raw_chat(
     host: str,
     model: str,
@@ -434,21 +442,55 @@ def _raw_chat(
     tools: Optional[List[Dict[str, Any]]] = None,
     timeout: float = 180.0,
 ) -> Dict[str, Any]:
-    """POST /api/chat (stream=False). Returns raw parsed JSON dict."""
-    url  = f"{host.rstrip('/')}/api/chat"
-    body: Dict[str, Any] = {
-        "model": model, "messages": messages,
-        "stream": False, "options": options,
-    }
-    if tools:
-        body["tools"] = tools
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req  = urllib.request.Request(
-        url, data=data, method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    """POST /api/chat (stream=False). Returns raw parsed JSON dict.
+
+    Tiny Ollama models often reject `tools` with HTTP 400 — we retry once without tools.
+    """
+    import urllib.error as _ue
+
+    url = f"{host.rstrip('/')}/api/chat"
+
+    def _post(use_tools: bool) -> Dict[str, Any]:
+        body: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": options,
+        }
+        if use_tools and tools:
+            body["tools"] = tools
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    want_tools = bool(tools)
+    try:
+        # Skip tools proactively for known-incompatible models
+        try:
+            import free_llm as _free
+            if want_tools and not _free.model_supports_tools(model):
+                want_tools = False
+        except Exception:
+            pass
+        return _post(want_tools)
+    except _ue.HTTPError as exc:
+        detail = _ollama_error_text(exc)
+        if tools and exc.code == 400:
+            try:
+                return _post(False)
+            except Exception as exc2:
+                raise RuntimeError(
+                    f"{detail} | retry-without-tools: {_ollama_error_text(exc2)}"
+                ) from exc2
+        raise RuntimeError(detail) from exc
+    except _ue.URLError as exc:
+        raise RuntimeError(f"{exc.reason or exc}") from exc
 
 
 def _stream_chat(
@@ -856,7 +898,9 @@ def run_agent(
     user_for_llm = _augment_user_message(user_message, project_root)
 
     # ── FREE LOCAL (Ollama) first — когда LLM_PREFER_FREE=1 ──────────────────
+    # Важно: qwen2.5:1.5b НЕ умеет tools API → HTTP 400. Не блокируем облако.
     skip_cloud = False
+    has_cloud = bool(deepseek_api_key.strip() or groq_api_key.strip())
     try:
         import free_llm as _free
         if _free.prefer_free():
@@ -864,16 +908,73 @@ def run_agent(
             st = _free.check_ollama(ollama_host, free_name)
             if st.get("reachable") and st.get("has_model"):
                 used_model = st.get("model") or free_name
+                can_tools = bool(
+                    st.get("tools_supported")
+                    if "tools_supported" in st
+                    else _free.model_supports_tools(used_model)
+                )
                 mem_ctx0 = memory.get_context(
                     user_message, project=str(project_root) if project_root else ""
                 )
-                # Tiny free models are weak at tool-calling — for site chat prefer grounded answers
-                free_use_tools = use_tools and not (project_root and is_review)
+                # Tiny free models: chat only. Tool actions → DeepSeek/Groq when available.
+                free_use_tools = bool(use_tools and can_tools)
                 if project_root and not wants_action:
-                    free_use_tools = False  # always grounded for non-action site questions
-                if not free_use_tools:
+                    free_use_tools = False  # grounded for non-action site questions
+                if project_root and is_review and not wants_action:
+                    free_use_tools = False
+
+                if use_tools and not can_tools:
+                    yield AgentEvent(
+                        type="info",
+                        content=f"free_no_tools:{used_model}",
+                    )
+                    if not has_cloud:
+                        # Avoid LOCAL AGENT + tools → HTTP 400 on tiny models
+                        note = (
+                            "\n\n(Локальная модель не поддерживает инструменты. "
+                            "Для правок файлов добавь DEEPSEEK_API_KEY или поставь "
+                            "FREE_LLM_MODEL=qwen2.5:7b / FREE_LLM_TOOLS=1.)"
+                        )
+                        sys_msg0 = _fast_prompt(
+                            profile, project_root, mem_ctx0, prefetched
+                        )
+                        sys_msg0 += (
+                            "\nТы отвечаешь без tool-calling. Используй данные с сервера выше. "
+                            "Если нужны правки файлов — опиши точный план изменений."
+                        )
+                        messages0: List[Dict[str, Any]] = [
+                            {"role": "system", "content": sys_msg0}
+                        ]
+                        for msg in chat_history[-6:]:
+                            messages0.append(
+                                {"role": msg["role"], "content": msg["content"]}
+                            )
+                        messages0.append({"role": "user", "content": user_for_llm})
+                        yield AgentEvent(type="info", content=f"free:{used_model}")
+                        try:
+                            collected = []
+                            for chunk in _free.stream_ollama(
+                                messages0, host=ollama_host, model=used_model
+                            ):
+                                collected.append(chunk)
+                                yield AgentEvent(type="text", content=chunk)
+                            text_out = "".join(collected)
+                            if project_root and _looks_like_access_refusal(text_out):
+                                yield AgentEvent(type="info", content="refusal_fallback")
+                                fallback = _offline_site_review(project_root, prefetched)
+                                yield AgentEvent(type="text", content="\n\n" + fallback)
+                            yield AgentEvent(type="text", content=note)
+                            yield AgentEvent(type="done")
+                            return
+                        except Exception as exc:
+                            yield AgentEvent(
+                                type="info",
+                                content=f"free_fallback:{_ollama_error_text(exc)}",
+                            )
+                    # has_cloud → fall through to DeepSeek/Groq (skip_cloud stays False)
+                elif not free_use_tools:
                     sys_msg0 = _fast_prompt(profile, project_root, mem_ctx0, prefetched)
-                    messages0: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg0}]
+                    messages0 = [{"role": "system", "content": sys_msg0}]
                     for msg in chat_history[-6:]:
                         messages0.append({"role": msg["role"], "content": msg["content"]})
                     messages0.append({"role": "user", "content": user_for_llm})
@@ -887,20 +988,33 @@ def run_agent(
                             yield AgentEvent(type="text", content=chunk)
                         text_out = "".join(collected)
                         if project_root and _looks_like_access_refusal(text_out):
-                            # Hard fallback: structured review without LLM fluff
                             yield AgentEvent(type="info", content="refusal_fallback")
                             fallback = _offline_site_review(project_root, prefetched)
                             yield AgentEvent(type="text", content="\n\n" + fallback)
                         yield AgentEvent(type="done")
                         return
                     except Exception as exc:
-                        yield AgentEvent(type="info", content=f"free_fallback:{exc}")
+                        yield AgentEvent(
+                            type="info",
+                            content=f"free_fallback:{_ollama_error_text(exc)}",
+                        )
                 else:
-                    # tools → локальный agent на бесплатной модели
-                    chat_model = used_model
-                    agent_model = used_model
-                    skip_cloud = True
-                    yield AgentEvent(type="info", content=f"free-agent:{used_model}")
+                    # Tool-capable free model.
+                    # If cloud keys exist — prefer DeepSeek/Groq for tools (reliable).
+                    # Pure free path only when cloud is unavailable.
+                    if has_cloud:
+                        yield AgentEvent(
+                            type="info",
+                            content=f"free_defer_tools:{used_model}",
+                        )
+                        skip_cloud = False
+                    else:
+                        chat_model = used_model
+                        agent_model = used_model
+                        skip_cloud = True
+                        yield AgentEvent(
+                            type="info", content=f"free-agent:{used_model}"
+                        )
     except Exception:
         skip_cloud = False
 
@@ -1122,14 +1236,55 @@ def run_agent(
         return
 
     # ── LOCAL AGENT PATH (tools needed, no Groq) ─────────────────────────────
+    local_can_tools = True
+    try:
+        import free_llm as _free2
+        local_can_tools = _free2.model_supports_tools(agent_model)
+    except Exception:
+        local_can_tools = True
+
+    # Tiny model + tools left us here (e.g. free-agent path): answer without tools API
+    if use_tools and not local_can_tools:
+        mem_ctx_l = memory.get_context(
+            user_message, project=str(project_root) if project_root else ""
+        )
+        sys_msg_l = _fast_prompt(profile, project_root, mem_ctx_l, prefetched)
+        sys_msg_l += (
+            "\nОтвечай без tool-calling по данным с сервера. "
+            "Для автоправок нужен DeepSeek или модель ≥7b."
+        )
+        messages_l: List[Dict[str, Any]] = [{"role": "system", "content": sys_msg_l}]
+        for msg in chat_history[-6:]:
+            messages_l.append({"role": msg["role"], "content": msg["content"]})
+        messages_l.append({"role": "user", "content": user_for_llm})
+        fast_opts_l = {
+            "temperature": 0.2,
+            "num_ctx": min(4096, context_window),
+            "num_predict": 768,
+            "top_k": 20,
+        }
+        yield AgentEvent(type="info", content=f"fast-no-tools:{agent_model}")
+        try:
+            for chunk in _stream_chat(ollama_host, agent_model, messages_l, fast_opts_l):
+                yield AgentEvent(type="text", content=chunk)
+        except Exception as exc:
+            yield AgentEvent(
+                type="error",
+                content=f"Ollama ({ollama_host}): {_ollama_error_text(exc)}",
+            )
+        yield AgentEvent(type="done")
+        return
+
     agent_opts = {
         "temperature": 0.05,
-        "num_ctx":     context_window,
+        "num_ctx":     min(context_window, 8192 if local_can_tools else 4096),
         "num_predict": 2048,
         "top_k":       40,
         "top_p":       0.95,
     }
     relevant_tools = _select_tools(user_message, force_workspace=force_ws)
+    if not local_can_tools:
+        relevant_tools = []
 
     yield AgentEvent(type="info", content=f"agent:{agent_model}")
 
@@ -1151,10 +1306,23 @@ def run_agent(
             raw_resp = _raw_chat(
                 host=ollama_host, model=agent_model,
                 messages=messages, options=agent_opts,
-                tools=relevant_tools,
+                tools=relevant_tools or None,
             )
         except Exception as exc:
-            yield AgentEvent(type="error", content=f"Ollama ({ollama_host}): {exc}")
+            err = _ollama_error_text(exc)
+            # If we soft-skipped cloud for free-agent and Ollama failed — tell user clearly
+            if has_cloud and skip_cloud:
+                yield AgentEvent(
+                    type="error",
+                    content=(
+                        f"Ollama ({ollama_host}): {err}. "
+                        "Облако не вызвано из‑за LLM_PREFER_FREE. "
+                        "Поставь FREE_LLM_TOOLS=0 или добавь модель с tools, "
+                        "либо LLM_PREFER_FREE=0 для DeepSeek/Groq."
+                    ),
+                )
+            else:
+                yield AgentEvent(type="error", content=f"Ollama ({ollama_host}): {err}")
             return
 
         raw_msg    = raw_resp.get("message", {}) or {}
@@ -1199,7 +1367,7 @@ def run_agent(
                 for chunk in _stream_chat(ollama_host, agent_model, messages, agent_opts):
                     yield AgentEvent(type="text", content=chunk)
             except Exception as exc:
-                yield AgentEvent(type="error", content=f"Stream error: {exc}")
+                yield AgentEvent(type="error", content=f"Stream error: {_ollama_error_text(exc)}")
 
         yield AgentEvent(type="done")
         return

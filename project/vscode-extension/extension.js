@@ -1,10 +1,11 @@
 /**
- * AI Helper VS Code Extension v1.3
+ * AI Helper VS Code Extension v1.3.1
  *
  * - Setup wizard: password / site / auto-sync
  * - Chat → VPS panel API with site context (agent edits live site files)
  * - Save file → POST /sites/sync (instant live on nginx)
  * - Apply code block → write to site or local editor
+ * - Status shows free model + whether tools/cloud are available
  */
 
 const vscode = require('vscode');
@@ -506,7 +507,9 @@ class ChatViewProvider {
             online: r.ok === true,
             ollama: r.ollama,
             groq: r.groq,
+            deepseek: r.deepseek,
             free: r.free_llm,
+            freeTools: r.free_tools === true,
             model: r.free_model || r.llm_model || '?',
             site: getSite(),
             sites,
@@ -830,7 +833,11 @@ function showError(text) {
   div.className = 'msg msg-error';
   const bub = document.createElement('div');
   bub.className = 'bubble';
-  bub.textContent = '⚠ ' + text;
+  let tip = String(text || '');
+  if (/HTTP\s*400|Bad Request/i.test(tip) && /ollama/i.test(tip)) {
+    tip += '\n\nПодсказка: модель 1.5b не принимает tools. Обнови API на VPS (bootstrap-update) — правки пойдут через DeepSeek/Groq, чат останется на Ollama.';
+  }
+  bub.textContent = '⚠ ' + tip;
   div.appendChild(bub);
   $('messages').appendChild(div);
   currentBubble = null;
@@ -841,7 +848,9 @@ function updateStatus(msg) {
   const text = $('statusText');
   if (msg.online) {
     dot.className = 'dot on';
-    text.textContent = (msg.free ? '🆓 ' : '') + (msg.model || '?') + (msg.version ? ' · v' + msg.version : '');
+    const cloud = (msg.deepseek || msg.groq) ? ' · cloud' : '';
+    const tools = msg.freeTools ? '' : (msg.free ? ' · chat' : '');
+    text.textContent = (msg.free ? '🆓 ' : '') + (msg.model || '?') + tools + cloud + (msg.version ? ' · v' + msg.version : '');
   } else {
     dot.className = 'dot off';
     text.textContent = 'API offline — проверь aiHelper.apiUrl';

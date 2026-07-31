@@ -21,9 +21,11 @@ FAST_LLM_MODEL=qwen2.5:1.5b
 FREE_LLM_MODEL=qwen2.5:0.5b bash /opt/ai-helper/project/deploy/install-free-llm.sh
 ```
 
-Приоритет: **Ollama (free) → DeepSeek (если есть ключ) → Groq**.
+Приоритет:
+- **Чат / обзор сайта:** Ollama (free) → DeepSeek → Groq
+- **Правки файлов / tools:** DeepSeek/Groq (если есть ключ). Модель `1.5b` **не умеет** tools API (иначе Ollama отвечает `HTTP 400`). Для локальных tools нужна ≥`qwen2.5:7b` или `FREE_LLM_TOOLS=1`.
 
-Панель и витрина `/sites/ai/` используют одну и ту же схему.
+Панель, расширение VS Code и витрина `/sites/ai/` используют одну и ту же схему.
 
 ## DeepSeek (платный/дешёвый облачный fallback)
 

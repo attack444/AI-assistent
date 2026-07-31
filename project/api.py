@@ -612,6 +612,12 @@ class APIHandler(BaseHTTPRequestHandler):
             settings.ollama_host,
             fl.free_model(settings.fast_llm_model, settings.llm_model),
         )
+        free_model_name = free_st.get("model") or fl.free_model()
+        tools_ok = bool(
+            free_st.get("tools_supported")
+            if "tools_supported" in free_st
+            else fl.model_supports_tools(free_model_name)
+        )
         self._send(200, _json({
             "ok": True,
             "ollama": ost.reachable,
@@ -621,7 +627,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "deepseek": deepseek,
             "deepseek_model": settings.deepseek_model,
             "free_llm": bool(free_st.get("reachable") and free_st.get("has_model")),
-            "free_model": free_st.get("model") or fl.free_model(),
+            "free_model": free_model_name,
+            "free_tools": tools_ok,
             "llm_prefer_free": fl.prefer_free(),
             "llm_model": settings.llm_model,
             "fast_model": settings.fast_llm_model,
@@ -632,7 +639,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.8",
+            "version": "2.8.1",
         }))
 
     # ── GET /project/files ───────────────────────────────────────

@@ -3,12 +3,33 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 DEFAULT_FREE_MODEL = os.environ.get("FREE_LLM_MODEL", "qwen2.5:1.5b").strip() or "qwen2.5:1.5b"
 DEFAULT_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").strip() or "http://127.0.0.1:11434"
+
+# Tiny models often reject OpenAI-style tools with HTTP 400 Bad Request.
+_TINY_SIZE_RE = re.compile(
+    r"(?:^|[^0-9])(0\.5b|0\.6b|1b|1\.5b|1\.7b|1\.8b|2b|360m|500m)(?:$|[^0-9a-z])",
+    re.I,
+)
+_TOOL_OK_MARKERS = (
+    "qwen2.5:7b",
+    "qwen2.5:14b",
+    "qwen2.5:32b",
+    "qwen2.5-coder",
+    "qwen3",
+    "llama3.1",
+    "llama3.2:3b",
+    "llama3.3",
+    "mistral",
+    "command-r",
+    "nemotron",
+    "tool",
+)
 
 
 def prefer_free() -> bool:
@@ -29,6 +50,51 @@ def free_model(settings_fast: str = "", settings_llm: str = "") -> str:
         if c and not c.startswith("deepseek") and "groq" not in c.lower():
             return c
     return DEFAULT_FREE_MODEL
+
+
+def model_supports_tools(model: str = "") -> bool:
+    """
+    Whether it is safe to send OpenAI-style `tools` to this Ollama model.
+
+    qwen2.5:1.5b (default free model) commonly returns HTTP 400 when tools are set.
+    Override with FREE_LLM_TOOLS=0|1.
+    """
+    flag = os.environ.get("FREE_LLM_TOOLS", "").strip().lower()
+    if flag in {"0", "false", "no", "off"}:
+        return False
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    m = (model or free_model()).strip().lower()
+    if not m:
+        return False
+    if _TINY_SIZE_RE.search(m):
+        return False
+    if any(x in m for x in _TOOL_OK_MARKERS):
+        return True
+    # Heuristic: 7b+ usually OK; unknown small tags → no tools
+    if re.search(r"(?:^|[^0-9])([7-9]|[1-9][0-9]+)b(?:$|[^0-9a-z])", m):
+        return True
+    return False
+
+
+def http_error_detail(exc: BaseException) -> str:
+    """Readable Ollama/urllib HTTP error (include response body when present)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        body = ""
+        try:
+            raw = exc.read()
+            if isinstance(raw, bytes):
+                body = raw.decode("utf-8", errors="replace")
+            else:
+                body = str(raw or "")
+        except Exception:
+            body = ""
+        body = (body or "").strip().replace("\n", " ")[:400]
+        reason = getattr(exc, "reason", None) or ""
+        if body:
+            return f"HTTP {exc.code}: {body}"
+        return f"HTTP Error {exc.code}: {reason or 'Bad Request'}"
+    return str(exc)
 
 
 def check_ollama(host: str = "", model: str = "") -> Dict[str, Any]:
@@ -59,12 +125,14 @@ def check_ollama(host: str = "", model: str = "") -> Dict[str, Any]:
                         if n.startswith(base):
                             model = n
                             break
+        tools_ok = model_supports_tools(model)
         return {
             "ok": True,
             "reachable": True,
             "model": model,
             "has_model": has or (model in names),
             "models": names,
+            "tools_supported": tools_ok,
         }
     except Exception as exc:
         return {
@@ -73,6 +141,7 @@ def check_ollama(host: str = "", model: str = "") -> Dict[str, Any]:
             "model": model,
             "has_model": False,
             "models": [],
+            "tools_supported": model_supports_tools(model),
             "error": str(exc),
         }
 
@@ -106,20 +175,25 @@ def stream_ollama(
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        for raw_line in resp:
-            line = raw_line.decode("utf-8").strip()
-            if not line:
-                continue
-            try:
-                chunk = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            txt = (chunk.get("message") or {}).get("content") or ""
-            if txt:
-                yield txt
-            if chunk.get("done"):
-                break
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for raw_line in resp:
+                line = raw_line.decode("utf-8").strip()
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                txt = (chunk.get("message") or {}).get("content") or ""
+                if txt:
+                    yield txt
+                if chunk.get("done"):
+                    break
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Ollama ({host}): {http_error_detail(exc)}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Ollama ({host}): {exc.reason or exc}") from exc
 
 
 def try_stream_free(
