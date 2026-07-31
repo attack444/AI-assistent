@@ -186,6 +186,13 @@ export function bindSiteDomain(name: string, domain: string) {
   });
 }
 
+export function fixSitePerms(name?: string) {
+  return request<{ ok: boolean; fixed: string[]; hint?: string }>("/sites/fix-perms", {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
 /** Stream File as raw body — no base64, low browser memory. */
 async function uploadBinary<T>(path: string, file: File): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

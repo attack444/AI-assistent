@@ -221,6 +221,30 @@ def _flatten_hosting_layout(root: Path) -> None:
         shutil.rmtree(top, ignore_errors=True)
 
 
+def _fix_site_perms(root: Path) -> None:
+    """Make site readable by host nginx (www-data). Docker often writes as root."""
+    try:
+        if root.is_dir():
+            os.chmod(root, 0o755)
+        for p in root.rglob("*"):
+            try:
+                if p.is_dir():
+                    os.chmod(p, 0o755)
+                elif p.is_file():
+                    os.chmod(p, 0o644)
+            except OSError:
+                continue
+        # Best-effort: also fix parents under sites root
+        for parent in [root, root.parent]:
+            try:
+                if _is_under(parent, SITES_ROOT) or parent == SITES_ROOT:
+                    os.chmod(parent, 0o755)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
 def _write_nginx_vhost(name: str, domain: str = "") -> Optional[str]:
     """Write optional nginx vhost snippet for a custom domain (best-effort)."""
     if not domain.strip():
@@ -355,6 +379,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
             zf.extractall(root)
         _flatten_hosting_layout(root)
+        _fix_site_perms(root)
 
     def _qs(self) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
@@ -659,6 +684,7 @@ class APIHandler(BaseHTTPRequestHandler):
             encoding="utf-8",
         )
         nginx_path = _write_nginx_vhost(name, domain)
+        _fix_site_perms(root)
         info = _site_info(name)
         if nginx_path:
             info["nginx_conf"] = nginx_path
@@ -977,6 +1003,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "/sites/deploy": self._post_sites_deploy,
             "/sites/migrate": self._post_sites_migrate,
             "/sites/domain": self._post_sites_domain,
+            "/sites/fix-perms": self._post_sites_fix_perms,
         }
         handler = routes.get(path)
         if handler:

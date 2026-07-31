@@ -6,6 +6,7 @@ import {
   createSite,
   deleteSite,
   deploySiteZip,
+  fixSitePerms,
   listSites,
   migrateSite,
   SiteInfo,
@@ -116,6 +117,22 @@ export function SitesPanel() {
     try {
       await deploySiteZip(siteName, file);
       await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onFixPerms(siteName?: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fixSitePerms(siteName);
+      setOkMsg(
+        `Права исправлены: ${(res.fixed || []).join(", ") || "ok"}. Обнови страницу сайта. ` +
+          (res.hint || ""),
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -269,6 +286,19 @@ export function SitesPanel() {
         </form>
       </div>
 
+      <div className="panel create-site" style={{ marginTop: 14 }}>
+        <div>
+          <strong>403 Forbidden?</strong>
+          <p className="muted" style={{ margin: "4px 0 0" }}>
+            Обычно Nginx не может прочитать файлы. Нажми кнопку или на VPS:{" "}
+            <span className="mono">bash project/deploy/fix-sites-403.sh</span>
+          </p>
+        </div>
+        <button className="btn ghost" type="button" disabled={busy} onClick={() => onFixPerms()}>
+          Исправить права всех сайтов
+        </button>
+      </div>
+
       <div className="sites-grid" style={{ marginTop: 14 }}>
         {sites.length === 0 ? (
           <div className="panel empty">
@@ -307,6 +337,9 @@ export function SitesPanel() {
                 </label>
                 <button className="btn ghost small" type="button" onClick={() => onBindDomain(site.name)}>
                   Домен
+                </button>
+                <button className="btn ghost small" type="button" onClick={() => onFixPerms(site.name)}>
+                  403→fix
                 </button>
                 <button className="btn danger small" type="button" onClick={() => onDelete(site.name)}>
                   Удалить

@@ -42,6 +42,15 @@ mkdir -p /var/ai-helper/sites
 echo "[>>] Docker rebuild..."
 docker compose -f docker-compose.prod.yml up -d --build
 
+# Права: иначе nginx даёт 403 на /sites/...
+if [ -x "$REPO_DIR/project/deploy/fix-sites-403.sh" ]; then
+  bash "$REPO_DIR/project/deploy/fix-sites-403.sh" || true
+else
+  chmod 755 /var/ai-helper /var/ai-helper/sites 2>/dev/null || true
+  find /var/ai-helper/sites -type d -exec chmod 755 {} \; 2>/dev/null || true
+  find /var/ai-helper/sites -type f -exec chmod 644 {} \; 2>/dev/null || true
+fi
+
 if command -v nginx &>/dev/null; then
   cp nginx.conf /etc/nginx/sites-available/ai-helper
   ln -sf /etc/nginx/sites-available/ai-helper /etc/nginx/sites-enabled/ai-helper
@@ -57,10 +66,10 @@ echo "============================================"
 echo "  ИНТЕРФЕЙС СЕРВЕРА:"
 echo "  http://${IP}/"
 echo "============================================"
-echo "  Дальше: открой Сайты → «Перенос с хостинга»"
-echo "  http://${IP}/sites"
+echo "  Сайт:   http://${IP}/sites/mysite/"
+echo "  Если 403: bash project/deploy/fix-sites-403.sh"
 echo "============================================"
 echo "  Файлы:  http://${IP}/files"
+echo "  Сайты:  http://${IP}/sites"
 echo "  Чат:    http://${IP}/chat"
-echo "  Пароль: PANEL_PASSWORD в project/.env"
 echo "============================================"
