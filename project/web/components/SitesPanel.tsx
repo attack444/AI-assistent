@@ -356,13 +356,22 @@ export function SitesPanel() {
             Сайтов нет или папки пустые. Залей ZIP мастером выше — для WordPress нужен ещё PHP+MySQL.
           </div>
         ) : (
-          sites.map((site) => (
+          <>
+          <div className="panel create-site" style={{ background: "var(--accent-soft)" }}>
+            <strong>WordPress</strong>
+            <p className="muted" style={{ margin: "4px 0 0" }}>
+              У карточки сайта нажми зелёную кнопку <strong>«Настроить WP»</strong> —
+              там wp-config, импорт .sql и замена URL. Если кнопки нет — сначала обнови сервер:
+              <span className="mono"> bash /opt/ai-helper/project/deploy/update.sh</span>
+            </p>
+          </div>
+          {sites.map((site) => (
             <div key={site.name}>
             <div className="panel site-row">
               <div>
                 <h3>
                   {site.name}
-                  {site.is_wordpress ? " · WP" : ""}
+                  {site.is_wordpress ? " · WordPress" : ""}
                 </h3>
                 <p className="muted" style={{ margin: "6px 0 0" }}>
                   <a href={site.url} target="_blank" rel="noreferrer">
@@ -383,18 +392,16 @@ export function SitesPanel() {
                 ) : null}
               </div>
               <div className="site-actions">
+                <button
+                  className="btn small"
+                  type="button"
+                  onClick={() => setWpOpen(wpOpen === site.name ? null : site.name)}
+                >
+                  {wpOpen === site.name ? "Скрыть WP" : "Настроить WP"}
+                </button>
                 <a className="btn ghost small" href={site.url} target="_blank" rel="noreferrer">
                   Открыть
                 </a>
-                {site.is_wordpress ? (
-                  <button
-                    className="btn small"
-                    type="button"
-                    onClick={() => setWpOpen(wpOpen === site.name ? null : site.name)}
-                  >
-                    {wpOpen === site.name ? "Скрыть WP" : "Настроить WP"}
-                  </button>
-                ) : null}
                 <button className="btn ghost small" type="button" onClick={() => onInspect(site.name)}>
                   Где файлы
                 </button>
@@ -420,7 +427,8 @@ export function SitesPanel() {
             </div>
             {wpOpen === site.name ? <WordpressSetup siteName={site.name} /> : null}
             </div>
-          ))
+          ))}
+          </>
         )}
       </div>
     </div>

@@ -188,12 +188,34 @@ def list_pending(sites_root: Path) -> List[Dict[str, Any]]:
 
 
 def detect_wordpress(root: Path) -> bool:
-    return (
-        (root / "wp-config.php").is_file()
-        or (root / "wp-load.php").is_file()
-        or (root / "wp-content").is_dir()
-        or (root / "wp-admin").is_dir()
+    if not root.is_dir():
+        return False
+    markers = (
+        "wp-config.php",
+        "wp-load.php",
+        "wp-settings.php",
+        "wp-blog-header.php",
     )
+    for name in markers:
+        if (root / name).is_file():
+            return True
+    if (root / "wp-content").is_dir() or (root / "wp-admin").is_dir() or (root / "wp-includes").is_dir():
+        return True
+    # Nested: public_html / wordpress / www
+    for sub in ("public_html", "www", "htdocs", "httpdocs", "public", "wordpress", "WP"):
+        nested = root / sub
+        if nested.is_dir() and detect_wordpress(nested):
+            return True
+    # One-level scan for common leftovers
+    try:
+        for child in root.iterdir():
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if (child / "wp-config.php").is_file() or (child / "wp-content").is_dir():
+                return True
+    except OSError:
+        pass
+    return False
 
 
 def top_entries(root: Path, limit: int = 40) -> List[Dict[str, Any]]:
