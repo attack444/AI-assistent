@@ -1,0 +1,21 @@
+# Не коммитим секреты и мусор WordPress
+wp-config.php
+wp-config-*.php
+*.sql
+*.sql.gz
+*.zip
+
+# Медиа и кэш — обычно огромные, для ревью кода не нужны
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/backup*/
+wp-content/ai1wm-backups/
+wp-content/wflogs/
+wp-content/debug.log
+error_log
+
+# Зависимости/сборки тем (если есть)
+**/node_modules/
+**/vendor/
+**/.sass-cache/
