@@ -10,6 +10,10 @@ function mb2_ensure_site_structure() {
     update_option('show_on_front', 'posts');
     delete_option('page_on_front');
 
+    if (function_exists('mb2_seo_apply_identity')) {
+        mb2_seo_apply_identity();
+    }
+
     mb2_ensure_terms();
     mb2_ensure_core_pages();
     mb2_ensure_service_pages();
@@ -18,6 +22,10 @@ function mb2_ensure_site_structure() {
         mb2_ensure_real_projects();
     }
     mb2_ensure_menus();
+
+    if (function_exists('mb2_seo_seed_rank_math')) {
+        mb2_seo_seed_rank_math();
+    }
 }
 
 function mb2_ensure_terms() {

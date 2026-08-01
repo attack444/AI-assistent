@@ -14,6 +14,7 @@ if (!$q->have_posts()) {
 ?>
 <section class="page-shell">
   <div class="wrap">
+    <?php if (function_exists('mb2_render_breadcrumbs')) { mb2_render_breadcrumbs(); } ?>
     <header class="section-head reveal">
       <h1>Материалы</h1>
       <p>Заметки про SEO, локальное продвижение и запуск роста.</p>

@@ -16,6 +16,12 @@ mkdir -p "$THEME_DST"
 rsync -a --delete "$THEME_SRC/" "$THEME_DST/"
 chown -R www-data:www-data "$THEME_DST" 2>/dev/null || true
 
+if [ -f "$ROOT/project/sites/5mb2/robots.txt" ]; then
+  echo "==> robots.txt"
+  cp "$ROOT/project/sites/5mb2/robots.txt" "$SITE/robots.txt"
+  chown www-data:www-data "$SITE/robots.txt" 2>/dev/null || true
+fi
+
 echo "==> меню, услуги, материалы (mb2_ensure_site_structure)"
 php -r "
 define('WP_USE_THEMES', false);

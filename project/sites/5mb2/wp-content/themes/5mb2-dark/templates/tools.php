@@ -7,6 +7,7 @@ get_header();
 
 <section class="section tools-hero">
   <div class="wrap">
+    <?php if (function_exists('mb2_render_breadcrumbs')) { mb2_render_breadcrumbs(); } ?>
     <header class="section-head reveal">
       <h1>SEO-инструменты</h1>
       <p>Бесплатные мини-утилиты до заявки: мета, UTM, бюджет, быстрая проверка URL. Без регистрации.</p>

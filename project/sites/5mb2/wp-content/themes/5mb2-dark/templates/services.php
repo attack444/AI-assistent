@@ -7,6 +7,7 @@ $services = mb2_services_catalog();
 ?>
 <section class="page-shell">
   <div class="wrap">
+    <?php if (function_exists('mb2_render_breadcrumbs')) { mb2_render_breadcrumbs(); } ?>
     <header class="section-head reveal">
       <h1>Услуги SEO</h1>
       <p>Выберите задачу — откроется страница с описанием, сроками и формой заказа.</p>
@@ -15,7 +16,7 @@ $services = mb2_services_catalog();
       <?php foreach ($services as $slug => $svc) : ?>
         <a class="service-card reveal" href="<?php echo esc_url(mb2_service_url($slug)); ?>">
           <div class="service-card-media">
-            <img src="<?php echo esc_url($svc['image']); ?>" alt="" width="640" height="400" loading="lazy" />
+            <img src="<?php echo esc_url($svc['image']); ?>" alt="<?php echo esc_attr($svc['title']); ?>" width="640" height="400" loading="lazy" />
           </div>
           <div class="service-card-body">
             <h2><?php echo esc_html($svc['title']); ?></h2>

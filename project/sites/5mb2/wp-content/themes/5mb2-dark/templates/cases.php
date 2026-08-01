@@ -16,6 +16,7 @@ $kind_labels = [
 ?>
 <section class="page-shell">
   <div class="wrap">
+    <?php if (function_exists('mb2_render_breadcrumbs')) { mb2_render_breadcrumbs(); } ?>
     <header class="section-head reveal">
       <h1>Проекты и разборы</h1>
       <p>Реальные работы и честные учебные разборы метода. Без выдуманных «+400% за месяц».</p>

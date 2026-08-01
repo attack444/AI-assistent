@@ -6,10 +6,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.7.0');
+define('MB2_THEME_VER', '1.8.0');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';
+require get_template_directory() . '/inc/seo.php';
 require get_template_directory() . '/inc/projects.php';
 require get_template_directory() . '/inc/seed.php';
 require get_template_directory() . '/inc/leads-admin.php';
