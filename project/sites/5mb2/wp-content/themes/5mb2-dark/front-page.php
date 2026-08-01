@@ -1,6 +1,6 @@
 <?php
 /**
- * Homepage — NVIDIA-dark SEO agency landing.
+ * Homepage — SEO agency landing (5MB2 Digital).
  */
 get_header();
 ?>
@@ -12,9 +12,9 @@ get_header();
     <div class="hero-orb"></div>
   </div>
   <div class="wrap hero-inner">
-    <p class="brand-kicker reveal">5MB2 Digital</p>
+    <p class="brand-hero reveal">5MB2 <span>Digital</span></p>
     <h1 class="hero-title reveal">SEO, которое приводит клиентов</h1>
-    <p class="hero-lead reveal">Продвижение сайтов по России: аудит, семантика, контент и техническая оптимизация — с понятными метриками роста.</p>
+    <p class="hero-lead reveal">Продвижение сайтов по России: аудит, семантика, контент и техника — с понятными метриками роста.</p>
     <div class="hero-cta reveal">
       <a class="btn btn-primary btn-lg" href="#contact">Получить стратегию</a>
       <a class="btn btn-ghost btn-lg" href="#services">Смотреть услуги</a>
@@ -26,36 +26,36 @@ get_header();
   <div class="wrap">
     <header class="section-head reveal">
       <h2>Услуги SEO</h2>
-      <p>Всё, что нужно агентству и бизнесу для органического роста — без лишнего шума.</p>
+      <p>Всё, что нужно бизнесу для органического роста — без лишнего шума.</p>
     </header>
-    <div class="cards-3">
-      <article class="card reveal">
-        <span class="card-icon">01</span>
+    <div class="service-list">
+      <article class="service-item reveal">
+        <span class="service-num">01</span>
         <h3>SEO-аудит</h3>
         <p>Техника, индекс, скорость, ошибки, конкуренты. Список правок с приоритетами.</p>
       </article>
-      <article class="card reveal">
-        <span class="card-icon">02</span>
+      <article class="service-item reveal">
+        <span class="service-num">02</span>
         <h3>Продвижение</h3>
         <p>Семантика, структура, контент, ссылки. Ежемесячная работа на видимость и трафик.</p>
       </article>
-      <article class="card reveal">
-        <span class="card-icon">03</span>
+      <article class="service-item reveal">
+        <span class="service-num">03</span>
         <h3>Local SEO</h3>
         <p>Карты, региональная выдача, карточки компаний — заявки из вашего города.</p>
       </article>
-      <article class="card reveal">
-        <span class="card-icon">04</span>
+      <article class="service-item reveal">
+        <span class="service-num">04</span>
         <h3>Техническое SEO</h3>
         <p>Core Web Vitals, индексация, разметка, миграции без просадки.</p>
       </article>
-      <article class="card reveal">
-        <span class="card-icon">05</span>
+      <article class="service-item reveal">
+        <span class="service-num">05</span>
         <h3>Контент</h3>
         <p>Тексты под спрос и E-E-A-T: страницы услуг, статьи, коммерческие блоки.</p>
       </article>
-      <article class="card reveal">
-        <span class="card-icon">06</span>
+      <article class="service-item reveal">
+        <span class="service-num">06</span>
         <h3>Отчётность</h3>
         <p>Позиции, трафик, заявки — в личном кабинете, без «магии в презентациях».</p>
       </article>
@@ -89,7 +89,7 @@ get_header();
       <div class="stat reveal"><strong data-count="90">0</strong><span>дней до первых сдвигов</span></div>
       <div class="stat reveal"><strong data-count="24">0</strong><span>проекта в работе / год</span></div>
     </div>
-    <p class="muted tiny reveal">*Ориентир по проектам с выполненными рекомендациями. Точные кейсы согласуем индивидуально.</p>
+    <p class="muted tiny reveal" style="margin-top:20px">*Ориентир по проектам с выполненными рекомендациями. Точные кейсы — индивидуально.</p>
   </div>
 </section>
 
@@ -97,6 +97,7 @@ get_header();
   <div class="wrap narrow">
     <header class="section-head reveal">
       <h2>Частые вопросы</h2>
+      <p>Коротко о сроках, доступе и стоимости.</p>
     </header>
     <div class="faq">
       <details class="reveal" open>
@@ -109,7 +110,7 @@ get_header();
       </details>
       <details class="reveal">
         <summary>Нужен ли доступ к сайту?</summary>
-        <p>Да — к админке / хостингу или через вашего разработчика. В кабинете видно статус задач.</p>
+        <p>Да — к админке или хостингу, либо через вашего разработчика. Статус задач видно в кабинете.</p>
       </details>
       <details class="reveal">
         <summary>Как понять стоимость?</summary>
@@ -120,21 +121,35 @@ get_header();
 </section>
 
 <section class="section cta-band" id="contact">
-  <div class="wrap cta-inner reveal">
-    <div>
+  <div class="wrap cta-inner">
+    <div class="reveal">
       <h2>Обсудим ваш рост</h2>
-      <p>Расскажите про сайт и нишу — вернёмся со стратегией и следующими шагами.</p>
+      <p class="muted">Расскажите про сайт и нишу — вернёмся со стратегией и следующими шагами.</p>
+      <p style="margin-top:18px">
+        <a class="text-link" href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>
+        ·
+        <a class="text-link" href="https://vk.com/5mb2online" target="_blank" rel="noopener">VK</a>
+        ·
+        <a class="text-link" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Кабинет</a>
+      </p>
     </div>
-    <div class="cta-actions">
-      <a class="btn btn-primary btn-lg" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Личный кабинет</a>
-      <?php
-      // CF7 shortcode if form exists — fallback mailto
-      if (shortcode_exists('contact-form-7')) {
-          echo do_shortcode('[contact-form-7 title="Контактная форма 1"]');
-      }
-      ?>
-      <a class="btn btn-ghost" href="mailto:hello@5mb2.ru?subject=SEO%20заявка">hello@5mb2.ru</a>
-    </div>
+    <form class="lead-form reveal" id="mb2-lead-form" data-lead>
+      <label>Имя
+        <input type="text" name="name" required autocomplete="name" placeholder="Как к вам обращаться" />
+      </label>
+      <label>Email
+        <input type="email" name="email" required autocomplete="email" placeholder="you@company.ru" />
+      </label>
+      <label>Сайт
+        <input type="url" name="site" autocomplete="url" placeholder="https://example.ru" />
+      </label>
+      <label>Задача
+        <textarea name="message" placeholder="Ниша, город, что хотите получить от SEO"></textarea>
+      </label>
+      <p class="form-note" hidden></p>
+      <button class="btn btn-primary btn-lg" type="submit">Отправить заявку</button>
+      <p class="muted tiny">Нажимая кнопку, вы соглашаетесь с <a class="text-link" href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">политикой конфиденциальности</a>.</p>
+    </form>
   </div>
 </section>
 

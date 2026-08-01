@@ -1,11 +1,16 @@
-<?php get_header(); ?>
-<section class="section">
-  <div class="wrap narrow content-area">
+<?php
+/**
+ * Default page template.
+ */
+get_header();
+?>
+<section class="page-shell">
+  <div class="wrap">
     <?php while (have_posts()) : the_post(); ?>
-      <header class="section-head reveal">
+      <article <?php post_class('prose reveal is-in'); ?>>
         <h1><?php the_title(); ?></h1>
-      </header>
-      <div class="prose reveal"><?php the_content(); ?></div>
+        <?php the_content(); ?>
+      </article>
     <?php endwhile; ?>
   </div>
 </section>

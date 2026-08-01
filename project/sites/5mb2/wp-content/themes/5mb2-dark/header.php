@@ -14,7 +14,7 @@
       <span class="logo-mark" aria-hidden="true"></span>
       <span class="logo-text">5MB2<span>Digital</span></span>
     </a>
-    <nav class="nav" aria-label="Главное">
+    <nav class="nav" aria-label="Главное меню">
       <?php
       if (has_nav_menu('primary')) {
           wp_nav_menu([
@@ -22,6 +22,7 @@
               'container'      => false,
               'menu_class'     => 'nav-list',
               'depth'          => 1,
+              'fallback_cb'    => 'mb2_nav_fallback',
           ]);
       } else {
           mb2_nav_fallback();
@@ -36,7 +37,7 @@
       <?php endif; ?>
       <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
     </div>
-    <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle>
+    <button class="nav-toggle" type="button" aria-label="Меню" aria-expanded="false" data-nav-toggle>
       <span></span><span></span>
     </button>
   </div>
