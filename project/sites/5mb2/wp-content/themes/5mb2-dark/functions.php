@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.8.3');
+define('MB2_THEME_VER', '1.9.0');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';
@@ -160,8 +160,28 @@ add_action('wp_ajax_nopriv_mb2_logout', 'mb2_ajax_logout');
 add_action('wp_ajax_mb2_save_site', 'mb2_ajax_save_site');
 add_action('wp_ajax_mb2_save_profile', 'mb2_ajax_save_profile');
 add_action('wp_ajax_mb2_save_request', 'mb2_ajax_save_request');
+add_action('wp_ajax_mb2_onboard_profile', 'mb2_ajax_onboard_profile');
+add_action('wp_ajax_mb2_onboard_request', 'mb2_ajax_onboard_request');
+add_action('wp_ajax_mb2_onboard_finish', 'mb2_ajax_onboard_finish');
 add_action('wp_ajax_nopriv_mb2_lead', 'mb2_ajax_lead');
 add_action('wp_ajax_mb2_lead', 'mb2_ajax_lead');
+
+function mb2_get_onboarding($user_id) {
+    $step = (string) get_user_meta($user_id, 'mb2_onboarding', true);
+    if (!in_array($step, ['profile', 'request', 'done'], true)) {
+        $site = (string) get_user_meta($user_id, 'mb2_site_url', true);
+        $reqs = get_user_meta($user_id, 'mb2_requests', true);
+        if (is_array($reqs) && $reqs && $site) {
+            $step = 'done';
+        } elseif ($site) {
+            $step = 'request';
+        } else {
+            $step = 'profile';
+        }
+        update_user_meta($user_id, 'mb2_onboarding', $step);
+    }
+    return $step;
+}
 
 function mb2_ajax_register() {
     check_ajax_referer('mb2_auth', 'nonce');
@@ -172,7 +192,7 @@ function mb2_ajax_register() {
         wp_send_json_error(['message' => 'Email и пароль от 8 символов'], 400);
     }
     if (email_exists($email)) {
-        wp_send_json_error(['message' => 'Такой email уже зарегистрирован'], 400);
+        wp_send_json_error(['message' => 'Такой email уже зарегистрирован. Войдите или укажите другой email.'], 400);
     }
     $user_id = wp_create_user($email, $pass, $email);
     if (is_wp_error($user_id)) {
@@ -187,9 +207,10 @@ function mb2_ajax_register() {
     update_user_meta($user_id, 'mb2_site_url', '');
     update_user_meta($user_id, 'mb2_phone', '');
     update_user_meta($user_id, 'mb2_checklist', wp_json_encode(mb2_default_checklist()));
+    update_user_meta($user_id, 'mb2_onboarding', 'profile');
     wp_set_current_user($user_id);
     wp_set_auth_cookie($user_id, true, is_ssl());
-    wp_send_json_success(['redirect' => home_url('/cabinet/')]);
+    wp_send_json_success(['redirect' => home_url('/cabinet/?welcome=1')]);
 }
 
 function mb2_ajax_login() {
@@ -214,7 +235,11 @@ function mb2_ajax_login() {
     if (is_wp_error($user)) {
         wp_send_json_error(['message' => 'Неверный email или пароль'], 401);
     }
-    wp_send_json_success(['redirect' => home_url('/cabinet/')]);
+    $dest = home_url('/cabinet/');
+    if (mb2_get_onboarding($user->ID) !== 'done') {
+        $dest = home_url('/cabinet/?welcome=1');
+    }
+    wp_send_json_success(['redirect' => $dest]);
 }
 
 function mb2_ajax_logout() {
@@ -246,7 +271,118 @@ function mb2_ajax_save_profile() {
     }
     update_user_meta($uid, 'mb2_phone', $phone);
     update_user_meta($uid, 'mb2_site_url', $url);
-    wp_send_json_success(['ok' => true]);
+    if ($url && mb2_get_onboarding($uid) === 'profile') {
+        update_user_meta($uid, 'mb2_onboarding', 'request');
+    }
+    wp_send_json_success(['ok' => true, 'onboarding' => mb2_get_onboarding($uid)]);
+}
+
+function mb2_ajax_onboard_profile() {
+    check_ajax_referer('mb2_auth', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error(['message' => 'Нужен вход'], 401);
+    }
+    $uid   = get_current_user_id();
+    $name  = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+    $phone = sanitize_text_field(wp_unslash($_POST['phone'] ?? ''));
+    $url   = esc_url_raw(wp_unslash($_POST['site_url'] ?? ''));
+    if ($phone === '' || $url === '') {
+        wp_send_json_error(['message' => 'Укажите телефон и URL сайта'], 400);
+    }
+    if ($name) {
+        wp_update_user(['ID' => $uid, 'display_name' => $name, 'first_name' => $name]);
+    }
+    update_user_meta($uid, 'mb2_phone', $phone);
+    update_user_meta($uid, 'mb2_site_url', $url);
+    update_user_meta($uid, 'mb2_onboarding', 'request');
+    wp_send_json_success([
+        'ok'         => true,
+        'onboarding' => 'request',
+        'redirect'   => home_url('/cabinet/?welcome=1'),
+    ]);
+}
+
+function mb2_store_client_request($uid, $msg, $service = '') {
+    $list = get_user_meta($uid, 'mb2_requests', true);
+    if (!is_array($list)) {
+        $list = [];
+    }
+    array_unshift($list, [
+        'at'      => current_time('mysql'),
+        'message' => $msg,
+        'service' => $service,
+        'status'  => 'new',
+    ]);
+    $list = array_slice($list, 0, 20);
+    update_user_meta($uid, 'mb2_requests', $list);
+
+    $user = get_userdata($uid);
+    $site = get_user_meta($uid, 'mb2_site_url', true);
+    $phone = get_user_meta($uid, 'mb2_phone', true);
+    $admin = get_option('admin_email');
+    if ($admin && $user) {
+        wp_mail(
+            $admin,
+            'Заявка из кабинета 5MB2: ' . $user->user_email,
+            "Клиент: {$user->display_name} <{$user->user_email}>\nТелефон: {$phone}\nСайт: {$site}\nУслуга: {$service}\n\n{$msg}\n"
+        );
+    }
+
+    // В админский список лидов тоже
+    $leads = get_option('mb2_leads', []);
+    if (!is_array($leads)) {
+        $leads = [];
+    }
+    array_unshift($leads, [
+        'at'      => current_time('mysql'),
+        'name'    => $user ? $user->display_name : '',
+        'email'   => $user ? $user->user_email : '',
+        'phone'   => $phone,
+        'service' => $service,
+        'site'    => $site,
+        'message' => $msg,
+    ]);
+    update_option('mb2_leads', array_slice($leads, 0, 200), false);
+
+    return $list;
+}
+
+function mb2_ajax_onboard_request() {
+    check_ajax_referer('mb2_auth', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error(['message' => 'Нужен вход'], 401);
+    }
+    $uid = get_current_user_id();
+    $msg = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+    $service = sanitize_text_field(wp_unslash($_POST['service'] ?? ''));
+    if (strlen($msg) < 10) {
+        wp_send_json_error(['message' => 'Опишите задачу чуть подробнее (от 10 символов)'], 400);
+    }
+    if (!get_user_meta($uid, 'mb2_site_url', true)) {
+        wp_send_json_error(['message' => 'Сначала укажите сайт в шаге 1'], 400);
+    }
+    mb2_store_client_request($uid, $msg, $service);
+    update_user_meta($uid, 'mb2_onboarding', 'done');
+    // Первый пункт чеклиста — в работе
+    $checks = mb2_get_checklist($uid);
+    if ($checks && ($checks[0]['status'] ?? '') === 'todo') {
+        $checks[0]['status'] = 'progress';
+        update_user_meta($uid, 'mb2_checklist', wp_json_encode($checks));
+    }
+    wp_send_json_success([
+        'ok'         => true,
+        'onboarding' => 'done',
+        'redirect'   => home_url('/cabinet/?welcome=1'),
+    ]);
+}
+
+function mb2_ajax_onboard_finish() {
+    check_ajax_referer('mb2_auth', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error(['message' => 'Нужен вход'], 401);
+    }
+    update_user_meta(get_current_user_id(), 'mb2_onboarding', 'done');
+    wp_send_json_success(['redirect' => home_url('/cabinet/')]);
 }
 
 function mb2_ajax_save_request() {
@@ -256,25 +392,13 @@ function mb2_ajax_save_request() {
     }
     $uid = get_current_user_id();
     $msg = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+    $service = sanitize_text_field(wp_unslash($_POST['service'] ?? ''));
     if (strlen($msg) < 5) {
         wp_send_json_error(['message' => 'Опишите задачу чуть подробнее'], 400);
     }
-    $list = get_user_meta($uid, 'mb2_requests', true);
-    if (!is_array($list)) {
-        $list = [];
-    }
-    array_unshift($list, [
-        'at'      => current_time('mysql'),
-        'message' => $msg,
-        'status'  => 'new',
-    ]);
-    $list = array_slice($list, 0, 20);
-    update_user_meta($uid, 'mb2_requests', $list);
-
-    $user = wp_get_current_user();
-    $admin = get_option('admin_email');
-    if ($admin) {
-        wp_mail($admin, 'Заявка из кабинета 5MB2: ' . $user->user_email, "Клиент: {$user->display_name} <{$user->user_email}>\n\n{$msg}\n");
+    $list = mb2_store_client_request($uid, $msg, $service);
+    if (mb2_get_onboarding($uid) !== 'done') {
+        update_user_meta($uid, 'mb2_onboarding', 'done');
     }
     wp_send_json_success(['ok' => true, 'requests' => $list]);
 }
