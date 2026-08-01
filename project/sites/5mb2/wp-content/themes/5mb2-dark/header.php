@@ -44,6 +44,7 @@
         <?php else : ?>
           <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
         <?php endif; ?>
+        <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/#feedback')); ?>">Идея</a>
         <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
       </div>
     </div>
@@ -79,6 +80,7 @@
     <?php else : ?>
       <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
     <?php endif; ?>
+    <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/#feedback')); ?>">Идея / ошибка</a>
     <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
   </div>
 </div>

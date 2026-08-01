@@ -150,6 +150,23 @@ export function uploadFs(path: string, file: File) {
   );
 }
 
+export type FeedbackItem = {
+  at?: string;
+  type?: string;
+  type_label?: string;
+  message?: string;
+  email?: string;
+  page?: string;
+  source?: string;
+  ip?: string;
+};
+
+export function listFeedback(limit = 100) {
+  return request<{ ok: boolean; items: FeedbackItem[]; count: number }>(
+    `/feedback?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
 export function listSites() {
   return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites");
 }

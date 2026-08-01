@@ -33,6 +33,19 @@ bash /opt/ai-helper/project/deploy/update.sh
 
 Или вручную — см. ниже в `update.sh`.
 
+## Перезапуск API (нет systemd-юнита `ai-helper-api`)
+
+API крутится в Docker (`app` в `docker-compose.prod.yml`), не как `systemctl` сервис.
+
+```bash
+cd /opt/ai-helper/project/deploy
+docker compose -f docker-compose.prod.yml up -d --force-recreate app
+# или всё сразу:
+bash /opt/ai-helper/project/deploy/update.sh
+```
+
+Проверка: `curl -sS http://127.0.0.1:8502/status | head -c 200`
+
 ## Другие адреса
 
 | Что | Адрес |

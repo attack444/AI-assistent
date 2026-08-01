@@ -738,6 +738,27 @@
     }
     .need-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
 
+    .fb-section-grid {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 22px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    .fb-points {
+      margin: 0;
+      padding-left: 1.15rem;
+      color: var(--muted);
+      display: grid;
+      gap: 10px;
+    }
+    .fb-points strong { color: var(--ink); }
+    .fb-form--section {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
     .fb-fab {
       position: fixed;
       right: max(14px, env(safe-area-inset-right));
@@ -810,6 +831,7 @@
 
     @media (max-width: 900px) {
       .need-grid { grid-template-columns: 1fr; }
+      .fb-section-grid { grid-template-columns: 1fr; }
       .fb-panel { left: 12px; right: 12px; width: auto; bottom: max(130px, calc(env(safe-area-inset-bottom) + 120px)); }
     }
   </style>
@@ -957,6 +979,10 @@
       <summary>Какие форматы деплоя?</summary>
       <p>ZIP, tar.gz / tgz, tar или один HTML. Только статика (HTML/CSS/JS/картинки). PHP и WordPress-бэкапы — через панель владельца.</p>
     </details>
+    <details>
+      <summary>Как сообщить об ошибке или идее?</summary>
+      <p>Внизу страницы блок «Идея или ошибка?» (#feedback). Сообщения видит владелец в панели сервера → «Обратная связь».</p>
+    </details>
   </section>
 
   <section class="section" id="deploy">
@@ -1019,24 +1045,22 @@
       <a class="need-card" href="#widget"><strong>Виджет на сайт</strong><span>Чат для ваших гостей</span></a>
       <a class="need-card" href="#start"><strong>Тарифы и лимиты</strong><span>Free после регистрации</span></a>
       <a class="need-card" href="#how"><strong>Как это устроено</strong><span>Три действия платформы</span></a>
-      <a class="need-card" href="#feedback" data-feedback-open><strong>Идея или ошибка</strong><span>Помогите сделать лучше</span></a>
+      <a class="need-card" href="#feedback"><strong>Идея или ошибка</strong><span>Форма ниже на странице</span></a>
     </div>
   </section>
 
 
-  <div class="fb-root" id="feedback" data-feedback>
-    <button type="button" class="fb-fab" data-feedback-open aria-expanded="false" aria-controls="ai-fb-panel">Идея / ошибка</button>
-    <div class="fb-backdrop" data-feedback-close hidden></div>
-    <div class="fb-panel" id="ai-fb-panel" hidden role="dialog" aria-labelledby="ai-fb-title">
-      <header class="fb-panel-head">
-        <div>
-          <p class="hint" style="margin:0">Обратная связь</p>
-          <h3 id="ai-fb-title">Помогите улучшить AI Helper</h3>
-        </div>
-        <button type="button" class="fb-close" data-feedback-close aria-label="Закрыть">×</button>
-      </header>
-      <p class="hint">Нашли баг, есть идея или не хватает функции — напишите. Это не тикет в панель владельца, а голос пользователя витрины.</p>
-      <form class="fb-form" id="ai-feedback-form">
+
+  <section class="section" id="feedback">
+    <h2>Идея или ошибка?</h2>
+    <p>Помогите улучшить AI Helper. Баг на витрине, идея по деплою/чату или «мне нужно…» — форма ниже. Сообщения попадают в панель владельца → «Обратная связь».</p>
+    <div class="fb-section-grid">
+      <ul class="fb-points">
+        <li><strong>Ошибка</strong> — деплой, чат, виджет, мобильная вёрстка</li>
+        <li><strong>Идея</strong> — чего не хватает на витрине</li>
+        <li><strong>Мне нужно…</strong> — опишите задачу, подскажем путь</li>
+      </ul>
+      <form class="fb-form fb-form--section" id="ai-feedback-form">
         <label class="fb-hp" aria-hidden="true">Сайт<input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
         <label>Тип
           <select name="type">
@@ -1054,90 +1078,67 @@
         </label>
         <input type="hidden" name="page" id="ai-fb-page" value="" />
         <p class="fb-note" id="ai-fb-note" hidden></p>
-        <button class="btn btn-primary" type="submit">Отправить</button>
+        <button class="btn btn-primary" type="submit">Отправить сообщение</button>
       </form>
     </div>
-  </div>
+  </section>
 
   <footer>
     <div>© AI Helper · витрина среды</div>
-    <div>Панель управления сервером — только для владельца · <a href="#feedback" data-feedback-open>Идея / ошибка</a></div>
+    <div>Панель управления сервером — только для владельца · <a href="#feedback">Идея / ошибка</a></div>
   </footer>
 
   <script>
 
-    // —— Feedback ——
+    // —— Feedback (section #feedback) ——
     (function () {
-      const root = document.querySelector("[data-feedback]");
-      if (!root) return;
-      const panel = root.querySelector(".fb-panel");
-      const backdrop = root.querySelector(".fb-backdrop");
-      const fab = root.querySelector(".fb-fab");
       const form = document.getElementById("ai-feedback-form");
+      if (!form) return;
       const note = document.getElementById("ai-fb-note");
       const pageInput = document.getElementById("ai-fb-page");
-
-      function openFb(e) {
-        if (e) e.preventDefault();
+      if (location.hash === "#feedback") {
+        const sec = document.getElementById("feedback");
+        if (sec) setTimeout(() => sec.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      }
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
+        if (note) { note.hidden = true; note.className = "fb-note"; }
         if (pageInput) pageInput.value = location.href;
-        if (panel) panel.hidden = false;
-        if (backdrop) backdrop.hidden = false;
-        if (fab) fab.setAttribute("aria-expanded", "true");
-      }
-      function closeFb(e) {
-        if (e) e.preventDefault();
-        if (panel) panel.hidden = true;
-        if (backdrop) backdrop.hidden = true;
-        if (fab) fab.setAttribute("aria-expanded", "false");
-      }
-      document.querySelectorAll("[data-feedback-open]").forEach((el) => el.addEventListener("click", openFb));
-      root.querySelectorAll("[data-feedback-close]").forEach((el) => el.addEventListener("click", closeFb));
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && panel && !panel.hidden) closeFb();
-      });
-
-      if (form) {
-        form.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const btn = form.querySelector('button[type="submit"]');
-          if (btn) btn.disabled = true;
-          if (note) { note.hidden = true; note.className = "fb-note"; }
-          if (pageInput) pageInput.value = location.href;
-          const fd = new FormData(form);
-          const body = {
-            type: fd.get("type"),
-            message: fd.get("message"),
-            email: fd.get("email") || "",
-            page: fd.get("page") || location.href,
-            website: fd.get("website") || "",
-            source: "ai-helper",
-          };
-          try {
-            const res = await fetch("/api/public/feedback", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || "Не удалось отправить");
-            if (note) {
-              note.hidden = false;
-              note.className = "fb-note is-ok";
-              note.textContent = data.message || "Спасибо!";
-            }
-            form.reset();
-            setTimeout(closeFb, 1600);
-          } catch (err) {
-            if (note) {
-              note.hidden = false;
-              note.className = "fb-note is-error";
-              note.textContent = err.message || "Ошибка сети";
-            }
-          } finally {
-            if (btn) btn.disabled = false;
+        const fd = new FormData(form);
+        const body = {
+          type: fd.get("type"),
+          message: fd.get("message"),
+          email: fd.get("email") || "",
+          page: fd.get("page") || location.href,
+          website: fd.get("website") || "",
+          source: "ai-helper",
+        };
+        try {
+          const res = await fetch("/api/public/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Не удалось отправить");
+          if (note) {
+            note.hidden = false;
+            note.className = "fb-note is-ok";
+            note.textContent = data.message || "Спасибо!";
           }
-        });
-      }
+          form.reset();
+        } catch (err) {
+          if (note) {
+            note.hidden = false;
+            note.className = "fb-note is-error";
+            note.textContent = err.message || "Ошибка сети";
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
     })();
 
     // Soft reveal

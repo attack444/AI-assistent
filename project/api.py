@@ -1831,6 +1831,18 @@ class APIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send(500, _json({"error": str(exc)}))
 
+    def _get_feedback(self):
+        """Inbox для панели владельца (нужен PANEL_PASSWORD)."""
+        import public_feedback as pf
+
+        qs = self._qs()
+        try:
+            limit = int(qs.get("limit") or 100)
+        except ValueError:
+            limit = 100
+        items = pf.list_feedback(limit=limit)
+        self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
+
     # ── Chats (persistent) ───────────────────────────────────────
     def _get_chats(self):
         qs = self._qs()
@@ -2162,6 +2174,8 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_chat(path[len("/chats/"):])
         elif path == "/context":
             self._get_context()
+        elif path == "/feedback":
+            self._get_feedback()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
