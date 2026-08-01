@@ -32,4 +32,5 @@ curl -sS http://127.0.0.1:8502/feedback -H "Authorization: Bearer ТОКЕН"   
 ```
 
 Обратная связь в панели: `http://IP/feedback`  
-На сайтах форма внизу страницы `#feedback`.
+На сайтах форма внизу страницы `#feedback`.  
+Здоровье системы: `http://IP/health` + cron `install-system-watchdog.sh` (см. `SYSTEM_HEALTH_RU.md`).
