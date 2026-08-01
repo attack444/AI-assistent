@@ -96,7 +96,7 @@ $services = mb2_services_catalog();
   <div class="wrap">
     <header class="section-head reveal">
       <h2>Результаты</h2>
-      <p>Ориентиры. Подробные кейсы — в разделе <a class="text-link" href="<?php echo esc_url(home_url('/kejsy/')); ?>">Кейсы</a>.</p>
+      <p>Ориентиры. Реальные работы — в разделе <a class="text-link" href="<?php echo esc_url(home_url('/kejsy/')); ?>">Проекты</a>.</p>
     </header>
     <div class="stats">
       <div class="stat reveal"><strong data-count="180">0</strong><span>% средний рост органики*</span></div>

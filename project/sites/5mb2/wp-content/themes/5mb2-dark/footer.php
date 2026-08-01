@@ -25,8 +25,13 @@
     </div>
   </div>
   <div class="wrap footer-bottom">
-    <span>© <?php echo esc_html(gmdate('Y')); ?> 5MB2 Digital</span>
-    <span>Продвижение сайтов · Россия</span>
+    <span>© <?php echo esc_html(gmdate('Y')); ?> <?php echo esc_html(mb2_legal('brand') ?: '5MB2 Digital'); ?></span>
+    <span>
+      <?php if (mb2_legal('npd') === '1') : ?>Самозанятый (НПД) · <?php endif; ?>
+      <a class="text-link" href="<?php echo esc_url(home_url('/oferta/')); ?>">Оферта</a>
+      ·
+      <a class="text-link" href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">152-ФЗ</a>
+    </span>
   </div>
 </footer>
 <?php wp_footer(); ?>

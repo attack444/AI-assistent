@@ -6,9 +6,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.4.0');
+define('MB2_THEME_VER', '1.5.0');
 
 require get_template_directory() . '/inc/services.php';
+require get_template_directory() . '/inc/legal.php';
+require get_template_directory() . '/inc/projects.php';
 require get_template_directory() . '/inc/seed.php';
 require get_template_directory() . '/inc/leads-admin.php';
 
@@ -70,7 +72,7 @@ function mb2_nav_fallback() {
     echo '<ul class="nav-list">';
     $items = [
         ['Услуги', home_url('/services/')],
-        ['Кейсы', home_url('/kejsy/')],
+        ['Проекты', home_url('/kejsy/')],
         ['Материалы', home_url('/materialy/')],
         ['О нас', home_url('/o-nas/')],
         ['Контакты', home_url('/contacts/')],
@@ -89,9 +91,8 @@ function mb2_footer_nav() {
     if (!$items) {
         $items = [
             (object) ['title' => 'Услуги', 'url' => home_url('/services/')],
-            (object) ['title' => 'Кейсы', 'url' => home_url('/kejsy/')],
-            (object) ['title' => 'Материалы', 'url' => home_url('/materialy/')],
-            (object) ['title' => 'Кабинет', 'url' => home_url('/cabinet/')],
+            (object) ['title' => 'Проекты', 'url' => home_url('/kejsy/')],
+            (object) ['title' => 'Оферта', 'url' => home_url('/oferta/')],
             (object) ['title' => 'Контакты', 'url' => home_url('/contacts/')],
         ];
     }
@@ -99,6 +100,16 @@ function mb2_footer_nav() {
         echo '<a href="' . esc_url($item->url) . '">' . esc_html($item->title) . '</a>';
     }
 }
+
+/** Обновлять тексты оферты/политики при смене реквизитов */
+add_action('update_option_mb2_legal', function () {
+    if (function_exists('mb2_upsert_page')) {
+        mb2_upsert_page('privacy-policy', 'Политика конфиденциальности', mb2_privacy_html());
+        mb2_upsert_page('oferta', 'Публичная оферта', mb2_oferta_html());
+        mb2_upsert_page('contacts', 'Контакты', mb2_contacts_html());
+    }
+});
+
 
 /** Форма заявки (переиспользуется) */
 function mb2_render_lead_form($selected_service = '') {
@@ -132,7 +143,7 @@ function mb2_render_lead_form($selected_service = '') {
       </label>
       <p class="form-note" hidden></p>
       <button class="btn btn-primary btn-lg" type="submit">Отправить заявку</button>
-      <p class="muted tiny">Нажимая кнопку, вы соглашаетесь с <a class="text-link" href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">политикой конфиденциальности</a>.</p>
+      <p class="muted tiny">Нажимая кнопку, вы соглашаетесь с <a class="text-link" href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">политикой конфиденциальности</a> и условиями <a class="text-link" href="<?php echo esc_url(home_url('/oferta/')); ?>">публичной оферты</a>.</p>
     </form>
     <?php
 }
