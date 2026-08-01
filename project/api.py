@@ -644,7 +644,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.8.3",
+            "version": "2.9.0",
             "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -1493,7 +1493,8 @@ class APIHandler(BaseHTTPRequestHandler):
             return user
         if not pu.AUTH_REQUIRED:
             return {"id": "", "email": "", "name": "guest", "guest": True}
-        if allow_widget_guest and pu.WIDGET_GUEST:
+        # Guest widget chat (5mb2.ru etc.) — no platform login
+        if allow_widget_guest and getattr(pu, "WIDGET_GUEST", True):
             return {"id": "", "email": "", "name": "widget-guest", "guest": True}
         self._send(401, _json({
             "error": "Нужен вход",
