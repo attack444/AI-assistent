@@ -1,6 +1,6 @@
 # Ревью 5mb2 (кратко)
 
-Стек: WordPress + **Astra** + **Elementor** + CF7/SEO/кэш (AI-плагины и WPForms сняты).
+Стек: WordPress + тема **5mb2-dark** (без Elementor/Astra) + CF7/SEO/кэш.
 
 ## Срочно (безопасность)
 
