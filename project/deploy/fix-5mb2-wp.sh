@@ -89,23 +89,35 @@ fi
 # 5) nginx HTTP + /api (без HTTPS-редиректа)
 CONF="/etc/nginx/sites-available/ai-helper-${SITE_NAME}.conf"
 ENABLED="/etc/nginx/sites-enabled/ai-helper-${SITE_NAME}.conf"
-# убрать битые ssl-конфиги домена
+# убрать только ЧУЖИЕ/битые ssl-конфиги домена (не трогаем рабочий Let's Encrypt)
+LE_CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
 for f in /etc/nginx/sites-enabled/*5mb2* /etc/nginx/sites-enabled/*${DOMAIN}* \
          /etc/nginx/sites-available/*5mb2* /etc/nginx/sites-available/*${DOMAIN}*; do
   [ -e "$f" ] || continue
   case "$f" in
-    *ai-helper-${SITE_NAME}.conf) ;;
-    *)
-      if grep -q 'listen 443\|ssl_certificate' "$f" 2>/dev/null; then
-        echo "  · отключаю SSL-конфиг: $f"
-        rm -f "$f" 2>/dev/null || true
-      fi
-      ;;
+    *ai-helper-${SITE_NAME}.conf) continue ;;
   esac
+  if grep -q 'listen 443\|ssl_certificate' "$f" 2>/dev/null; then
+    if [ -f "$LE_CERT" ] && grep -q "letsencrypt/live/${DOMAIN}" "$f" 2>/dev/null; then
+      echo "  · оставляю валидный SSL: $f"
+      continue
+    fi
+    echo "  · отключаю битый SSL-конфиг: $f"
+    rm -f "$f" 2>/dev/null || true
+  fi
 done
 
+# если уже есть LE-сертификат — не затираем HTTPS vhost целиком (только чиним WP/HTTP пути ниже)
+SKIP_NGINX_REWRITE=0
+if [ -f "$LE_CERT" ] && [ -f "/etc/nginx/sites-available/ai-helper-${SITE_NAME}.conf" ] \
+   && grep -q "letsencrypt/live/${DOMAIN}" "/etc/nginx/sites-available/ai-helper-${SITE_NAME}.conf" 2>/dev/null; then
+  SKIP_NGINX_REWRITE=1
+  echo "  · nginx HTTPS уже с Let's Encrypt — конфиг не перезаписываю"
+fi
+
+if [ "$SKIP_NGINX_REWRITE" -eq 0 ]; then
 cat > "$CONF" <<EOF
-# 5mb2.ru — HTTP only (SSL позже). WordPress + /api для виджета.
+# 5mb2.ru — HTTP (HTTPS через enable-https-5mb2.sh). WordPress + /api.
 server {
     listen 80;
     listen [::]:80;
@@ -152,6 +164,7 @@ server {
 EOF
 ln -sf "$CONF" "$ENABLED"
 cp "$CONF" "$ROOT/nginx.vhost.conf" 2>/dev/null || true
+fi
 
 # 6) кэш + php
 rm -rf "$WP/wp-content/cache/"* 2>/dev/null || true
