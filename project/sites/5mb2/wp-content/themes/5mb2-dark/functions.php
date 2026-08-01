@@ -1,12 +1,16 @@
 <?php
 /**
- * 5MB2 Dark — SEO theme. Минимально вмешивается в ядро WP / админку.
+ * 5MB2 Dark — SEO theme.
  */
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.3.0');
+define('MB2_THEME_VER', '1.4.0');
+
+require get_template_directory() . '/inc/services.php';
+require get_template_directory() . '/inc/seed.php';
+require get_template_directory() . '/inc/leads-admin.php';
 
 add_action('after_setup_theme', function () {
     add_theme_support('title-tag');
@@ -42,17 +46,17 @@ add_action('wp_enqueue_scripts', function () {
     }
 
     wp_localize_script('mb2-main', 'MB2', [
-        'ajax'  => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('mb2_auth'),
-        'home'  => home_url('/'),
-        'user'  => is_user_logged_in() ? [
+        'ajax'    => admin_url('admin-ajax.php'),
+        'nonce'   => wp_create_nonce('mb2_auth'),
+        'home'    => home_url('/'),
+        'thanks'  => home_url('/spasibo/'),
+        'user'    => is_user_logged_in() ? [
             'name'  => wp_get_current_user()->display_name,
             'email' => wp_get_current_user()->user_email,
         ] : null,
     ]);
 });
 
-/** Кабинет, служебные страницы и меню */
 add_action('after_switch_theme', 'mb2_ensure_site_structure');
 add_action('init', function () {
     if (get_option('mb2_structure_ver') === MB2_THEME_VER) {
@@ -62,116 +66,13 @@ add_action('init', function () {
     update_option('mb2_structure_ver', MB2_THEME_VER, false);
 }, 20);
 
-function mb2_ensure_site_structure() {
-    update_option('show_on_front', 'posts');
-    delete_option('page_on_front');
-
-    $pages = [
-        'cabinet' => [
-            'title'    => 'Личный кабинет',
-            'template' => 'templates/cabinet.php',
-            'content'  => '',
-        ],
-        'privacy-policy' => [
-            'title'    => 'Политика конфиденциальности',
-            'template' => '',
-            'content'  => '<p>Мы обрабатываем контактные данные (имя, email, телефон, URL сайта) только для связи по заявке на SEO-услуги 5MB2 Digital. Данные не продаём третьим лицам. По вопросам: <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>.</p>',
-        ],
-        'contacts' => [
-            'title'    => 'Контакты',
-            'template' => '',
-            'content'  => '<p>Агентство <strong>5MB2 Digital</strong> — SEO-продвижение сайтов.</p><p>Email: <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a><br>VK: <a href="https://vk.com/5mb2online" target="_blank" rel="noopener">vk.com/5mb2online</a></p><p><a href="' . esc_url(home_url('/#contact')) . '">Оставить заявку на сайте</a> или зайдите в <a href="' . esc_url(home_url('/cabinet/')) . '">личный кабинет</a>.</p>',
-        ],
-    ];
-
-    foreach ($pages as $slug => $meta) {
-        $existing = get_page_by_path($slug);
-        if (!$existing) {
-            $id = wp_insert_post([
-                'post_title'   => $meta['title'],
-                'post_name'    => $slug,
-                'post_status'  => 'publish',
-                'post_type'    => 'page',
-                'post_content' => $meta['content'],
-            ]);
-            if ($id && !is_wp_error($id) && $meta['template']) {
-                update_post_meta($id, '_wp_page_template', $meta['template']);
-            }
-        } elseif ($slug === 'cabinet') {
-            update_post_meta($existing->ID, '_wp_page_template', 'templates/cabinet.php');
-        }
-    }
-
-    mb2_ensure_menus();
-}
-
-function mb2_ensure_menus() {
-    $home = home_url('/');
-    $primary_items = [
-        ['title' => 'Услуги', 'url' => $home . '#services'],
-        ['title' => 'Как работаем', 'url' => $home . '#process'],
-        ['title' => 'Результаты', 'url' => $home . '#cases'],
-        ['title' => 'FAQ', 'url' => $home . '#faq'],
-        ['title' => 'Контакты', 'url' => $home . 'contacts/'],
-        ['title' => 'Кабинет', 'url' => $home . 'cabinet/'],
-        ['title' => 'Заявка', 'url' => $home . '#contact'],
-    ];
-    $footer_items = [
-        ['title' => 'Услуги', 'url' => $home . '#services'],
-        ['title' => 'Процесс', 'url' => $home . '#process'],
-        ['title' => 'Кабинет', 'url' => $home . 'cabinet/'],
-        ['title' => 'Контакты', 'url' => $home . 'contacts/'],
-        ['title' => 'Конфиденциальность', 'url' => $home . 'privacy-policy/'],
-    ];
-
-    mb2_assign_menu('primary', '5MB2 Главное', $primary_items);
-    mb2_assign_menu('footer', '5MB2 Подвал', $footer_items);
-}
-
-function mb2_assign_menu($location, $menu_name, array $items) {
-    $locations = get_theme_mod('nav_menu_locations');
-    if (!is_array($locations)) {
-        $locations = [];
-    }
-
-    $menu = wp_get_nav_menu_object($menu_name);
-    if (!$menu) {
-        $menu_id = wp_create_nav_menu($menu_name);
-    } else {
-        $menu_id = (int) $menu->term_id;
-        $existing = wp_get_nav_menu_items($menu_id);
-        if (is_array($existing)) {
-            foreach ($existing as $item) {
-                wp_delete_post($item->ID, true);
-            }
-        }
-    }
-    if (is_wp_error($menu_id) || !$menu_id) {
-        return;
-    }
-
-    $pos = 1;
-    foreach ($items as $item) {
-        wp_update_nav_menu_item($menu_id, 0, [
-            'menu-item-title'  => $item['title'],
-            'menu-item-url'    => $item['url'],
-            'menu-item-status' => 'publish',
-            'menu-item-type'   => 'custom',
-            'menu-item-position' => $pos++,
-        ]);
-    }
-
-    $locations[$location] = $menu_id;
-    set_theme_mod('nav_menu_locations', $locations);
-}
-
 function mb2_nav_fallback() {
     echo '<ul class="nav-list">';
     $items = [
-        ['Услуги', home_url('/#services')],
-        ['Как работаем', home_url('/#process')],
-        ['Результаты', home_url('/#cases')],
-        ['FAQ', home_url('/#faq')],
+        ['Услуги', home_url('/services/')],
+        ['Кейсы', home_url('/kejsy/')],
+        ['Материалы', home_url('/materialy/')],
+        ['О нас', home_url('/o-nas/')],
         ['Контакты', home_url('/contacts/')],
         ['Кабинет', home_url('/cabinet/')],
     ];
@@ -181,15 +82,15 @@ function mb2_nav_fallback() {
     echo '</ul>';
 }
 
-/** Ссылки подвала без обёртки ul */
 function mb2_footer_nav() {
     $locations = get_nav_menu_locations();
     $menu_id = isset($locations['footer']) ? (int) $locations['footer'] : 0;
     $items = $menu_id ? wp_get_nav_menu_items($menu_id) : false;
     if (!$items) {
         $items = [
-            (object) ['title' => 'Услуги', 'url' => home_url('/#services')],
-            (object) ['title' => 'Процесс', 'url' => home_url('/#process')],
+            (object) ['title' => 'Услуги', 'url' => home_url('/services/')],
+            (object) ['title' => 'Кейсы', 'url' => home_url('/kejsy/')],
+            (object) ['title' => 'Материалы', 'url' => home_url('/materialy/')],
             (object) ['title' => 'Кабинет', 'url' => home_url('/cabinet/')],
             (object) ['title' => 'Контакты', 'url' => home_url('/contacts/')],
         ];
@@ -197,6 +98,43 @@ function mb2_footer_nav() {
     foreach ($items as $item) {
         echo '<a href="' . esc_url($item->url) . '">' . esc_html($item->title) . '</a>';
     }
+}
+
+/** Форма заявки (переиспользуется) */
+function mb2_render_lead_form($selected_service = '') {
+    $services = mb2_services_catalog();
+    ?>
+    <form class="lead-form" data-lead>
+      <label>Имя
+        <input type="text" name="name" required autocomplete="name" placeholder="Как к вам обращаться" />
+      </label>
+      <label>Email
+        <input type="email" name="email" required autocomplete="email" placeholder="you@company.ru" />
+      </label>
+      <label>Телефон
+        <input type="tel" name="phone" autocomplete="tel" placeholder="+7 …" />
+      </label>
+      <label>Услуга
+        <select name="service">
+          <option value="">Не выбрано — нужна консультация</option>
+          <?php foreach ($services as $slug => $svc) : ?>
+            <option value="<?php echo esc_attr($svc['title']); ?>" <?php selected($selected_service, $svc['title']); ?>>
+              <?php echo esc_html($svc['title']); ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>Сайт
+        <input type="url" name="site" autocomplete="url" placeholder="https://example.ru" />
+      </label>
+      <label>Задача
+        <textarea name="message" placeholder="Ниша, город, что хотите получить от SEO"></textarea>
+      </label>
+      <p class="form-note" hidden></p>
+      <button class="btn btn-primary btn-lg" type="submit">Отправить заявку</button>
+      <p class="muted tiny">Нажимая кнопку, вы соглашаетесь с <a class="text-link" href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">политикой конфиденциальности</a>.</p>
+    </form>
+    <?php
 }
 
 add_action('wp_ajax_nopriv_mb2_register', 'mb2_ajax_register');
@@ -240,16 +178,15 @@ function mb2_ajax_register() {
 
 function mb2_ajax_login() {
     check_ajax_referer('mb2_auth', 'nonce');
-    $email = sanitize_email(wp_unslash($_POST['email'] ?? ''));
+    $login = sanitize_text_field(wp_unslash($_POST['email'] ?? ''));
     $pass  = (string) ($_POST['password'] ?? '');
     $user  = wp_signon([
-        'user_login'    => $email,
+        'user_login'    => $login,
         'user_password' => $pass,
         'remember'      => true,
     ], is_ssl());
-    if (is_wp_error($user)) {
-        // логин может быть username, не email
-        $by = get_user_by('email', $email);
+    if (is_wp_error($user) && is_email($login)) {
+        $by = get_user_by('email', $login);
         if ($by) {
             $user = wp_signon([
                 'user_login'    => $by->user_login,
@@ -275,8 +212,7 @@ function mb2_ajax_save_site() {
     if (!is_user_logged_in()) {
         wp_send_json_error(['message' => 'Нужен вход'], 401);
     }
-    $url = esc_url_raw(wp_unslash($_POST['site_url'] ?? ''));
-    update_user_meta(get_current_user_id(), 'mb2_site_url', $url);
+    update_user_meta(get_current_user_id(), 'mb2_site_url', esc_url_raw(wp_unslash($_POST['site_url'] ?? '')));
     wp_send_json_success(['ok' => true]);
 }
 
@@ -302,8 +238,8 @@ function mb2_ajax_save_request() {
     if (!is_user_logged_in()) {
         wp_send_json_error(['message' => 'Нужен вход'], 401);
     }
-    $uid  = get_current_user_id();
-    $msg  = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+    $uid = get_current_user_id();
+    $msg = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
     if (strlen($msg) < 5) {
         wp_send_json_error(['message' => 'Опишите задачу чуть подробнее'], 400);
     }
@@ -322,26 +258,24 @@ function mb2_ajax_save_request() {
     $user = wp_get_current_user();
     $admin = get_option('admin_email');
     if ($admin) {
-        wp_mail(
-            $admin,
-            'Заявка из кабинета 5MB2: ' . $user->user_email,
-            "Клиент: {$user->display_name} <{$user->user_email}>\n\n{$msg}\n"
-        );
+        wp_mail($admin, 'Заявка из кабинета 5MB2: ' . $user->user_email, "Клиент: {$user->display_name} <{$user->user_email}>\n\n{$msg}\n");
     }
     wp_send_json_success(['ok' => true, 'requests' => $list]);
 }
 
 function mb2_ajax_lead() {
     check_ajax_referer('mb2_auth', 'nonce');
-    $name  = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
-    $email = sanitize_email(wp_unslash($_POST['email'] ?? ''));
-    $site  = esc_url_raw(wp_unslash($_POST['site'] ?? ''));
-    $msg   = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
+    $name    = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+    $email   = sanitize_email(wp_unslash($_POST['email'] ?? ''));
+    $phone   = sanitize_text_field(wp_unslash($_POST['phone'] ?? ''));
+    $service = sanitize_text_field(wp_unslash($_POST['service'] ?? ''));
+    $site    = esc_url_raw(wp_unslash($_POST['site'] ?? ''));
+    $msg     = sanitize_textarea_field(wp_unslash($_POST['message'] ?? ''));
     if (!$name || !is_email($email)) {
         wp_send_json_error(['message' => 'Укажите имя и корректный email'], 400);
     }
-    if (strlen($msg) < 5) {
-        $msg = 'Заявка на SEO-стратегию';
+    if (strlen($msg) < 3) {
+        $msg = $service ? ('Заявка: ' . $service) : 'Заявка на SEO-стратегию';
     }
 
     $leads = get_option('mb2_leads', []);
@@ -352,20 +286,26 @@ function mb2_ajax_lead() {
         'at'      => current_time('mysql'),
         'name'    => $name,
         'email'   => $email,
+        'phone'   => $phone,
+        'service' => $service,
         'site'    => $site,
         'message' => $msg,
     ]);
-    update_option('mb2_leads', array_slice($leads, 0, 100), false);
+    update_option('mb2_leads', array_slice($leads, 0, 200), false);
 
     $admin = get_option('admin_email');
     if ($admin) {
         wp_mail(
             $admin,
-            'Заявка с сайта 5MB2: ' . $name,
-            "Имя: {$name}\nEmail: {$email}\nСайт: {$site}\n\n{$msg}\n"
+            'Заявка 5MB2: ' . ($service ?: $name),
+            "Имя: {$name}\nEmail: {$email}\nТелефон: {$phone}\nУслуга: {$service}\nСайт: {$site}\n\n{$msg}\n"
         );
     }
-    wp_send_json_success(['message' => 'Заявка отправлена. Мы свяжемся с вами.']);
+
+    wp_send_json_success([
+        'message'  => 'Заявка принята',
+        'redirect' => home_url('/spasibo/'),
+    ]);
 }
 
 function mb2_default_checklist() {
@@ -399,8 +339,8 @@ add_filter('ai_helper_chat_title', function () {
     return '5MB2 · помощник';
 });
 add_filter('ai_helper_chat_greeting', function () {
-    return 'Здравствуйте! Отвечу про SEO и услуги 5MB2 — без регистрации.';
+    return 'Здравствуйте! Подскажу по услугам SEO и помогу оформить заявку.';
 });
 add_filter('ai_helper_chat_chips', function () {
-    return ['Что входит в SEO?', 'Сроки роста', 'Стоимость', 'Оставить заявку'];
+    return ['Услуги', 'Сроки и цены', 'Local SEO', 'Оставить заявку'];
 });

@@ -543,10 +543,157 @@ button, input, textarea, select { font: inherit; }
   to { background-position: 64px 64px, 64px 64px; }
 }
 
+/* Carousel */
+.carousel { position: relative; }
+.carousel-track {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+.carousel-slide {
+  position: absolute; inset: 0;
+  margin: 0;
+  opacity: 0;
+  transition: opacity .55s ease;
+  pointer-events: none;
+}
+.carousel-slide.is-active { opacity: 1; pointer-events: auto; }
+.carousel-slide img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  filter: saturate(0.92) contrast(1.05);
+}
+.carousel-slide figcaption {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 18px 22px;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.78));
+  color: var(--ink);
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.carousel-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 14px;
+}
+.carousel-dots { display: flex; gap: 8px; }
+.carousel-dots button {
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 0; padding: 0; cursor: pointer;
+  background: rgba(255,255,255,0.25);
+}
+.carousel-dots button.is-active { background: var(--accent); }
+
+/* Service cards / pages */
+.service-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.service-card {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.22);
+  transition: border-color .25s, transform .25s;
+}
+.service-card:hover {
+  border-color: rgba(164, 230, 0, 0.45);
+  transform: translateY(-3px);
+}
+.service-card-media {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: #0a100c;
+}
+.service-card-media img {
+  width: 100%; height: 100%; object-fit: cover;
+  transition: transform .5s ease;
+}
+.service-card:hover .service-card-media img { transform: scale(1.04); }
+.service-card-body { padding: 18px 18px 20px; display: grid; gap: 8px; }
+.service-card-body h2,
+.service-card-body h3 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 1.15rem;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.service-card-body p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+.service-layout {
+  display: grid;
+  grid-template-columns: 1.35fr 0.9fr;
+  gap: 32px;
+  align-items: start;
+}
+.service-aside {
+  position: sticky; top: 92px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+  background: var(--panel);
+}
+.service-aside h2 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 1.25rem;
+  margin: 0 0 8px;
+}
+.media-frame {
+  margin: 0 0 24px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.media-frame img { display: block; width: 100%; height: auto; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.meta-pill {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(118, 185, 0, 0.3);
+  color: var(--accent-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.lead-form select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.crumb { margin: 0 0 18px; }
+.post-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.post-card {
+  padding: 20px;
+  border-top: 2px solid var(--accent);
+  background: rgba(0,0,0,0.18);
+}
+.post-card h2, .post-card h3 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 1.1rem;
+  margin: 8px 0;
+  letter-spacing: -0.02em;
+}
+.post-card p { color: var(--muted); margin: 0 0 10px; }
+
 @media (max-width: 960px) {
-  .service-list, .steps, .stats, .auth-grid, .cabinet-grid, .footer-grid, .cta-inner, .status-row {
+  .service-list, .steps, .stats, .auth-grid, .cabinet-grid, .footer-grid, .cta-inner, .status-row,
+  .service-cards, .service-layout, .post-grid {
     grid-template-columns: 1fr;
   }
+  .service-aside { position: static; }
   .service-item,
   .service-item:nth-child(3n-1),
   .service-item:nth-child(3n) {

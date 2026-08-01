@@ -11,9 +11,10 @@
     </div>
     <div>
       <p class="footer-title">Услуги</p>
-      <a href="<?php echo esc_url(home_url('/#services')); ?>">SEO-аудит</a>
-      <a href="<?php echo esc_url(home_url('/#services')); ?>">Продвижение</a>
-      <a href="<?php echo esc_url(home_url('/#services')); ?>">Local SEO</a>
+      <?php foreach (array_slice(mb2_services_catalog(), 0, 4, true) as $slug => $svc) : ?>
+        <a href="<?php echo esc_url(mb2_service_url($slug)); ?>"><?php echo esc_html($svc['title']); ?></a>
+      <?php endforeach; ?>
+      <a href="<?php echo esc_url(home_url('/services/')); ?>">Все услуги</a>
     </div>
     <div>
       <p class="footer-title">Контакт</p>
