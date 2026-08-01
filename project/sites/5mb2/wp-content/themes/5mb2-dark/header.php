@@ -17,6 +17,37 @@
       <span class="logo-text">5MB2<span>Digital</span></span>
     </a>
 
+    <?php
+    // Desktop + mobile: одна и та же разметка панели (вне sticky-blur через CSS/портал)
+    $mb2_menu = static function () {
+        if (has_nav_menu('primary')) {
+            wp_nav_menu([
+                'theme_location' => 'primary',
+                'container'      => false,
+                'menu_class'     => 'nav-list',
+                'depth'          => 1,
+                'fallback_cb'    => 'mb2_nav_fallback',
+            ]);
+        } else {
+            mb2_nav_fallback();
+        }
+    };
+    ?>
+
+    <div class="header-panel header-panel--bar" id="site-menu-bar">
+      <nav class="nav" aria-label="Главное меню">
+        <?php $mb2_menu(); ?>
+      </nav>
+      <div class="header-cta">
+        <?php if (is_user_logged_in()) : ?>
+          <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Кабинет</a>
+        <?php else : ?>
+          <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
+        <?php endif; ?>
+        <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
+      </div>
+    </div>
+
     <button
       class="nav-toggle"
       type="button"
@@ -29,33 +60,27 @@
         <i></i><i></i><i></i>
       </span>
     </button>
-
-    <div class="header-panel" id="site-menu" data-nav-panel>
-      <nav class="nav" aria-label="Главное меню">
-        <?php
-        if (has_nav_menu('primary')) {
-            wp_nav_menu([
-                'theme_location' => 'primary',
-                'container'      => false,
-                'menu_class'     => 'nav-list',
-                'depth'          => 1,
-                'fallback_cb'    => 'mb2_nav_fallback',
-            ]);
-        } else {
-            mb2_nav_fallback();
-        }
-        ?>
-      </nav>
-      <div class="header-cta">
-        <?php if (is_user_logged_in()) : ?>
-          <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Кабинет</a>
-        <?php else : ?>
-          <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
-        <?php endif; ?>
-        <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
-      </div>
-    </div>
   </div>
-  <button class="nav-backdrop" type="button" aria-label="Закрыть меню" data-nav-close tabindex="-1"></button>
 </header>
+
+<!-- Вне header: иначе blur/sticky обрезают fixed-меню на iPhone -->
+<div class="nav-backdrop" data-nav-close aria-hidden="true"></div>
+<div class="header-panel header-panel--drawer" id="site-menu" data-nav-panel aria-hidden="true">
+  <div class="drawer-head">
+    <span class="drawer-title">Меню</span>
+    <button class="drawer-close" type="button" aria-label="Закрыть" data-nav-close>×</button>
+  </div>
+  <nav class="nav" aria-label="Мобильное меню">
+    <?php $mb2_menu(); ?>
+  </nav>
+  <div class="header-cta">
+    <?php if (is_user_logged_in()) : ?>
+      <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Кабинет</a>
+    <?php else : ?>
+      <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
+    <?php endif; ?>
+    <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
+  </div>
+</div>
+
 <main id="main">

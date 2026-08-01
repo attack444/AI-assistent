@@ -12,29 +12,36 @@
 
   var toggle = document.querySelector("[data-nav-toggle]");
   var panel = document.querySelector("[data-nav-panel]");
+  var backdrop = document.querySelector(".nav-backdrop");
+
   function setNavOpen(open) {
+    open = !!open;
     document.body.classList.toggle("nav-open", open);
     if (toggle) {
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       toggle.setAttribute("aria-label", open ? "Закрыть меню" : "Открыть меню");
     }
+    if (panel) panel.setAttribute("aria-hidden", open ? "false" : "true");
+    if (backdrop) backdrop.setAttribute("aria-hidden", open ? "false" : "true");
   }
-  if (toggle) {
-    toggle.addEventListener("click", function () {
+
+  if (toggle && panel) {
+    toggle.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
       setNavOpen(!document.body.classList.contains("nav-open"));
     });
     document.querySelectorAll("[data-nav-close]").forEach(function (el) {
-      el.addEventListener("click", function () {
+      el.addEventListener("click", function (e) {
+        e.preventDefault();
         setNavOpen(false);
       });
     });
-    if (panel) {
-      panel.querySelectorAll("a").forEach(function (a) {
-        a.addEventListener("click", function () {
-          setNavOpen(false);
-        });
+    panel.querySelectorAll("a").forEach(function (a) {
+      a.addEventListener("click", function () {
+        setNavOpen(false);
       });
-    }
+    });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") setNavOpen(false);
     });
