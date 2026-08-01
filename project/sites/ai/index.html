@@ -708,9 +708,109 @@
       }
     }
 
+
+    /* Need paths + feedback */
+    .need-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .need-card {
+      display: grid;
+      gap: 6px;
+      padding: 16px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      transition: border-color .2s, transform .2s;
+      min-height: 92px;
+    }
+    .need-card:hover {
+      border-color: rgba(11, 127, 110, 0.45);
+      transform: translateY(-2px);
+    }
+    .need-card strong {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.98rem;
+    }
+    .need-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+
+    .fb-fab {
+      position: fixed;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      z-index: 60;
+      border: 1px solid rgba(11, 127, 110, 0.4);
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 12px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(12, 26, 22, 0.16);
+      min-height: 44px;
+    }
+    .fb-backdrop {
+      position: fixed; inset: 0; z-index: 70;
+      background: rgba(12, 26, 22, 0.35);
+    }
+    .fb-panel {
+      position: fixed;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(72px, calc(env(safe-area-inset-bottom) + 64px));
+      z-index: 80;
+      width: min(400px, calc(100vw - 24px));
+      max-height: min(78vh, 640px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f7fbfa;
+      box-shadow: 0 24px 50px rgba(12, 26, 22, 0.18);
+    }
+    .fb-panel[hidden], .fb-backdrop[hidden] { display: none !important; }
+    .fb-panel-head {
+      display: flex; justify-content: space-between; gap: 12px; align-items: flex-start;
+    }
+    .fb-panel-head h3 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+    }
+    .fb-close {
+      border: 0; background: transparent; font-size: 1.5rem; cursor: pointer;
+      color: var(--muted); min-width: 40px; min-height: 40px;
+    }
+    .fb-form { display: grid; gap: 10px; margin-top: 12px; }
+    .fb-form label { display: grid; gap: 6px; color: var(--muted); font-size: 0.9rem; }
+    .fb-form input, .fb-form select, .fb-form textarea {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      font: inherit;
+      font-size: 16px;
+      background: #fff;
+      color: var(--ink);
+    }
+    .fb-form textarea { min-height: 110px; resize: vertical; }
+    .fb-note { margin: 0; min-height: 1.2em; font-size: 0.9rem; }
+    .fb-note.is-ok { color: var(--accent); }
+    .fb-note.is-error { color: #b42318; }
+    .fb-hp { position: absolute; left: -9999px; height: 1px; width: 1px; overflow: hidden; }
+
     @media (max-width: 480px) {
       .brand-mini { font-size: 0.95rem; }
       .topbar-actions .btn-ghost#btn-login { order: 1; }
+    }
+
+    @media (max-width: 900px) {
+      .need-grid { grid-template-columns: 1fr; }
+      .fb-panel { left: 12px; right: 12px; width: auto; bottom: max(130px, calc(env(safe-area-inset-bottom) + 120px)); }
     }
   </style>
 </head>
@@ -909,12 +1009,137 @@
     </div>
   </section>
 
+
+  <section class="section" id="need">
+    <h2>Что вам нужно?</h2>
+    <p>Короткий путь: деплой, чат, виджет, тариф — или напишите идею / ошибку. Мы делаем продукт вместе с вами.</p>
+    <div class="need-grid">
+      <a class="need-card" href="#deploy"><strong>Задеплоить сайт</strong><span>ZIP / HTML → превью за минуту</span></a>
+      <a class="need-card" href="#models"><strong>Спросить AI</strong><span>Чат про деплой и код</span></a>
+      <a class="need-card" href="#widget"><strong>Виджет на сайт</strong><span>Чат для ваших гостей</span></a>
+      <a class="need-card" href="#start"><strong>Тарифы и лимиты</strong><span>Free после регистрации</span></a>
+      <a class="need-card" href="#how"><strong>Как это устроено</strong><span>Три действия платформы</span></a>
+      <a class="need-card" href="#feedback" data-feedback-open><strong>Идея или ошибка</strong><span>Помогите сделать лучше</span></a>
+    </div>
+  </section>
+
+
+  <div class="fb-root" id="feedback" data-feedback>
+    <button type="button" class="fb-fab" data-feedback-open aria-expanded="false" aria-controls="ai-fb-panel">Идея / ошибка</button>
+    <div class="fb-backdrop" data-feedback-close hidden></div>
+    <div class="fb-panel" id="ai-fb-panel" hidden role="dialog" aria-labelledby="ai-fb-title">
+      <header class="fb-panel-head">
+        <div>
+          <p class="hint" style="margin:0">Обратная связь</p>
+          <h3 id="ai-fb-title">Помогите улучшить AI Helper</h3>
+        </div>
+        <button type="button" class="fb-close" data-feedback-close aria-label="Закрыть">×</button>
+      </header>
+      <p class="hint">Нашли баг, есть идея или не хватает функции — напишите. Это не тикет в панель владельца, а голос пользователя витрины.</p>
+      <form class="fb-form" id="ai-feedback-form">
+        <label class="fb-hp" aria-hidden="true">Сайт<input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+        <label>Тип
+          <select name="type">
+            <option value="idea">Идея / улучшение</option>
+            <option value="bug">Ошибка на сайте</option>
+            <option value="need">Мне нужно…</option>
+            <option value="other">Другое</option>
+          </select>
+        </label>
+        <label>Сообщение
+          <textarea name="message" required minlength="8" maxlength="4000" placeholder="Что улучшить или где ошибка?"></textarea>
+        </label>
+        <label>Email (необязательно)
+          <input type="email" name="email" autocomplete="email" placeholder="если нужен ответ" />
+        </label>
+        <input type="hidden" name="page" id="ai-fb-page" value="" />
+        <p class="fb-note" id="ai-fb-note" hidden></p>
+        <button class="btn btn-primary" type="submit">Отправить</button>
+      </form>
+    </div>
+  </div>
+
   <footer>
     <div>© AI Helper · витрина среды</div>
-    <div>Панель управления сервером — только для владельца</div>
+    <div>Панель управления сервером — только для владельца · <a href="#feedback" data-feedback-open>Идея / ошибка</a></div>
   </footer>
 
   <script>
+
+    // —— Feedback ——
+    (function () {
+      const root = document.querySelector("[data-feedback]");
+      if (!root) return;
+      const panel = root.querySelector(".fb-panel");
+      const backdrop = root.querySelector(".fb-backdrop");
+      const fab = root.querySelector(".fb-fab");
+      const form = document.getElementById("ai-feedback-form");
+      const note = document.getElementById("ai-fb-note");
+      const pageInput = document.getElementById("ai-fb-page");
+
+      function openFb(e) {
+        if (e) e.preventDefault();
+        if (pageInput) pageInput.value = location.href;
+        if (panel) panel.hidden = false;
+        if (backdrop) backdrop.hidden = false;
+        if (fab) fab.setAttribute("aria-expanded", "true");
+      }
+      function closeFb(e) {
+        if (e) e.preventDefault();
+        if (panel) panel.hidden = true;
+        if (backdrop) backdrop.hidden = true;
+        if (fab) fab.setAttribute("aria-expanded", "false");
+      }
+      document.querySelectorAll("[data-feedback-open]").forEach((el) => el.addEventListener("click", openFb));
+      root.querySelectorAll("[data-feedback-close]").forEach((el) => el.addEventListener("click", closeFb));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && panel && !panel.hidden) closeFb();
+      });
+
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const btn = form.querySelector('button[type="submit"]');
+          if (btn) btn.disabled = true;
+          if (note) { note.hidden = true; note.className = "fb-note"; }
+          if (pageInput) pageInput.value = location.href;
+          const fd = new FormData(form);
+          const body = {
+            type: fd.get("type"),
+            message: fd.get("message"),
+            email: fd.get("email") || "",
+            page: fd.get("page") || location.href,
+            website: fd.get("website") || "",
+            source: "ai-helper",
+          };
+          try {
+            const res = await fetch("/api/public/feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Не удалось отправить");
+            if (note) {
+              note.hidden = false;
+              note.className = "fb-note is-ok";
+              note.textContent = data.message || "Спасибо!";
+            }
+            form.reset();
+            setTimeout(closeFb, 1600);
+          } catch (err) {
+            if (note) {
+              note.hidden = false;
+              note.className = "fb-note is-error";
+              note.textContent = err.message || "Ошибка сети";
+            }
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        });
+      }
+    })();
+
     // Soft reveal
     const els = document.querySelectorAll(".section, footer");
     const io = new IntersectionObserver((entries) => {

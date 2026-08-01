@@ -134,6 +134,8 @@ $services = mb2_services_catalog();
   </div>
 </section>
 
+<?php mb2_render_need_paths(); ?>
+
 <section class="section" id="faq">
   <div class="wrap narrow">
     <header class="section-head reveal">

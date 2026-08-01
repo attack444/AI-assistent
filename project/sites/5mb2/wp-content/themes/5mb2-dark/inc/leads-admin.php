@@ -24,7 +24,54 @@ add_action('admin_menu', function () {
         'mb2-clients',
         'mb2_render_clients_admin'
     );
+    add_submenu_page(
+        'mb2-leads',
+        'Обратная связь',
+        'Обратная связь',
+        'manage_options',
+        'mb2-feedback',
+        'mb2_render_feedback_admin'
+    );
 });
+
+function mb2_render_feedback_admin() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    if (isset($_POST['mb2_clear_feedback']) && check_admin_referer('mb2_clear_feedback')) {
+        update_option('mb2_feedback', [], false);
+        echo '<div class="updated"><p>Список очищен.</p></div>';
+    }
+    $items = get_option('mb2_feedback', []);
+    if (!is_array($items)) {
+        $items = [];
+    }
+    $types = function_exists('mb2_feedback_types') ? mb2_feedback_types() : [];
+    echo '<div class="wrap"><h1>Обратная связь</h1>';
+    echo '<p>Идеи, ошибки и «мне нужно…» с сайта. Письма также уходят на email администратора.</p>';
+    echo '<form method="post" style="margin:12px 0">';
+    wp_nonce_field('mb2_clear_feedback');
+    echo '<button class="button" name="mb2_clear_feedback" value="1" onclick="return confirm(\'Очистить?\')">Очистить список</button>';
+    echo '</form>';
+    if (!$items) {
+        echo '<p>Пока пусто — виджет «Идея / ошибка» на сайте.</p></div>';
+        return;
+    }
+    echo '<table class="widefat striped"><thead><tr>';
+    echo '<th>Дата</th><th>Тип</th><th>Email</th><th>Страница</th><th>Сообщение</th>';
+    echo '</tr></thead><tbody>';
+    foreach ($items as $row) {
+        $t = $row['type'] ?? '';
+        echo '<tr>';
+        echo '<td>' . esc_html($row['at'] ?? '') . '</td>';
+        echo '<td>' . esc_html($types[$t] ?? $t) . '</td>';
+        echo '<td>' . esc_html($row['email'] ?? '') . '</td>';
+        echo '<td>' . esc_html($row['page'] ?? '') . '</td>';
+        echo '<td>' . esc_html($row['message'] ?? '') . '</td>';
+        echo '</tr>';
+    }
+    echo '</tbody></table></div>';
+}
 
 function mb2_render_leads_admin() {
     if (!current_user_can('manage_options')) {

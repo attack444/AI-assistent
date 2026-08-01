@@ -21,6 +21,7 @@
       <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>
       <a href="https://vk.com/5mb2online" target="_blank" rel="noopener">VK · 5mb2online</a>
       <a href="<?php echo esc_url(home_url('/#contact')); ?>">Оставить заявку</a>
+      <a href="#feedback" data-feedback-open>Идея или ошибка</a>
       <a href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">Конфиденциальность</a>
     </div>
   </div>

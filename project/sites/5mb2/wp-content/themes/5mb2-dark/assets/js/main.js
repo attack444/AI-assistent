@@ -190,6 +190,85 @@
     });
   });
 
+  // Feedback: idea / bug
+  (function () {
+    var root = document.querySelector("[data-feedback]");
+    if (!root) return;
+    var panel = root.querySelector(".fb-panel");
+    var backdrop = root.querySelector(".fb-backdrop");
+    var fab = root.querySelector(".fb-fab");
+    var form = root.querySelector("[data-feedback-form]");
+    var pageInput = root.querySelector("[data-feedback-page]");
+
+    function openFb(e) {
+      if (e) e.preventDefault();
+      if (pageInput) pageInput.value = window.location.href;
+      if (panel) panel.hidden = false;
+      if (backdrop) backdrop.hidden = false;
+      if (fab) fab.setAttribute("aria-expanded", "true");
+      var ta = form && form.querySelector("textarea");
+      if (ta) setTimeout(function () { ta.focus(); }, 50);
+    }
+    function closeFb(e) {
+      if (e) e.preventDefault();
+      if (panel) panel.hidden = true;
+      if (backdrop) backdrop.hidden = true;
+      if (fab) fab.setAttribute("aria-expanded", "false");
+    }
+
+    document.querySelectorAll("[data-feedback-open]").forEach(function (el) {
+      el.addEventListener("click", openFb);
+    });
+    root.querySelectorAll("[data-feedback-close]").forEach(function (el) {
+      el.addEventListener("click", closeFb);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && panel && !panel.hidden) closeFb();
+    });
+
+    if (form) {
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var btn = form.querySelector('button[type="submit"]');
+        var note = form.querySelector(".form-note");
+        if (btn) btn.disabled = true;
+        if (note) {
+          note.hidden = true;
+          note.classList.remove("is-error", "is-ok");
+        }
+        if (pageInput) pageInput.value = window.location.href;
+        postAjax("mb2_feedback", form)
+          .then(function (res) {
+            if (res && res.success) {
+              if (note) {
+                note.hidden = false;
+                note.classList.add("is-ok");
+                note.textContent = (res.data && res.data.message) || "Спасибо!";
+              }
+              form.reset();
+              setTimeout(closeFb, 1600);
+              return;
+            }
+            if (note) {
+              note.hidden = false;
+              note.classList.add("is-error");
+              note.textContent = (res && res.data && res.data.message) || "Не удалось отправить";
+            }
+          })
+          .catch(function () {
+            if (note) {
+              note.hidden = false;
+              note.classList.add("is-error");
+              note.textContent = "Сеть недоступна";
+            }
+          })
+          .finally(function () {
+            if (btn) btn.disabled = false;
+          });
+      });
+    }
+  })();
+
   // Carousel
   document.querySelectorAll("[data-carousel]").forEach(function (root) {
     var slides = Array.prototype.slice.call(root.querySelectorAll(".carousel-slide"));

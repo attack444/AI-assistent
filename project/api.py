@@ -94,6 +94,7 @@ _PUBLIC_PATHS = {
     "/public/me/sites",
     "/public/plans",
     "/public/admin/set-plan",
+    "/public/feedback",
 }
 
 
@@ -1806,6 +1807,30 @@ class APIHandler(BaseHTTPRequestHandler):
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
             self._send(code, _json({"error": str(exc)}))
 
+    def _post_public_feedback(self):
+        import public_feedback as pf
+
+        try:
+            body = self._read_body()
+            # honeypot
+            if (body.get("website") or "").strip():
+                self._send(200, _json({"ok": True, "message": "Спасибо!"}))
+                return
+            ip = self.client_address[0] if self.client_address else ""
+            result = pf.save_feedback(
+                kind=(body.get("type") or body.get("kind") or "idea"),
+                message=body.get("message") or "",
+                email=body.get("email") or "",
+                page=body.get("page") or "",
+                source=(body.get("source") or "ai-helper"),
+                ip=ip,
+            )
+            self._send(200, _json(result))
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(500, _json({"error": str(exc)}))
+
     # ── Chats (persistent) ───────────────────────────────────────
     def _get_chats(self):
         qs = self._qs()
@@ -2183,6 +2208,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/fs/write":
             self._post_public_fs_write()
+            return
+        if path == "/public/feedback":
+            self._post_public_feedback()
             return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
