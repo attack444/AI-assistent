@@ -167,6 +167,54 @@ export function listFeedback(limit = 100) {
   );
 }
 
+export type HealthCheck = {
+  id?: string;
+  label?: string;
+  ok?: boolean;
+  status?: number;
+  error?: string | null;
+  warn?: string;
+  ms?: number;
+  priority?: number;
+  model?: string;
+};
+
+export type SystemHealthReport = {
+  ok: boolean;
+  priority_ok?: boolean;
+  at?: string;
+  checks?: HealthCheck[];
+  failed?: string[];
+  priority_failed?: string[];
+  actions?: { action?: string; container?: string; ok?: boolean; error?: string }[];
+  ai_repair?: { ok?: boolean; reply?: string; tools?: string[]; error?: string; skipped?: boolean };
+  recovered?: boolean;
+  incident?: FeedbackItem | null;
+};
+
+export function getSystemHealth() {
+  return request<SystemHealthReport>("/system/health");
+}
+
+export function listSystemIncidents(limit = 50) {
+  return request<{ ok: boolean; items: FeedbackItem[]; count: number }>(
+    `/system/incidents?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
+export function runSystemWatchdog(opts?: {
+  remediate?: boolean;
+  ask_deepseek?: boolean;
+}) {
+  return request<SystemHealthReport>("/system/watchdog", {
+    method: "POST",
+    body: JSON.stringify({
+      remediate: opts?.remediate ?? true,
+      ask_deepseek: opts?.ask_deepseek ?? false,
+    }),
+  });
+}
+
 export function listSites() {
   return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites");
 }

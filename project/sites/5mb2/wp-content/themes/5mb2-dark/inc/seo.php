@@ -110,13 +110,19 @@ function mb2_seo_lookup() {
     return null;
 }
 
-/** Идентичность сайта */
+/** Идентичность сайта — только если пусто/дефолт WP (не затираем правки в админке). */
 function mb2_seo_apply_identity() {
-    update_option('blogname', '5MB2 Digital');
-    update_option('blogdescription', 'SEO-продвижение сайтов по России: аудит, Local SEO, техника');
+    $name = (string) get_option('blogname');
+    $desc = (string) get_option('blogdescription');
+    if ($name === '' || $name === 'WordPress' || $name === 'Мой сайт') {
+        update_option('blogname', '5MB2 Digital');
+    }
+    if ($desc === '' || $desc === 'Ещё один сайт на WordPress') {
+        update_option('blogdescription', 'SEO-продвижение сайтов по России: аудит, Local SEO, техника');
+    }
 }
 
-/** Записать Rank Math meta на страницы */
+/** Записать Rank Math meta только если поля ещё пустые — не откатывать правки владельца. */
 function mb2_seo_seed_rank_math() {
     $map = mb2_seo_page_map();
     foreach ($map as $slug => $meta) {
@@ -130,22 +136,41 @@ function mb2_seo_seed_rank_math() {
         if (!$page) {
             continue;
         }
-        update_post_meta($page->ID, 'rank_math_title', $meta['title']);
-        update_post_meta($page->ID, 'rank_math_description', $meta['desc']);
-        update_post_meta($page->ID, '_rank_math_title', $meta['title']);
-        update_post_meta($page->ID, '_rank_math_description', $meta['desc']);
+        foreach ([
+            'rank_math_title' => $meta['title'],
+            'rank_math_description' => $meta['desc'],
+            '_rank_math_title' => $meta['title'],
+            '_rank_math_description' => $meta['desc'],
+        ] as $key => $val) {
+            $cur = get_post_meta($page->ID, $key, true);
+            if ($cur === '' || $cur === false || $cur === null) {
+                update_post_meta($page->ID, $key, $val);
+            }
+        }
     }
 
-    // Homepage titles в опциях Rank Math (если модуль есть)
+    // Homepage titles в опциях Rank Math — только пустые ключи
     if (class_exists('RankMath') || defined('RANK_MATH_VERSION')) {
         $titles = get_option('rank-math-options-titles', []);
         if (!is_array($titles)) {
             $titles = [];
         }
-        $titles['homepage_title'] = $map['home']['title'];
-        $titles['homepage_description'] = $map['home']['desc'];
-        $titles['title_separator'] = '|';
-        update_option('rank-math-options-titles', $titles, false);
+        $changed = false;
+        if (empty($titles['homepage_title'])) {
+            $titles['homepage_title'] = $map['home']['title'];
+            $changed = true;
+        }
+        if (empty($titles['homepage_description'])) {
+            $titles['homepage_description'] = $map['home']['desc'];
+            $changed = true;
+        }
+        if (empty($titles['title_separator'])) {
+            $titles['title_separator'] = '|';
+            $changed = true;
+        }
+        if ($changed) {
+            update_option('rank-math-options-titles', $titles, false);
+        }
     }
 }
 

@@ -43,6 +43,9 @@ export default function HomePage() {
           <Link className="btn" href="/sites">
             Сайты
           </Link>
+          <Link className="btn ghost" href="/health">
+            Здоровье
+          </Link>
           <Link className="btn ghost" href="/feedback">
             Обратная связь
           </Link>

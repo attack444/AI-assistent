@@ -53,6 +53,7 @@ _TOOL_TRIGGERS = frozenset([
     "read_file", "write_file", "list_dir", "str_replace", "apply_edits",
     "site_status", "wp_replace", "fix_perms", "smart_search", "health",
     "автопровер", "автоисправ", "съехал", "clearfix",
+    "watchdog", "сбой", "инцидент", "таймаут", "critical error",
 ])
 
 # Soft site-review questions → answer from prefetched server data (no tool drama)

@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/chat", label: "Чат" },
   { href: "/files", label: "Файлы" },
   { href: "/sites", label: "Сайты" },
+  { href: "/health", label: "Здоровье" },
   { href: "/feedback", label: "Обратная связь" },
 ];
 

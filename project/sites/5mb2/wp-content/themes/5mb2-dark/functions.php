@@ -6,15 +6,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.5');
+define('MB2_THEME_VER', '1.9.6');
 
-require get_template_directory() . '/inc/services.php';
-require get_template_directory() . '/inc/legal.php';
-require get_template_directory() . '/inc/seo.php';
-require get_template_directory() . '/inc/projects.php';
-require get_template_directory() . '/inc/seed.php';
-require get_template_directory() . '/inc/leads-admin.php';
-require get_template_directory() . '/inc/feedback.php';
+$mb2_inc = get_template_directory() . '/inc';
+foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php'] as $mb2_file) {
+    $mb2_path = $mb2_inc . '/' . $mb2_file;
+    if (is_readable($mb2_path)) {
+        require $mb2_path;
+    }
+}
 
 add_action('after_setup_theme', function () {
     add_theme_support('title-tag');
@@ -77,12 +77,32 @@ add_action('wp_enqueue_scripts', function () {
 });
 
 add_action('after_switch_theme', 'mb2_ensure_site_structure');
-add_action('init', function () {
+/**
+ * Тяжёлый seed НЕ на фронте: раньше при смене MB2_THEME_VER каждый визит
+ * гонял wp_update_post по всем страницам → таймауты / «сайт лёг» после правок в WP.
+ * Только admin_init + блокировка; деплой — sync-5mb2-theme.sh.
+ */
+add_action('admin_init', function () {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
     if (get_option('mb2_structure_ver') === MB2_THEME_VER) {
         return;
     }
-    mb2_ensure_site_structure();
-    update_option('mb2_structure_ver', MB2_THEME_VER, false);
+    if (get_transient('mb2_structure_lock')) {
+        return;
+    }
+    set_transient('mb2_structure_lock', 1, 180);
+    try {
+        if (function_exists('mb2_ensure_site_structure')) {
+            mb2_ensure_site_structure();
+        }
+        update_option('mb2_structure_ver', MB2_THEME_VER, false);
+    } catch (Throwable $e) {
+        error_log('mb2_ensure_site_structure: ' . $e->getMessage());
+    } finally {
+        delete_transient('mb2_structure_lock');
+    }
 }, 20);
 
 function mb2_nav_fallback() {

@@ -42,7 +42,11 @@ function mb2_ensure_terms() {
     }
 }
 
-function mb2_upsert_page($slug, $title, $content, $template = '', $parent = 0) {
+/**
+ * Создаёт страницу если нет. Существующие НЕ перезаписывает (контент/SEO в WP остаются).
+ * $force_content=true — только для явного сида из CLI/деплоя.
+ */
+function mb2_upsert_page($slug, $title, $content, $template = '', $parent = 0, $force_content = false) {
     $path = $slug;
     if ($parent) {
         $parent_post = get_post($parent);
@@ -57,14 +61,25 @@ function mb2_upsert_page($slug, $title, $content, $template = '', $parent = 0) {
 
     if ($existing) {
         $id = (int) $existing->ID;
-        wp_update_post([
-            'ID'           => $id,
-            'post_title'   => $title,
-            'post_content' => $content,
-            'post_parent'  => $parent,
-            'post_status'  => 'publish',
-            'post_name'    => $slug,
-        ]);
+        $update = ['ID' => $id];
+        $changed = false;
+        if ((int) $existing->post_parent !== (int) $parent && $parent) {
+            $update['post_parent'] = (int) $parent;
+            $changed = true;
+        }
+        if ($existing->post_status !== 'publish') {
+            $update['post_status'] = 'publish';
+            $changed = true;
+        }
+        if ($force_content) {
+            $update['post_title'] = $title;
+            $update['post_content'] = $content;
+            $update['post_name'] = $slug;
+            $changed = true;
+        }
+        if ($changed) {
+            wp_update_post($update);
+        }
     } else {
         $id = wp_insert_post([
             'post_title'   => $title,
@@ -79,7 +94,10 @@ function mb2_upsert_page($slug, $title, $content, $template = '', $parent = 0) {
         }
     }
     if ($template) {
-        update_post_meta($id, '_wp_page_template', $template);
+        $cur = (string) get_post_meta($id, '_wp_page_template', true);
+        if ($cur !== $template) {
+            update_post_meta($id, '_wp_page_template', $template);
+        }
     }
     return (int) $id;
 }

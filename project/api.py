@@ -25,6 +25,9 @@ Endpoints:
   POST   /sites
   DELETE /sites/<name>
   POST   /sites/deploy
+  GET    /system/health
+  GET    /system/incidents
+  POST   /system/watchdog
 """
 from __future__ import annotations
 
@@ -645,7 +648,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.9.0",
+            "version": "2.9.1",
             "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -1843,6 +1846,54 @@ class APIHandler(BaseHTTPRequestHandler):
         items = pf.list_feedback(limit=limit)
         self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
 
+    def _local_watchdog_ok(self) -> bool:
+        """Cron на VPS может дергать watchdog без Bearer с localhost."""
+        ip = ""
+        try:
+            ip = (self.client_address[0] if self.client_address else "") or ""
+        except Exception:
+            ip = ""
+        return ip in {"127.0.0.1", "::1", "localhost"}
+
+    def _get_system_health(self):
+        import system_health as sh
+
+        qs = self._qs()
+        base = (qs.get("base") or "").strip()
+        host = (qs.get("host") or "").strip()
+        report = sh.check_targets(base_url=base, host=host)
+        self._send(200, _json({"ok": True, **report}))
+
+    def _get_system_incidents(self):
+        import system_health as sh
+
+        qs = self._qs()
+        try:
+            limit = int(qs.get("limit") or 50)
+        except ValueError:
+            limit = 50
+        items = sh.list_incidents(limit=limit)
+        self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
+
+    def _post_system_watchdog(self):
+        import system_health as sh
+
+        try:
+            body = self._read_body()
+        except Exception:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        remediate = bool(body.get("remediate", True))
+        ask_ai = bool(body.get("ask_deepseek") or body.get("ask_ai"))
+        result = sh.run_watchdog(
+            remediate=remediate,
+            ask_ai=ask_ai,
+            base_url=(body.get("base") or "").strip(),
+            host=(body.get("host") or "").strip(),
+        )
+        self._send(200, _json({"ok": True, **result}))
+
     # ── Chats (persistent) ───────────────────────────────────────
     def _get_chats(self):
         qs = self._qs()
@@ -2176,6 +2227,10 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_context()
         elif path == "/feedback":
             self._get_feedback()
+        elif path == "/system/health":
+            self._get_system_health()
+        elif path == "/system/incidents":
+            self._get_system_incidents()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
@@ -2225,6 +2280,10 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/feedback":
             self._post_public_feedback()
+            return
+        if path == "/system/watchdog":
+            if self._local_watchdog_ok() or self._require_auth():
+                self._post_system_watchdog()
             return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
