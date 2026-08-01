@@ -13,7 +13,7 @@
     return [
       "#aih-root{all:initial;font-family:Manrope,system-ui,sans-serif;}",
       "#aih-fab{position:fixed;right:18px;bottom:18px;z-index:2147483000;border:0;border-radius:999px;",
-      "padding:14px 18px;background:#76b900;color:#fff;font:600 14px Manrope,system-ui,sans-serif;",
+      "padding:14px 18px;background:#76b900;color:#041004;font:600 14px Manrope,system-ui,sans-serif;",
       "cursor:pointer;box-shadow:0 12px 30px rgba(11,127,110,.35);}",
       "#aih-panel{position:fixed;right:18px;bottom:72px;z-index:2147483000;width:min(380px,calc(100vw - 24px));",
       "height:min(520px,70vh);display:none;flex-direction:column;background:#0d120e;color:#e8f5e9;",
