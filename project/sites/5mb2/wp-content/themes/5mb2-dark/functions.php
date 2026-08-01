@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.0.0');
+define('MB2_THEME_VER', '1.1.0');
 
 add_action('after_setup_theme', function () {
     add_theme_support('title-tag');
@@ -16,6 +16,8 @@ add_action('after_setup_theme', function () {
         'primary' => 'Главное меню',
         'footer'  => 'Подвал',
     ]);
+    // Одна оболочка: без кастомайзера Elementor / block template parts конфликтов
+    remove_theme_support('block-templates');
 });
 
 add_action('wp_enqueue_scripts', function () {
@@ -36,10 +38,46 @@ add_action('wp_enqueue_scripts', function () {
         $cjs = $dir . '/assets/js/cabinet.js';
         wp_enqueue_script('mb2-cabinet', $uri . '/assets/js/cabinet.js', ['mb2-main'], file_exists($cjs) ? (string) filemtime($cjs) : MB2_THEME_VER, true);
     }
-});
+}, 5);
 
-/** Create cabinet page once */
+/** Выкинуть CSS/JS Elementor / Astra, если плагин ещё не удалили */
+add_action('wp_enqueue_scripts', function () {
+    $styles = [
+        'elementor-frontend', 'elementor-frontend-legacy', 'elementor-icons',
+        'elementor-post-5', 'elementor-global', 'elementor-common',
+        'eael-general', 'essential-addons-elementor', 'astra-theme-css',
+        'astra-addon-css', 'wp-block-library', 'classic-theme-styles', 'global-styles',
+    ];
+    foreach ($styles as $h) {
+        wp_dequeue_style($h);
+        wp_deregister_style($h);
+    }
+    $scripts = [
+        'elementor-frontend', 'elementor-webpack-runtime', 'elementor-common',
+        'eael-general', 'astra-theme-js',
+    ];
+    foreach ($scripts as $h) {
+        wp_dequeue_script($h);
+        wp_deregister_script($h);
+    }
+}, 100);
+
+add_action('wp_print_styles', function () {
+    global $wp_styles;
+    if (!$wp_styles) {
+        return;
+    }
+    foreach ($wp_styles->queue as $handle) {
+        if (stripos($handle, 'elementor') !== false || stripos($handle, 'eael') !== false || stripos($handle, 'astra') !== false) {
+            wp_dequeue_style($handle);
+        }
+    }
+}, 100);
+
+/** Create cabinet page once + чистая главная = front-page.php темы */
 add_action('after_switch_theme', function () {
+    update_option('show_on_front', 'posts');
+    delete_option('page_on_front');
     if (!get_page_by_path('cabinet')) {
         $id = wp_insert_post([
             'post_title'   => 'Личный кабинет',

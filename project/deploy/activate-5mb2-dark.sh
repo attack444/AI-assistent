@@ -53,10 +53,13 @@ activate() {
 }
 activate || true
 
-echo "[>>] 2/4 виджет + nginx"
+echo "[>>] 2/5 убрать Elementor / Astra (одна оболочка — тема)"
+bash "$SCRIPT_DIR/purge-elementor-5mb2.sh" || true
+
+echo "[>>] 3/5 виджет + nginx"
 bash "$SCRIPT_DIR/install-5mb2-widget.sh" || true
 
-echo "[>>] 3/4 PUBLIC_WIDGET_GUEST + rebuild API"
+echo "[>>] 4/5 PUBLIC_WIDGET_GUEST + rebuild API"
 ENVF="$SCRIPT_DIR/../.env"
 touch "$ENVF"
 grep -q '^PUBLIC_WIDGET_GUEST=' "$ENVF" 2>/dev/null || echo 'PUBLIC_WIDGET_GUEST=1' >> "$ENVF"
@@ -65,12 +68,12 @@ cd "$SCRIPT_DIR"
 docker compose -f docker-compose.prod.yml build app
 docker compose -f docker-compose.prod.yml up -d --force-recreate app
 
-echo "[>>] 4/4 кэш"
+echo "[>>] 5/5 кэш"
 rm -rf "$WP/wp-content/cache/"* 2>/dev/null || true
 
 echo "============================================"
-echo "  Тема: 5mb2-dark (проверь Внешний вид → Темы, если не активировалась)"
+echo "  Одна оболочка: тема 5mb2-dark (без Elementor)"
 echo "  Кабинет: http://5mb2.ru/cabinet/"
-echo "  Гостевой чат: /api/status должен показать widget_guest:true version 2.9.0"
-echo "  Ctrl+F5 на сайте"
+echo "  Гостевой чат: /api/status → widget_guest:true, version 2.9.0"
+echo "  Ctrl+F5 на http://5mb2.ru/"
 echo "============================================"

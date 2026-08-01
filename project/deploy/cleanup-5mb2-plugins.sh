@@ -1,11 +1,10 @@
 #!/bin/bash
-# Чистка 5mb2 по шагам (можно запускать повторно — безопасно).
+# Чистка 5mb2: AI, WPForms, RSS, Elementor, Astra, twenty*
+# Оболочка сайта — только тема 5mb2-dark.
 #   bash project/deploy/cleanup-5mb2-plugins.sh
-#
-# Удаляет: AI-плагины, WPForms, RSS, дефолтные темы twenty*
-# Оставляет: Astra, CF7, Flamingo, Elementor, SEO, кэш, Wordfence…
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_NAME="${SITE_NAME:-5mb2}"
 SITES_DIR="${SITES_DIR:-/var/ai-helper/sites}"
 ROOT="${SITES_DIR}/${SITE_NAME}"
@@ -30,6 +29,10 @@ REMOVE_PLUGINS=(
   gpt3-ai-content-generator
   wpforms-lite
   wp-rss-aggregator
+  elementor
+  elementor-pro
+  essential-addons-for-elementor-lite
+  essential-addons-for-elementor
 )
 
 REMOVE_THEMES=(
@@ -39,10 +42,12 @@ REMOVE_THEMES=(
   twentytwentytwo
   twentytwentyone
   twentytwenty
+  astra
+  astra-child
+  hello-elementor
 )
 
 echo "[>>] WP root: $WP"
-echo "--- плагины ---"
 for p in "${REMOVE_PLUGINS[@]}"; do
   if [ -d "$PLUGINS/$p" ]; then
     rm -rf "$PLUGINS/$p"
@@ -51,8 +56,6 @@ for p in "${REMOVE_PLUGINS[@]}"; do
     echo "  · нет: $p"
   fi
 done
-
-echo "--- темы ---"
 for t in "${REMOVE_THEMES[@]}"; do
   if [ -d "$THEMES/$t" ]; then
     rm -rf "$THEMES/$t"
@@ -62,15 +65,13 @@ for t in "${REMOVE_THEMES[@]}"; do
   fi
 done
 
-# Сброс кэша
 rm -rf "$WP/wp-content/cache/"* 2>/dev/null || true
+rm -rf "$WP/wp-content/uploads/elementor" 2>/dev/null || true
 rm -f "$ROOT/wp-config.php.bak-aihelper" 2>/dev/null || true
 
 echo ""
-echo "[OK] Тема: Astra. Формы: contact-form-7 + flamingo."
-echo "Плагины сейчас:"
+echo "[OK] Оболочка: только 5mb2-dark. Формы: CF7 + Flamingo."
+echo "Полная зачистка Elementor + активация темы:"
+echo "  bash $SCRIPT_DIR/purge-elementor-5mb2.sh"
 ls "$PLUGINS"
-echo "Темы сейчас:"
 ls "$THEMES"
-echo ""
-echo "Дальше (виджет чата): bash project/deploy/install-5mb2-widget.sh"
