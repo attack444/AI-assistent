@@ -128,6 +128,42 @@ def _clear_root(root: Path) -> None:
         root.mkdir(parents=True, exist_ok=True)
 
 
+def _swap_staging_into_root(staging: Path, root: Path) -> None:
+    """Replace live root with staging only after a fully successful extract."""
+    parent = root.parent
+    if root.exists():
+        backup = parent / f".backup-{root.name}-{secrets.token_hex(8)}"
+        root.rename(backup)
+        try:
+            staging.rename(root)
+        except Exception:
+            if not root.exists() and backup.exists():
+                backup.rename(root)
+            raise
+        shutil.rmtree(backup, ignore_errors=True)
+    else:
+        staging.rename(root)
+
+
+def _with_staging_extract(root: Path, fill_staging) -> Dict[str, Any]:
+    """Run fill_staging(staging_dir) then atomically swap into root; keep live on failure."""
+    root = root.resolve()
+    parent = root.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = parent / f".staging-{root.name}-{secrets.token_hex(8)}"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True, exist_ok=True)
+    try:
+        stats = fill_staging(staging)
+        _swap_staging_into_root(staging, root)
+        return stats
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
 def _flatten_single_folder(root: Path) -> None:
     entries = [e for e in root.iterdir() if e.name not in {".user.ini"}]
     if len(entries) == 1 and entries[0].is_dir():
@@ -198,80 +234,97 @@ def _write_member(root: Path, rel: str, data: bytes, *, kept: int, total_bytes: 
 
 
 def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
-    """Extract allowed static files only into root (replace contents)."""
-    _clear_root(root)
-    kept = 0
-    skipped = 0
-    total_bytes = 0
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        infos = zf.infolist()
-        if len(infos) > MAX_FILES * 2:
-            raise ValueError(f"Слишком много файлов в ZIP (>{MAX_FILES})")
-        for info in infos:
-            if info.is_dir():
-                continue
-            if not _safe_member(info.filename):
-                skipped += 1
-                continue
-            with zf.open(info) as src:
-                data = src.read()
-            kept, total_bytes = _write_member(
-                root, info.filename, data, kept=kept, total_bytes=total_bytes
-            )
+    """Extract allowed static files into root, replacing contents only after success.
 
-    _flatten_single_folder(root)
-    _ensure_index(root)
-    return {"files_kept": kept, "files_skipped": skipped, "bytes": total_bytes, "format": "zip"}
+    Staging avoids wiping an existing live site when the ZIP is invalid or
+    exceeds limits (critical for redeploy).
+    """
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError("Нужен ZIP-архив (html/css/js…)")
+
+    def _fill(staging: Path) -> Dict[str, Any]:
+        kept = 0
+        skipped = 0
+        total_bytes = 0
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            infos = zf.infolist()
+            if len(infos) > MAX_FILES * 2:
+                raise ValueError(f"Слишком много файлов в ZIP (>{MAX_FILES})")
+            for info in infos:
+                if info.is_dir():
+                    continue
+                if not _safe_member(info.filename):
+                    skipped += 1
+                    continue
+                with zf.open(info) as src:
+                    data = src.read()
+                kept, total_bytes = _write_member(
+                    staging, info.filename, data, kept=kept, total_bytes=total_bytes
+                )
+        _flatten_single_folder(staging)
+        _ensure_index(staging)
+        return {
+            "files_kept": kept,
+            "files_skipped": skipped,
+            "bytes": total_bytes,
+            "format": "zip",
+        }
+
+    return _with_staging_extract(root, _fill)
 
 
 def extract_public_tar(tar_path: Path, root: Path, *, gzipped: bool = False) -> Dict[str, Any]:
-    _clear_root(root)
-    kept = 0
-    skipped = 0
-    total_bytes = 0
-    mode = "r:gz" if gzipped else "r:"
-    with tarfile.open(tar_path, mode) as tf:
-        members = [m for m in tf.getmembers() if m.isfile()]
-        if len(members) > MAX_FILES * 2:
-            raise ValueError(f"Слишком много файлов в архиве (>{MAX_FILES})")
-        for m in members:
-            name = m.name
-            if name.startswith("./"):
-                name = name[2:]
-            if not _safe_member(name):
-                skipped += 1
-                continue
-            if m.size > MAX_UNCOMPRESSED:
-                raise ValueError("Файл в архиве слишком большой")
-            f = tf.extractfile(m)
-            if f is None:
-                skipped += 1
-                continue
-            data = f.read()
-            kept, total_bytes = _write_member(root, name, data, kept=kept, total_bytes=total_bytes)
+    def _fill(staging: Path) -> Dict[str, Any]:
+        kept = 0
+        skipped = 0
+        total_bytes = 0
+        mode = "r:gz" if gzipped else "r:"
+        with tarfile.open(tar_path, mode) as tf:
+            members = [m for m in tf.getmembers() if m.isfile()]
+            if len(members) > MAX_FILES * 2:
+                raise ValueError(f"Слишком много файлов в архиве (>{MAX_FILES})")
+            for m in members:
+                name = m.name
+                if name.startswith("./"):
+                    name = name[2:]
+                if not _safe_member(name):
+                    skipped += 1
+                    continue
+                if m.size > MAX_UNCOMPRESSED:
+                    raise ValueError("Файл в архиве слишком большой")
+                f = tf.extractfile(m)
+                if f is None:
+                    skipped += 1
+                    continue
+                data = f.read()
+                kept, total_bytes = _write_member(
+                    staging, name, data, kept=kept, total_bytes=total_bytes
+                )
+        _flatten_single_folder(staging)
+        _ensure_index(staging)
+        return {
+            "files_kept": kept,
+            "files_skipped": skipped,
+            "bytes": total_bytes,
+            "format": "tar.gz" if gzipped else "tar",
+        }
 
-    _flatten_single_folder(root)
-    _ensure_index(root)
-    return {
-        "files_kept": kept,
-        "files_skipped": skipped,
-        "bytes": total_bytes,
-        "format": "tar.gz" if gzipped else "tar",
-    }
+    return _with_staging_extract(root, _fill)
 
 
 def deploy_single_html(html_path: Path, root: Path) -> Dict[str, Any]:
-    _clear_root(root)
-    data = html_path.read_bytes()
-    if len(data) > MAX_UNCOMPRESSED:
-        raise ValueError("HTML слишком большой")
-    # Basic sanity: look like markup
-    sample = data[:2000].lower()
-    if b"<" not in sample:
-        raise ValueError("Файл не похож на HTML")
-    (root / "index.html").write_bytes(data)
-    (root / ".user.ini").write_text("auto_prepend_file =\n", encoding="utf-8")
-    return {"files_kept": 1, "files_skipped": 0, "bytes": len(data), "format": "html"}
+    def _fill(staging: Path) -> Dict[str, Any]:
+        data = html_path.read_bytes()
+        if len(data) > MAX_UNCOMPRESSED:
+            raise ValueError("HTML слишком большой")
+        sample = data[:2000].lower()
+        if b"<" not in sample:
+            raise ValueError("Файл не похож на HTML")
+        (staging / "index.html").write_bytes(data)
+        (staging / ".user.ini").write_text("auto_prepend_file =\n", encoding="utf-8")
+        return {"files_kept": 1, "files_skipped": 0, "bytes": len(data), "format": "html"}
+
+    return _with_staging_extract(root, _fill)
 
 
 def detect_format(path: Path, filename: str = "") -> str:
@@ -324,6 +377,42 @@ def extract_upload(path: Path, root: Path, filename: str = "") -> Dict[str, Any]
     if fmt == "html":
         return deploy_single_html(path, root)
     raise ValueError("Неизвестный формат")
+
+
+def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
+    """Extract allowed static files into root, replacing contents only after success.
+
+    Staging avoids wiping an existing live site when the ZIP is invalid or
+    exceeds limits (critical for redeploy).
+    """
+    root = root.resolve()
+    parent = root.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = parent / f".staging-{root.name}-{secrets.token_hex(8)}"
+    if staging.exists():
+        shutil.rmtree(staging)
+
+    try:
+        stats = _extract_zip_into(zip_path, staging)
+        # Swap staging into place only after a fully successful extract.
+        if root.exists():
+            backup = parent / f".backup-{root.name}-{secrets.token_hex(8)}"
+            root.rename(backup)
+            try:
+                staging.rename(root)
+            except Exception:
+                # Roll back so the previous site stays available.
+                if not root.exists() and backup.exists():
+                    backup.rename(root)
+                raise
+            shutil.rmtree(backup, ignore_errors=True)
+        else:
+            staging.rename(root)
+        return stats
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 def create_deployment(
@@ -383,6 +472,7 @@ def redeploy(name: str, token: str, zip_path: Path, filename: str = "") -> Dict[
         raise PermissionError("Неверный token или срок истёк")
     if zip_path.stat().st_size > MAX_ZIP:
         raise ValueError(f"Файл больше {MAX_ZIP // (1024*1024)} МБ")
+    # extract_upload stages+swaps; failed/invalid archives leave the live site intact.
     stats = extract_upload(zip_path, SITES_ROOT / name, filename=filename)
     meta = load_meta(name) or {}
     meta["updated_at"] = time.time()
