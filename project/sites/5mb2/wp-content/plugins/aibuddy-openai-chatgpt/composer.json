@@ -1,0 +1,13 @@
+{
+  "name": "aibuddy-openai-chatgpt/aibuddy-openai-chatgpt.php",
+  "description": "AI Bud – AI Content Generator, AI Chatbot, ChatGPT, Gemini, GPT-4o",
+  "type": "project",
+  "require": {
+    "guzzlehttp/guzzle": "^7.0",
+    "symfony/polyfill-mbstring": "^1.0",
+    "ralouphie/getallheaders": "^3.0",
+    "erusev/parsedown": "^1.7",
+    "freemius/wordpress-sdk": "^2.5",
+    "psr/log": "^1.1"
+  }
+}

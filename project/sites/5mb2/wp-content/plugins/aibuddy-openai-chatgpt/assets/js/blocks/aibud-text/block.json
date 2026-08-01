@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "aibud/content-generator",
+  "version": "1.0.0",
+  "title": "AIBud Content Generator",
+  "category": "widgets",
+  "icon": {
+    "src": "./../../assets/icons/aibuddy-logo.svg"
+  },
+  "description": "AIBud Content Generator that generates content based on the your input.",
+  "keywords": [
+    "content",
+    "generator",
+    "aibud",
+    "paragraph",
+    "text",
+    "ai"
+  ],
+  "supports": {
+    "html": false
+  },
+  "textdomain": "aibud-text",
+  "editorScript": "file:./index.js",
+  "editorStyle": "file:./index.css",
+  "style": "file:./style-index.css"
+}

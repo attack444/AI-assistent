@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Engine — Workspace (design mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Newsreader:ital,opsz,wght@1,6..72,300;1,6..72,400&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============ AI Engine Workspace — design mock ============
+     Structure: TypingMind. Refinement: ours.
+     Two first-class themes driven by [data-theme] variables only. */
+
+  :root[data-theme="dark"] {
+    --bg: #17181c;
+    --bg-deep: #121317;
+    --bg-raise: #1e2026;
+    --bg-hover: #23252c;
+    --ink: #e9e9ec;
+    --ink-soft: #9b9da6;
+    --ink-faint: #62646d;
+    --hairline: #2a2c33;
+    --accent: hsl(217 85% 62%);
+    --accent-ink: #ffffff;
+    --accent-soft: hsl(217 85% 62% / 0.14);
+    --user-bubble: #232733;
+    --code-bg: #101116;
+    --shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.55);
+    --composer-shadow: 0 10px 40px -8px rgba(0, 0, 0, 0.5);
+  }
+  :root[data-theme="light"] {
+    --bg: #faf9f6;
+    --bg-deep: #f2f0ec;
+    --bg-raise: #ffffff;
+    --bg-hover: #eceae4;
+    --ink: #1d1e22;
+    --ink-soft: #6d6e75;
+    --ink-faint: #a4a5ab;
+    --hairline: #e3e1da;
+    --accent: hsl(217 80% 42%);
+    --accent-ink: #ffffff;
+    --accent-soft: hsl(217 80% 42% / 0.10);
+    --user-bubble: #eef0f4;
+    --code-bg: #16171b;
+    --shadow: 0 18px 50px -18px rgba(60, 50, 20, 0.25);
+    --composer-shadow: 0 10px 34px -10px rgba(60, 50, 20, 0.18);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Instrument Sans", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14.5px;
+    letter-spacing: 0.1px;
+    overflow: hidden;
+    transition: background 0.35s ease, color 0.35s ease;
+  }
+  /* Faint grain so large surfaces never feel flat */
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; opacity: 0.35; z-index: 999;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.028'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .app { display: flex; height: 100vh; }
+
+  /* ================= Sidebar ================= */
+  .sidebar {
+    width: 288px; min-width: 288px; height: 100%;
+    background: var(--bg-deep);
+    border-right: 1px solid var(--hairline);
+    display: flex; flex-direction: column;
+    transition: background 0.35s ease;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 20px 20px 14px;
+  }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: radial-gradient(120% 120% at 20% 15%, var(--accent) 0%, color-mix(in srgb, var(--accent) 55%, #7a4dff) 100%);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 4px 14px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  .brand-name { font-weight: 600; font-size: 15px; letter-spacing: 0.2px; }
+  .brand-sub { font-family: "Spline Sans Mono", monospace; font-size: 10px; color: var(--ink-faint); margin-left: auto; letter-spacing: 1px; text-transform: uppercase; }
+
+  .new-chat {
+    margin: 4px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-radius: 10px;
+    background: var(--accent); color: var(--accent-ink);
+    font-weight: 600; font-size: 13.5px; cursor: pointer;
+    border: none; transition: transform 0.15s ease, filter 0.2s ease;
+  }
+  .new-chat:hover { filter: brightness(1.06); transform: translateY(-1px); }
+  .new-chat kbd {
+    font-family: "Spline Sans Mono", monospace; font-size: 10px; font-weight: 400;
+    opacity: 0.65; letter-spacing: 0.5px;
+  }
+
+  .search {
+    margin: 0 16px 14px; position: relative;
+  }
+  .search input {
+    width: 100%; padding: 8px 12px 8px 30px;
+    background: var(--bg); border: 1px solid var(--hairline); border-radius: 9px;
+    color: var(--ink); font-family: inherit; font-size: 13px; outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .search input:focus { border-color: color-mix(in srgb, var(--accent) 55%, var(--hairline)); }
+  .search input::placeholder { color: var(--ink-faint); }
+  .search svg { position: absolute; left: 10px; top: 9px; width: 13px; height: 13px; stroke: var(--ink-faint); }
+
+  .convs { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+  .convs::-webkit-scrollbar { width: 8px; }
+  .convs::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 4px; }
+
+  .group-label {
+    font-family: "Spline Sans Mono", monospace;
+    font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--ink-faint); padding: 16px 10px 7px;
+  }
+  .conv {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 9px 10px; border-radius: 9px; cursor: pointer;
+    transition: background 0.15s ease;
+    position: relative;
+  }
+  .conv:hover { background: var(--bg-hover); }
+  .conv.active { background: var(--bg-raise); box-shadow: inset 2px 0 0 var(--accent); }
+  .conv-title { font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-meta {
+    display: flex; align-items: center; gap: 7px;
+    font-family: "Spline Sans Mono", monospace; font-size: 10.5px; color: var(--ink-faint);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .dot.openai { background: #61bb90; }
+  .dot.anthropic { background: #d08d6b; }
+  .dot.google { background: #6f9ff2; }
+  .pin { color: var(--accent); font-size: 10px; margin-right: 2px; }
+
+  .me {
+    border-top: 1px solid var(--hairline);
+    padding: 14px 16px; display: flex; align-items: center; gap: 11px;
+  }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: linear-gradient(135deg, #5d78e0, #9a5de0);
+    display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff;
+  }
+  .me-name { font-size: 13px; font-weight: 500; }
+  .me-role { font-size: 11px; color: var(--ink-faint); }
+  .me-actions { margin-left: auto; display: flex; gap: 4px; }
+  .icon-btn {
+    width: 28px; height: 28px; border-radius: 8px; border: none; cursor: pointer;
+    background: transparent; color: var(--ink-soft);
+    display: grid; place-items: center; transition: background 0.15s ease, color 0.15s ease;
+  }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--ink); }
+  .icon-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+
+  /* ================= Main ================= */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 26px; border-bottom: 1px solid var(--hairline);
+  }
+  .conv-name { font-weight: 600; font-size: 14.5px; }
+  .conv-cost {
+    font-family: "Spline Sans Mono", monospace; font-size: 11px;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 3px 9px; border-radius: 20px;
+  }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  .model-pill {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--bg-raise); border: 1px solid var(--hairline);
+    padding: 7px 13px; border-radius: 22px; cursor: pointer;
+    font-size: 13px; font-weight: 500;
+    transition: border-color 0.2s ease, transform 0.15s ease;
+  }
+  .model-pill:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--hairline)); transform: translateY(-1px); }
+  .model-pill .chev { color: var(--ink-faint); font-size: 10px; }
+  .model-pill .mono { font-family: "Spline Sans Mono", monospace; font-size: 11px; color: var(--ink-soft); }
+
+  /* ================= Messages ================= */
+  .scroll { flex: 1; overflow-y: auto; }
+  .scroll::-webkit-scrollbar { width: 10px; }
+  .scroll::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 5px; }
+  .thread { max-width: 780px; margin: 0 auto; padding: 46px 28px 30px; }
+
+  .msg { margin-bottom: 38px; animation: rise 0.5s ease both; }
+  .msg:nth-child(1) { animation-delay: 0.05s; }
+  .msg:nth-child(2) { animation-delay: 0.12s; }
+  .msg:nth-child(3) { animation-delay: 0.19s; }
+  .msg:nth-child(4) { animation-delay: 0.26s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .msg.user { display: flex; justify-content: flex-end; }
+  .msg.user .bubble {
+    background: var(--user-bubble); border-radius: 16px 16px 4px 16px;
+    padding: 13px 18px; max-width: 82%; line-height: 1.55;
+  }
+
+  .msg.ai .ai-head {
+    display: flex; align-items: baseline; gap: 9px; margin-bottom: 10px;
+  }
+  .ai-name { font-weight: 600; font-size: 13px; }
+  .ai-model {
+    font-family: "Spline Sans Mono", monospace; font-size: 10.5px; color: var(--ink-faint);
+  }
+  .ai-cost { font-family: "Spline Sans Mono", monospace; font-size: 10.5px; color: var(--accent); margin-left: auto; }
+  .msg.ai .body { line-height: 1.68; color: color-mix(in srgb, var(--ink) 94%, transparent); }
+  .msg.ai .body p + p { margin-top: 12px; }
+  .msg.ai .body strong { font-weight: 600; }
+
+  .codeblock {
+    margin: 16px 0 6px; border-radius: 12px; overflow: hidden;
+    background: var(--code-bg); box-shadow: var(--shadow);
+    border: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  }
+  .code-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; font-family: "Spline Sans Mono", monospace; font-size: 11px;
+    color: #8b8d98; border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .code-copy { background: none; border: none; color: #8b8d98; font-family: inherit; font-size: 11px; cursor: pointer; }
+  .code-copy:hover { color: #e9e9ec; }
+  .codeblock pre {
+    padding: 15px 16px; font-family: "Spline Sans Mono", monospace; font-size: 12.5px;
+    line-height: 1.6; color: #dcdde3; overflow-x: auto;
+  }
+  .tok-k { color: #7aa5f0; } .tok-s { color: #96c78f; } .tok-c { color: #6b6e7b; }
+
+  .msg-actions {
+    display: flex; gap: 2px; margin-top: 10px; opacity: 0; transition: opacity 0.2s ease;
+  }
+  .msg.ai:hover .msg-actions { opacity: 1; }
+
+  /* ================= Composer ================= */
+  .composer-wrap { padding: 6px 28px 26px; }
+  .composer {
+    max-width: 780px; margin: 0 auto;
+    background: var(--bg-raise); border: 1px solid var(--hairline);
+    border-radius: 16px; box-shadow: var(--composer-shadow);
+    transition: border-color 0.2s ease;
+  }
+  .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--hairline)); }
+  .composer textarea {
+    width: 100%; border: none; outline: none; resize: none;
+    background: transparent; color: var(--ink);
+    font-family: inherit; font-size: 14.5px; line-height: 1.5;
+    padding: 16px 18px 6px; height: 58px;
+  }
+  .composer textarea::placeholder { color: var(--ink-faint); }
+  .composer-bar {
+    display: flex; align-items: center; gap: 4px; padding: 6px 10px 10px;
+  }
+  .send {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--accent-ink);
+    border: none; border-radius: 10px; padding: 8px 16px;
+    font-family: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    transition: filter 0.2s ease, transform 0.15s ease;
+  }
+  .send:hover { filter: brightness(1.07); transform: translateY(-1px); }
+  .composer-hint {
+    max-width: 780px; margin: 9px auto 0; text-align: center;
+    font-family: "Spline Sans Mono", monospace; font-size: 10.5px; color: var(--ink-faint);
+  }
+  .composer-hint em { font-style: normal; color: var(--accent); }
+
+  /* Empty-state flourish (shown when no conversation is selected) */
+  .muse {
+    font-family: "Newsreader", serif; font-style: italic; font-weight: 300;
+    font-size: 15px; color: var(--ink-faint); letter-spacing: 0.2px;
+  }
+
+  /* Accent swatches (a per-user preference in the real thing; Meow blue is the default) */
+  .accents { display: flex; gap: 6px; align-items: center; margin-right: 2px; }
+  .swatch {
+    width: 16px; height: 16px; border-radius: 50%; border: none; cursor: pointer;
+    outline: 2px solid transparent; outline-offset: 2px;
+    transition: transform 0.15s ease, outline-color 0.2s ease;
+  }
+  .swatch:hover { transform: scale(1.15); }
+  .swatch.on { outline-color: var(--ink-soft); }
+
+  /* Theme toggle */
+  .theme-toggle {
+    display: flex; border: 1px solid var(--hairline); border-radius: 20px; overflow: hidden;
+  }
+  .theme-toggle button {
+    border: none; background: transparent; color: var(--ink-faint); cursor: pointer;
+    padding: 5px 11px; font-family: inherit; font-size: 11.5px; font-weight: 500;
+  }
+  .theme-toggle button.on { background: var(--bg-raise); color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">Workspace</div>
+      <div class="brand-sub">AI Engine</div>
+    </div>
+
+    <button class="new-chat"><span>New chat</span><kbd>⌘N</kbd></button>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input placeholder="Search conversations…">
+    </div>
+
+    <nav class="convs">
+      <div class="group-label">Pinned</div>
+      <div class="conv"><div class="conv-title"><span class="pin">★</span> Weekly content review</div>
+        <div class="conv-meta"><span class="dot anthropic"></span>Sonnet 5 · $0.31</div></div>
+
+      <div class="group-label">Today</div>
+      <div class="conv active"><div class="conv-title">MariaDB vector migration plan</div>
+        <div class="conv-meta"><span class="dot openai"></span>GPT-5.6 Sol · $0.023</div></div>
+      <div class="conv"><div class="conv-title">Translate landing page to Japanese</div>
+        <div class="conv-meta"><span class="dot google"></span>Gemini 3 Pro · $0.008</div></div>
+
+      <div class="group-label">Yesterday</div>
+      <div class="conv"><div class="conv-title">Tomato watering schedule script</div>
+        <div class="conv-meta"><span class="dot openai"></span>GPT-5.6 Luna · $0.004</div></div>
+      <div class="conv"><div class="conv-title">Pricing page copy, 3 variants</div>
+        <div class="conv-meta"><span class="dot anthropic"></span>Sonnet 5 · $0.062</div></div>
+
+      <div class="group-label">This week</div>
+      <div class="conv"><div class="conv-title">Refactor ideas for chatbot context</div>
+        <div class="conv-meta"><span class="dot anthropic"></span>Opus 4.8 · $0.84</div></div>
+      <div class="conv"><div class="conv-title">SQL for orphaned metadata cleanup</div>
+        <div class="conv-meta"><span class="dot openai"></span>GPT-5.6 Sol · $0.017</div></div>
+    </nav>
+
+    <div class="me">
+      <div class="avatar">JM</div>
+      <div><div class="me-name">Jordy Meow</div><div class="me-role">Administrator</div></div>
+      <div class="me-actions">
+        <button class="icon-btn" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <span class="conv-name">MariaDB vector migration plan</span>
+      <span class="conv-cost">$0.023</span>
+      <div class="topbar-right">
+        <div class="accents" id="accents"></div>
+        <div class="theme-toggle">
+          <button id="btn-light" onclick="setTheme('light')">Light</button>
+          <button id="btn-dark" class="on" onclick="setTheme('dark')">Dark</button>
+        </div>
+        <div class="model-pill">
+          <span class="dot openai"></span>
+          GPT-5.6 Sol
+          <span class="mono">128k</span>
+          <span class="chev">▼</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="scroll">
+      <div class="thread">
+
+        <div class="msg user">
+          <div class="bubble">We store embeddings as packed float32 blobs in MariaDB. What's the cleanest migration path to the native VECTOR type, without downtime?</div>
+        </div>
+
+        <div class="msg ai">
+          <div class="ai-head">
+            <span class="ai-name">AI</span>
+            <span class="ai-model">gpt-5.6-sol · 2.1s</span>
+            <span class="ai-cost">$0.011</span>
+          </div>
+          <div class="body">
+            <p>The clean path is a <strong>shadow column migration</strong>: add the native column next to the blob, backfill in batches, then swap reads. No table rebuild, no downtime.</p>
+            <div class="codeblock">
+              <div class="code-head"><span>sql</span><button class="code-copy">Copy</button></div>
+              <pre><span class="tok-c">-- 1. Add the native column (instant, metadata-only)</span>
+<span class="tok-k">ALTER TABLE</span> wp_mwai_local_vectors
+  <span class="tok-k">ADD COLUMN</span> embedding_v <span class="tok-k">VECTOR</span>(1536) <span class="tok-k">NULL</span>;
+
+<span class="tok-c">-- 2. Backfill in batches of 500</span>
+<span class="tok-k">UPDATE</span> wp_mwai_local_vectors
+  <span class="tok-k">SET</span> embedding_v = <span class="tok-s">Vec_FromText</span>(unpack_f32(embedding))
+  <span class="tok-k">WHERE</span> embedding_v <span class="tok-k">IS NULL LIMIT</span> 500;</pre>
+            </div>
+            <p>Once backfill completes, create the HNSW index concurrently and flip the query path behind a feature flag. Keep the blob column for one release as the rollback story.</p>
+          </div>
+          <div class="msg-actions">
+            <button class="icon-btn" title="Copy"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <button class="icon-btn" title="Regenerate"><svg viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></button>
+            <button class="icon-btn" title="Branch"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M9 6h4a2 2 0 0 1 2 2v0"/><path d="M9 18h4a2 2 0 0 0 2-2v0"/></svg></button>
+          </div>
+        </div>
+
+        <div class="msg user">
+          <div class="bubble">Nice. And if the host runs MySQL instead of MariaDB?</div>
+        </div>
+
+        <div class="msg ai">
+          <div class="ai-head">
+            <span class="ai-name">AI</span>
+            <span class="ai-model">gpt-5.6-sol · 1.4s</span>
+            <span class="ai-cost">$0.007</span>
+          </div>
+          <div class="body">
+            <p>Then you keep the blob path: stock MySQL has no VECTOR type outside HeatWave. Detect the flavor at runtime and choose the strategy per site; the brute-force scan stays your universal fallback and is exact rather than approximate, which at typical knowledge-base sizes is actually the better result.</p>
+          </div>
+          <div class="msg-actions">
+            <button class="icon-btn" title="Copy"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            <button class="icon-btn" title="Regenerate"><svg viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg></button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <div class="composer-wrap">
+      <div class="composer">
+        <textarea placeholder="Message the AI…"></textarea>
+        <div class="composer-bar">
+          <button class="icon-btn" title="Attach"><svg viewBox="0 0 24 24"><path d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+          <button class="icon-btn" title="Knowledge"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>
+          <span class="muse" style="margin-left: 10px;">every model, your keys, your site.</span>
+          <button class="send">Send <span style="font-size:10px; opacity:0.7;">⏎</span></button>
+        </div>
+      </div>
+      <div class="composer-hint">GPT-5.6 Sol · est. <em>$0.002</em> per message · shift+⏎ for a new line</div>
+    </div>
+  </main>
+
+</div>
+<script>
+  // In the real Workspace both are per-user preferences (user meta).
+  // Meow blue (--neko-blue, hsl 217) is the default accent.
+  const ACCENTS = {
+    blue:   { label: 'Meow Blue', dark: 'hsl(217 85% 62%)', light: 'hsl(217 80% 42%)' },
+    brass:  { label: 'Brass',     dark: '#d9a54f',          light: '#a87b2f' },
+    teal:   { label: 'Teal',      dark: 'hsl(174 60% 51%)', light: 'hsl(174 70% 30%)' },
+    rose:   { label: 'Rose',      dark: 'hsl(345 75% 64%)', light: 'hsl(345 70% 44%)' },
+    violet: { label: 'Violet',    dark: 'hsl(262 75% 68%)', light: 'hsl(262 60% 46%)' },
+  };
+  let currentAccent = 'blue';
+
+  function applyAccent() {
+    const theme = document.documentElement.getAttribute('data-theme');
+    const c = ACCENTS[currentAccent][theme];
+    const root = document.documentElement.style;
+    root.setProperty('--accent', c);
+    root.setProperty('--accent-soft', `color-mix(in srgb, ${c} 13%, transparent)`);
+    root.setProperty('--accent-ink', theme === 'dark' && currentAccent === 'brass' ? '#17181c' : '#ffffff');
+    document.querySelectorAll('.swatch').forEach(b =>
+      b.classList.toggle('on', b.dataset.accent === currentAccent));
+  }
+
+  function setAccent(name) { currentAccent = name; applyAccent(); }
+
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    document.getElementById('btn-light').classList.toggle('on', t === 'light');
+    document.getElementById('btn-dark').classList.toggle('on', t === 'dark');
+    applyAccent();
+  }
+
+  const holder = document.getElementById('accents');
+  for (const [name, a] of Object.entries(ACCENTS)) {
+    const b = document.createElement('button');
+    b.className = 'swatch'; b.title = a.label; b.dataset.accent = name;
+    b.style.background = `linear-gradient(135deg, ${a.dark}, ${a.light})`;
+    b.onclick = () => setAccent(name);
+    holder.appendChild(b);
+  }
+  applyAccent();
+</script>
+</body>
+</html>

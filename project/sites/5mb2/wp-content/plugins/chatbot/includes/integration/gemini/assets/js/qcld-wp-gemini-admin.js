@@ -1,0 +1,125 @@
+jQuery(document).ready(function($) {
+    // Function to fetch models from Google API
+    $(document).on('click', '#qcld_gemini_fetch_models', function(e) {
+        e.preventDefault();
+        var api_key = $('#qcld_gemini_api_key').val();
+        if (!api_key) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Oops...',
+                text: 'Please enter your API Key first!'
+            });
+            return;
+        }
+
+        var $btn = $(this);
+        var originalText = $btn.text();
+        $btn.text('Fetching...').prop('disabled', true);
+
+        $.ajax({
+            url: qcld_gemini_admin_data.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'qcld_gemini_get_model_list',
+                nonce: qcld_gemini_admin_data.ajax_nonce,
+                api_key: api_key
+            },
+            success: function(response) {
+                if (response.success) {
+                    var $select = $('#qcld_gemini_model');
+                    var currentModel = $select.val();
+                    $select.empty();
+                    response.data.models.forEach(function(model) {
+                        var selected = (model.id === currentModel) ? 'selected' : '';
+                        $select.append('<option value="' + model.id + '" ' + selected + '>' + model.name + ' (' + model.id + ')</option>');
+                    });
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success',
+                        text: 'Models fetched successfully!'
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: response.data.msg || 'Failed to fetch models'
+                    });
+                }
+            },
+            error: function() {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'An error occurred while fetching models.'
+                });
+            },
+            complete: function() {
+                $btn.text(originalText).prop('disabled', false);
+            }
+        });
+    });
+
+    // Function to fetch models from OpenRouter API
+
+    var settingsGemini = document.getElementById("qcld_save_gemini_setting");
+    if(settingsGemini){
+        $('.qcl-openai').on('click', '#qcld_save_gemini_setting', function(){
+            if ($('#qcld_gemini_enabled').is(":checked")){
+                var gemini_enabled = 1;
+            }else{
+                var gemini_enabled = 0;
+            }
+            var qcld_gemini_page_suggestion_enabled = jQuery("#qcld_gemini_page_suggestion_enabled").is(":checked") ? 1 : 0;
+            var gemini_is_context_awareness_enabled = jQuery("#gemini_is_context_awareness_enabled").is(":checked") ? 1 : 0;
+            var qcld_gemini_api_key = jQuery("#qcld_gemini_api_key").val();
+            var qcld_gemini_model = jQuery('#qcld_gemini_model').val();
+            var qcld_gemini_append_content = jQuery('#qcld_gemini_append_content').val();
+            var qcld_gemini_prepend_content = jQuery('#qcld_gemini_prepend_content').val();
+            var is_page_rag_enabled = jQuery("#is_page_rag_enabled_gemini").is(":checked") ? 1 : 0;
+            var post_gemini_types = $.map($('input[name="site_gemini_search_posttypes[]"]:checked'), function(c){return c.value; });
+            $.ajax({
+                url: qcld_gemini_admin_data.ajax_url,
+                type:'POST',
+                data: {
+                    action: 'qcld_gemini_settings_option',
+                    nonce: qcld_gemini_admin_data.ajax_nonce,
+                    gemini_api_key: qcld_gemini_api_key,
+                    gemini_model: qcld_gemini_model,
+                    gemini_enabled: gemini_enabled,
+                    qcld_gemini_page_suggestion_enabled: qcld_gemini_page_suggestion_enabled,
+                    gemini_is_context_awareness_enabled: gemini_is_context_awareness_enabled,
+                    qcld_gemini_append_content: qcld_gemini_append_content,
+                    qcld_gemini_prepend_content: qcld_gemini_prepend_content,
+                    openai_post_type:post_gemini_types,
+                    is_page_rag_enabled: is_page_rag_enabled
+                },
+                success: function(data){
+                    $('#result').html(data);
+                    var color = data.status === 'success' ? 'color:green;' : 'color:red;';
+                    Swal.fire({
+                        title: 'Your settings are saved.',
+                        html: '<p style=font-size:14px>Please clear your browser <b>cache</b> and <b>cookies</b> both and reload the front end before testing. Alternatively, you can launch a new browser window in <b>Incognito</b>/Private mode (Ctrl+Shift+N in chrome) to test.</p></b><p><span style="'+ color +'">'+ data.msg+'</span></p>',
+                        width: 450,
+                        icon: 'success',
+                        confirmButtonText: 'Got it',
+                        confirmButtonWidth: 100,
+                        confirmButtonClass: 'btn btn-lg',
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            $.ajax({
+                                url: qcld_gemini_admin_data.ajax_url,
+                                type: 'POST',
+                                data: {
+                                    action: 'update_settings_option',
+                                    nonce: qcld_gemini_admin_data.ajax_nonce,
+                                    disable_ss: 1
+                                },
+                      
+                            });
+                        }
+                    });
+                }
+            });
+        });
+    }
+}); 

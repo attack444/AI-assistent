@@ -1,0 +1,776 @@
+<?php
+
+/**
+ * Google Gemini — Interactions API engine.
+ *
+ * As of June 2026 the Interactions API is GA and Google's recommended interface
+ * (https://ai.google.dev/gemini-api/docs/interactions-overview). It is stateful
+ * (server-side history via previous_interaction_id), exposes Google's built-in
+ * tools (Google Search, Google Maps, URL context, code execution), and returns a
+ * chronological list of execution "steps" (model_output / function_call /
+ * function_result / thoughts).
+ *
+ * This is the DEFAULT engine for Google environments. The classic
+ * generateContent engine (Meow_MWAI_Engines_Google) remains the fallback,
+ * selected when "Use Standard API" (google_use_standard_api) is enabled in
+ * Settings > AI > General. The request/response field names are mapped from
+ * Google's docs and confirmed against the live API.
+ */
+class Meow_MWAI_Engines_GoogleInteractions extends Meow_MWAI_Engines_Core {
+  protected $apiKey = null;
+  protected $endpoint = null;
+
+  // Streaming accumulators (collected from SSE events, used to build the Reply).
+  protected $streamId = null;
+  protected $streamInTokens = null;
+  protected $streamOutTokens = null;
+  protected $streamToolCalls = [];
+  protected $streamImages = [];
+
+  // The classic Google engine, used for everything the Interactions API does not
+  // cover (embeddings, image generation, transcription) and for model fetching.
+  protected $classicEngine = null;
+
+  public function __construct( $core, $env ) {
+    parent::__construct( $core, $env );
+    $this->set_environment();
+  }
+
+  protected function set_environment() {
+    $env = $this->env;
+    $this->apiKey = $env['apikey'];
+    $this->endpoint = apply_filters(
+      'mwai_google_endpoint',
+      'https://generativelanguage.googleapis.com/v1beta',
+      $this->env
+    );
+  }
+
+  protected function build_headers( $query = null ) {
+    // A query may carry a per-request API key override (set via inject_params);
+    // fall back to the environment key otherwise.
+    $apiKey = ( $query !== null && !empty( $query->apiKey ) ) ? $query->apiKey : $this->apiKey;
+    return [
+      'Content-Type' => 'application/json',
+      'x-goog-api-key' => $apiKey,
+    ];
+  }
+
+  #region Request building
+
+  /**
+   * Build the "input" for the request.
+   * - Feedback queries carry function results back as function_result items.
+   * - When we have a previous interaction id, the server holds the history so we
+   *   only send the new user turn.
+   * - Otherwise we send the conversation as Content[].
+   */
+  protected function user_step( $query ) {
+    $content = [];
+
+    // Attached images / files (vision).
+    $attachments = method_exists( $query, 'getAttachments' ) ? $query->getAttachments() : [];
+    foreach ( $attachments as $file ) {
+      $mime = $file->get_mimeType() ? $file->get_mimeType() : 'image/jpeg';
+      // Image content parts are flat: { type, data (base64), mime_type }.
+      $content[] = [
+        'type' => 'image',
+        'data' => $file->get_base64(),
+        'mime_type' => $mime,
+      ];
+    }
+
+    if ( $query->message !== '' || empty( $content ) ) {
+      $content[] = [ 'type' => 'text', 'text' => $query->message ];
+    }
+
+    return [ 'type' => 'user_input', 'content' => $content ];
+  }
+
+  /**
+   * When a Gemini call fails in a way that usually means the chosen model is
+   * retired, gated to existing users, or otherwise unavailable, append a short
+   * actionable hint. Google keeps listing such models in /models (so they show
+   * up in the dropdown) but rejects them at use time, and the Interactions
+   * endpoint often reports them as an opaque "Internal error", leaving the user
+   * with no clue the model is simply dead. Only fires on model-shaped failures
+   * so it does not add noise to genuine bad requests.
+   */
+  private function model_unavailable_hint( $code, $detail, $model ) {
+    if ( empty( $model ) ) {
+      return '';
+    }
+    $looksModelRelated = $code == 404
+      || ( $code == 500 && stripos( (string) $detail, 'internal error' ) !== false )
+      || preg_match( '/no longer available|not found|is not (available|supported)|does not exist|unsupported model/i', (string) $detail );
+    if ( !$looksModelRelated ) {
+      return '';
+    }
+    return ' (The model "' . $model . '" may have been retired by Google or is not available on your plan. Try a newer Gemini model, such as Gemini 2.5 Flash.)';
+  }
+
+  /**
+   * The Interactions API is steps-based: input must be a step_list, not a
+   * role-based turn_list. So we emit user_input / model_output / function_result
+   * steps (the same step types the API returns).
+   */
+  protected function build_input( $query ) {
+    // Feedback: carry the function results back as function_result steps.
+    if ( $query instanceof Meow_MWAI_Query_Feedback && !empty( $query->blocks ) ) {
+      $steps = [];
+      foreach ( $query->blocks as $block ) {
+        foreach ( ( $block['feedbacks'] ?? [] ) as $feedback ) {
+          $value = $feedback['reply']['value'] ?? '';
+          if ( !is_string( $value ) ) {
+            $value = wp_json_encode( $value );
+          }
+          // `call_id` must match the function_call step's id. `result` is sent as
+          // a plain string (the value is already stringified above). The
+          // content-block-array form ([{type:text,text:...}]) is rejected by
+          // gemini-2.5 and 2.0 as "Multimodal function responses are not
+          // supported for this model", which silently broke function calling on
+          // those (common) models via this default engine; a plain string works
+          // on 2.5, 3 and the -latest models alike (verified live).
+          $steps[] = [
+            'type' => 'function_result',
+            'call_id' => $feedback['request']['toolId'] ?? null,
+            'name' => $feedback['request']['name'] ?? '',
+            'result' => $value,
+          ];
+        }
+      }
+      return $steps;
+    }
+
+    $steps = [];
+
+    // When continuing an interaction, prior turns live server-side (referenced by
+    // previous_interaction_id) so we only send the new user turn. On the FIRST
+    // turn the server has no state, so we must replay the conversation history
+    // ($query->messages) as user_input / model_output steps. Without this,
+    // restored discussions and any caller-supplied history are lost. The API
+    // accepts replayed model_output steps (verified live).
+    if ( !$this->has_previous_interaction( $query ) && !empty( $query->messages ) ) {
+      foreach ( $query->messages as $message ) {
+        $text = $message['content'] ?? '';
+        if ( !is_string( $text ) || $text === '' ) {
+          continue;
+        }
+        $role = $message['role'] ?? 'user';
+        $type = ( $role === 'assistant' || $role === 'model' ) ? 'model_output' : 'user_input';
+        $steps[] = [ 'type' => $type, 'content' => [ [ 'type' => 'text', 'text' => $text ] ] ];
+      }
+    }
+
+    $steps[] = $this->user_step( $query );
+    return $steps;
+  }
+
+  protected function build_tools( $query ) {
+    $tools = [];
+
+    // Custom WordPress / Code Engine functions -> function declarations.
+    // Each tool is flat: { type:function, name, description, parameters }.
+    if ( !empty( $query->functions ) ) {
+      foreach ( $query->functions as $function ) {
+        $decl = $function->serializeForOpenAI();
+        // The Interactions API validates `parameters` as a JSON Schema and is
+        // strict about it: a no-arg function's empty
+        // { type:object, properties:{}, required:[] } is rejected with the
+        // misleading "value at top-level must be a list". Send a bare object
+        // schema when there are no parameters, and drop an empty `required`
+        // list otherwise.
+        if ( !empty( $function->rawSchema ) ) {
+          // Raw-schema functions (MCP bridge) are already normalized; only
+          // collapse a propertyless schema to the bare object form above.
+          if ( $decl['parameters']['properties'] instanceof stdClass ) {
+            $decl['parameters'] = [ 'type' => 'object' ];
+          }
+        }
+        elseif ( empty( $function->parameters ) ) {
+          $decl['parameters'] = [ 'type' => 'object' ];
+        }
+        elseif ( empty( $decl['parameters']['required'] ) ) {
+          unset( $decl['parameters']['required'] );
+        }
+        $tools[] = array_merge( [ 'type' => 'function' ], $decl );
+      }
+    }
+
+    // Provider built-in tools. AI Engine uses the generic 'web_search' name
+    // across providers; for Gemini it maps to Google Search grounding (the
+    // classic generateContent engine maps it the same way). Google Maps
+    // grounding is named-places only for now (no lat/long context), so "near me"
+    // queries won't resolve but explicit places do.
+    //
+    // Google Search and Google Maps are mutually exclusive in one Interactions
+    // request (the API rejects "cannot be combined in the same request"). When a
+    // chatbot has both enabled, prefer Maps (the more specific opt-in tool).
+    if ( in_array( 'google_maps', $query->tools, true ) ) {
+      $tools[] = [ 'type' => 'google_maps' ];
+    }
+    elseif ( in_array( 'web_search', $query->tools, true ) ) {
+      $tools[] = [ 'type' => 'google_search' ];
+    }
+
+    return $tools;
+  }
+
+  protected function build_interaction_body( $query, $streamCallback = null ) {
+    $body = [
+      'model' => $query->model,
+      'input' => $this->build_input( $query ),
+      'store' => true,
+    ];
+
+    if ( !is_null( $streamCallback ) ) {
+      $body['stream'] = true;
+    }
+
+    if ( $this->has_previous_interaction( $query ) ) {
+      $body['previous_interaction_id'] = $query->previousResponseId;
+    }
+
+    // System instructions, plus any per-query context (RAG / content-aware /
+    // Smart Search). Context is re-retrieved each turn and is not part of the
+    // server-side history, so it must be sent on every request, not just the
+    // first one. Without this, embeddings and content-aware context are silently
+    // dropped on Gemini.
+    $instructions = !empty( $query->instructions ) ? $query->instructions : '';
+    if ( !empty( $query->context ) ) {
+      $framedContext = $this->core->frame_context( $query->context );
+      $instructions = trim( $instructions . "\n\n" . $framedContext );
+    }
+    if ( $instructions !== '' ) {
+      $body['system_instruction'] = $instructions;
+    }
+
+    $tools = $this->build_tools( $query );
+    if ( !empty( $tools ) ) {
+      $body['tools'] = $tools;
+    }
+
+    $generationConfig = [];
+    if ( $query->temperature !== null ) {
+      $generationConfig['temperature'] = $query->temperature;
+    }
+    if ( !empty( $query->maxTokens ) ) {
+      $generationConfig['max_output_tokens'] = $query->maxTokens;
+    }
+    if ( !empty( $generationConfig ) ) {
+      $body['generation_config'] = $generationConfig;
+    }
+
+    // Image-capable Gemini models (Flash Image) only return images when the
+    // request opts into image output via the top-level response_format; without
+    // it they answer in text ("I can't output an image in this chat"). The
+    // dedicated image-query path is unaffected (it runs on the classic engine).
+    if ( $this->model_supports_image_generation( $query->model ) ) {
+      $responseFormat = [ 'type' => 'image' ];
+      if ( !empty( $query->resolution ) ) {
+        $responseFormat['aspect_ratio'] = $query->resolution;
+      }
+      $body['response_format'] = $responseFormat;
+    }
+
+    return apply_filters( 'mwai_google_interactions_body', $body, $query );
+  }
+
+  /**
+   * Whether the model can emit images in a chat turn (the 'image-generation'
+   * feature, e.g. Gemini Flash Image). Used to opt the request into image
+   * output via response_format.
+   */
+  protected function model_supports_image_generation( $modelId ) {
+    $model = $this->core->find_model_data( $modelId, $this->env['id'] ?? null );
+    return !empty( $model['features'] )
+      && in_array( 'image-generation', $model['features'], true );
+  }
+
+  #endregion
+
+  public function run_completion_query( $query, $streamCallback = null ): Meow_MWAI_Reply {
+    // Non-image attachments (PDFs, documents) need the Gemini Files API upload
+    // handled by the classic engine's prepare_query() / build_messages() (Pro).
+    // The Interactions input format only carries inline image parts, so delegate
+    // those queries to the classic engine to preserve file handling.
+    if ( $this->has_non_image_attachment( $query ) ) {
+      return $this->classic_engine()->run_completion_query( $query, $streamCallback );
+    }
+
+    $debug = $this->core->get_option( 'queries_debug_mode' );
+    $isStreaming = !is_null( $streamCallback );
+    $this->init_debug_mode( $query );
+
+    // Reset per-request streaming state (Core buffers + our accumulators).
+    $this->streamContent = '';
+    $this->streamTemporaryBuffer = '';
+    $this->streamBuffer = '';
+    $this->reset_stream();
+
+    if ( $isStreaming ) {
+      // The Core stream_handler hooks the curl WRITEFUNCTION and dispatches each
+      // SSE "data:" line to our stream_data_handler().
+      $this->streamCallback = $streamCallback;
+      add_action( 'http_api_curl', [ $this, 'stream_handler' ], 10, 3 );
+    }
+
+    $body = $this->build_interaction_body( $query, $streamCallback );
+    $url = trailingslashit( $this->endpoint ) . 'interactions';
+
+    if ( $debug ) {
+      error_log( '[AI Engine Queries] --> (Gemini Interactions) ' . $url );
+      error_log( wp_json_encode( $body, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
+    }
+
+    $args = [
+      'headers' => $this->build_headers( $query ),
+      'body' => wp_json_encode( $body ),
+      'timeout' => apply_filters( 'mwai_request_timeout', 120, $query ),
+      'sslverify' => MWAI_SSL_VERIFY,
+    ];
+    $tmpFile = null;
+    if ( $isStreaming ) {
+      // WordPress streams the response into this file; on error it holds the body.
+      $tmpFile = tempnam( sys_get_temp_dir(), 'mwai-gemini-stream-' );
+      $args['stream'] = true;
+      $args['filename'] = $tmpFile;
+    }
+
+    try {
+      $res = wp_remote_post( $url, $args );
+
+      if ( is_wp_error( $res ) ) {
+        throw new Exception( 'AI Engine (Gemini Interactions): ' . $res->get_error_message() );
+      }
+
+      $code = wp_remote_retrieve_response_code( $res );
+
+      if ( $isStreaming ) {
+        if ( $code < 200 || $code >= 300 ) {
+          // The error body went to the temp file rather than the response.
+          $errBody = ( $tmpFile && file_exists( $tmpFile ) )
+            ? file_get_contents( $tmpFile ) : wp_remote_retrieve_body( $res );
+          $errData = json_decode( $errBody, true );
+          $detail = $errData['error']['message'] ?? $errBody;
+          throw new Exception( 'AI Engine (Gemini Interactions) HTTP ' . $code . ': ' . $detail
+            . $this->model_unavailable_hint( $code, $detail, $query->model ) );
+        }
+        return $this->build_streaming_reply( $query );
+      }
+
+      $rawBody = wp_remote_retrieve_body( $res );
+      $data = json_decode( $rawBody, true );
+
+      if ( $debug ) {
+        error_log( '[AI Engine Queries] <-- (Gemini Interactions) HTTP ' . $code );
+        error_log( substr( $rawBody, 0, 4000 ) );
+      }
+
+      if ( $code < 200 || $code >= 300 ) {
+        $detail = $data['error']['message'] ?? $rawBody;
+        throw new Exception( 'AI Engine (Gemini Interactions) HTTP ' . $code . ': ' . $detail
+          . $this->model_unavailable_hint( $code, $detail, $query->model ) );
+      }
+
+      return $this->build_reply_from_interaction( $query, $data, $streamCallback );
+    }
+    finally {
+      if ( $isStreaming ) {
+        remove_action( 'http_api_curl', [ $this, 'stream_handler' ] );
+      }
+      if ( $tmpFile && file_exists( $tmpFile ) ) {
+        unlink( $tmpFile );
+      }
+    }
+  }
+
+  public function reset_stream() {
+    $this->streamId = null;
+    $this->streamInTokens = null;
+    $this->streamOutTokens = null;
+    $this->streamToolCalls = [];
+    $this->streamImages = [];
+  }
+
+  /**
+   * Handle one parsed SSE "data:" payload from the Interactions stream. Returns a
+   * text string for text deltas (the Core accumulates it into streamContent and
+   * forwards to the chatbot), a Meow_MWAI_Event for thoughts, null for
+   * bookkeeping events (function-call assembly, completion), or throws on a
+   * provider error event.
+   *
+   * The Core's stream_handler only forwards "data:" lines and drops the "event:"
+   * line, so we dispatch on the event_type carried inside the JSON payload.
+   */
+  protected function stream_data_handler( $json ) {
+    $type = $json['event_type'] ?? '';
+
+    if ( isset( $json['error'] ) || $type === 'error' || $type === 'interaction.failed' ) {
+      $this->throw_stream_error( $json );
+    }
+
+    if ( $type === 'step.start' ) {
+      $step = $json['step'] ?? [];
+      // A function call arrives as a single step.start with the complete call
+      // (id, name, arguments). Larger argument payloads may also stream as
+      // arguments_delta events, which we accumulate below.
+      if ( ( $step['type'] ?? '' ) === 'function_call' ) {
+        $index = $json['index'] ?? count( $this->streamToolCalls );
+        $args = $step['arguments'] ?? '';
+        $argsJson = is_string( $args ) ? $args : wp_json_encode( $args );
+        $this->streamToolCalls[$index] = [
+          'id' => $step['id'] ?? null,
+          'name' => $step['name'] ?? '',
+          'arguments' => $argsJson,
+        ];
+        // Surface the call in the event-log (gated like the function_result
+        // event Core emits, so nothing streams when Event Logs is off).
+        if ( $this->currentDebugMode && $this->streamCallback ) {
+          return Meow_MWAI_Event::function_calling( $step['name'] ?? '', $argsJson );
+        }
+      }
+      return null;
+    }
+
+    if ( $type === 'step.delta' ) {
+      $delta = $json['delta'] ?? [];
+      $dtype = $delta['type'] ?? '';
+      if ( $dtype === 'text' ) {
+        return $delta['text'] ?? '';
+      }
+      if ( $dtype === 'arguments_delta' ) {
+        $index = $json['index'] ?? array_key_last( $this->streamToolCalls );
+        if ( $index !== null && isset( $this->streamToolCalls[$index] ) ) {
+          $this->streamToolCalls[$index]['arguments'] .= $delta['arguments'] ?? '';
+        }
+        return null;
+      }
+      // Generated image (e.g. Gemini Flash Image): the delta carries mime_type +
+      // base64 data and has no "type" field. The base64 may stream in chunks, so
+      // accumulate per step index.
+      if ( isset( $delta['mime_type'], $delta['data'] ) ) {
+        $index = $json['index'] ?? count( $this->streamImages );
+        $isFirst = !isset( $this->streamImages[$index] );
+        if ( $isFirst ) {
+          $this->streamImages[$index] = [ 'mime_type' => $delta['mime_type'], 'data' => '' ];
+        }
+        $this->streamImages[$index]['data'] .= $delta['data'];
+        if ( $isFirst && $this->currentDebugMode && $this->streamCallback ) {
+          $event = new Meow_MWAI_Event( 'live', MWAI_STREAM_TYPES['IMAGE_GEN'] );
+          $event->set_content( 'Image generated' );
+          return $event;
+        }
+        return null;
+      }
+      // Thought deltas carry an encrypted thought_signature, not readable text,
+      // so there is nothing to surface to the user; they are intentionally skipped.
+      return null;
+    }
+
+    if ( $type === 'interaction.completed' ) {
+      $interaction = $json['interaction'] ?? [];
+      if ( !empty( $interaction['id'] ) ) {
+        $this->streamId = $interaction['id'];
+      }
+      $usage = $interaction['usage'] ?? [];
+      if ( isset( $usage['total_input_tokens'] ) ) {
+        $this->streamInTokens = (int) $usage['total_input_tokens'];
+      }
+      if ( isset( $usage['total_output_tokens'] ) ) {
+        $this->streamOutTokens = (int) $usage['total_output_tokens'];
+      }
+      return null;
+    }
+
+    return null;
+  }
+
+  protected function throw_stream_error( $json ) {
+    $error = $json['error'] ?? ( $json['interaction']['error'] ?? null );
+    $message = null;
+    $code = null;
+    $status = null;
+
+    if ( is_array( $error ) ) {
+      $message = $error['message'] ?? ( $error['reason'] ?? null );
+      $code = $error['code'] ?? null;
+      $status = $error['status'] ?? ( $error['type'] ?? null );
+    }
+    elseif ( is_string( $error ) ) {
+      $message = $error;
+    }
+
+    if ( empty( $message ) ) {
+      $message = $json['message'] ?? ( $json['error_message'] ?? 'Unknown stream error.' );
+    }
+
+    $detail = $message;
+    if ( !empty( $code ) ) {
+      $detail .= ' (' . $code . ')';
+    }
+    if ( !empty( $status ) ) {
+      $detail .= ' (' . $status . ')';
+    }
+
+    throw new Exception( 'AI Engine (Gemini Interactions) stream error: ' . $detail );
+  }
+
+  /**
+   * Build the Reply from the streaming accumulators once the SSE stream is done.
+   * Mirrors build_reply_from_interaction() but sources from the streamed state.
+   */
+  protected function build_streaming_reply( $query ) {
+    $reply = new Meow_MWAI_Reply( $query );
+    $choices = [];
+
+    foreach ( $this->streamToolCalls as $tc ) {
+      $args = $tc['arguments'];
+      $decoded = ( $args === '' || $args === null ) ? [] : json_decode( $args, true );
+      if ( json_last_error() !== JSON_ERROR_NONE ) {
+        $decoded = [];
+      }
+      $choices[] = [
+        'message' => [
+          'content' => null,
+          'tool_calls' => [ [
+            'id' => $tc['id'],
+            'type' => 'function',
+            'function' => [ 'name' => $tc['name'], 'arguments' => $decoded ],
+          ] ],
+        ],
+      ];
+    }
+
+    if ( $this->streamContent !== '' ) {
+      $choices[] = [ 'role' => 'assistant', 'text' => $this->streamContent ];
+    }
+
+    // Generated images become b64_json choices; set_choices() saves each one and
+    // appends the image markdown to the reply so the chatbot renders it.
+    foreach ( $this->streamImages as $img ) {
+      if ( !empty( $img['data'] ) ) {
+        $choices[] = [ 'b64_json' => $img['data'] ];
+      }
+    }
+
+    // Nothing to show (no text, image, or function call): surface a short
+    // fallback instead of a blank bubble. This happens e.g. when a text-only
+    // model is asked to edit an image, or the model declines a request.
+    if ( empty( $choices ) ) {
+      $choices[] = [ 'role' => 'assistant', 'text' => $this->empty_reply_fallback( $query ) ];
+    }
+
+    $reply->set_choices( $choices );
+
+    if ( !empty( $this->streamId ) ) {
+      $reply->set_id( $this->streamId );
+    }
+
+    if ( $this->streamInTokens !== null || $this->streamOutTokens !== null ) {
+      $recorded = $this->core->record_tokens_usage(
+        $query->model,
+        (int) ( $this->streamInTokens ?? 0 ),
+        (int) ( $this->streamOutTokens ?? 0 )
+      );
+      $reply->set_usage( $recorded );
+    }
+
+    return $reply;
+  }
+
+  /**
+   * Message shown when the model returns nothing renderable (no text, image, or
+   * function call), so the chatbot never displays a blank bubble. Filterable.
+   */
+  protected function empty_reply_fallback( $query ) {
+    return apply_filters(
+      'mwai_google_interactions_empty_reply',
+      __( "Sorry, I couldn't produce a response for that. Please try rephrasing your request.", 'ai-engine' ),
+      $query
+    );
+  }
+
+  /**
+   * Turn an Interaction resource (id, status, steps[], usage) into a Reply.
+   * Emits step events (thoughts, function calls) to the stream callback so the
+   * chatbot's event-log UI shows what the model did.
+   */
+  protected function build_reply_from_interaction( $query, $data, $streamCallback = null ) {
+    $reply = new Meow_MWAI_Reply( $query );
+
+    $choices = [];
+    $text = '';
+    foreach ( ( $data['steps'] ?? [] ) as $step ) {
+      $type = $step['type'] ?? '';
+
+      if ( $type === 'model_output' ) {
+        foreach ( ( $step['content'] ?? [] ) as $part ) {
+          if ( ( $part['type'] ?? '' ) === 'text' ) {
+            $text .= $part['text'] ?? '';
+          }
+          // Generated image part (mime_type + base64 data) -> b64_json choice.
+          elseif ( isset( $part['mime_type'], $part['data'] ) ) {
+            $choices[] = [ 'b64_json' => $part['data'] ];
+          }
+        }
+      }
+      elseif ( $type === 'thought' ) {
+        if ( !empty( $streamCallback ) ) {
+          $thought = '';
+          foreach ( ( $step['content'] ?? [] ) as $part ) {
+            $thought .= $part['text'] ?? '';
+          }
+          if ( $thought !== '' ) {
+            $event = new Meow_MWAI_Event( 'live', 'thinking' );
+            $event->set_content( $thought );
+            call_user_func( $streamCallback, $event );
+          }
+        }
+      }
+      elseif ( $type === 'function_call' ) {
+        $name = $step['name'] ?? '';
+        $args = $step['arguments'] ?? [];
+        if ( !empty( $streamCallback ) ) {
+          $event = Meow_MWAI_Event::function_calling( $name, is_string( $args ) ? $args : wp_json_encode( $args ) );
+          call_user_func( $streamCallback, $event );
+        }
+        // Map to a tool_calls choice so set_choices() builds the needFeedback,
+        // preserving the id (required for the function_result follow-up).
+        $choices[] = [
+          'message' => [
+            'content' => null,
+            'tool_calls' => [ [
+              'id' => $step['id'] ?? null,
+              'type' => 'function',
+              'function' => [ 'name' => $name, 'arguments' => $args ],
+            ] ],
+          ],
+          '_rawMessage' => $step,
+        ];
+      }
+    }
+
+    if ( $text !== '' ) {
+      $choices[] = [ 'role' => 'assistant', 'text' => $text ];
+    }
+
+    // Surface a short fallback rather than a blank reply when there is nothing
+    // to show (no text, image, or function call).
+    if ( empty( $choices ) ) {
+      $choices[] = [ 'role' => 'assistant', 'text' => $this->empty_reply_fallback( $query ) ];
+    }
+
+    $reply->set_choices( $choices );
+
+    // Stateful handle for the next turn.
+    if ( !empty( $data['id'] ) ) {
+      $reply->set_id( $data['id'] );
+    }
+
+    // Usage.
+    $usage = $data['usage'] ?? [];
+    if ( isset( $usage['total_input_tokens'] ) || isset( $usage['total_output_tokens'] ) ) {
+      $recorded = $this->core->record_tokens_usage(
+        $query->model,
+        (int) ( $usage['total_input_tokens'] ?? 0 ),
+        (int) ( $usage['total_output_tokens'] ?? 0 )
+      );
+      $reply->set_usage( $recorded );
+    }
+
+    return $reply;
+  }
+
+  /**
+   * Interaction ids look like "v1_Chd..." (the classic generateContent API is
+   * stateless and has no id). Used to decide whether to reuse server-side state.
+   */
+  protected function has_previous_interaction( $query ) {
+    return !empty( $query->previousResponseId )
+      && is_string( $query->previousResponseId )
+      && strpos( $query->previousResponseId, 'v1_' ) === 0;
+  }
+
+  /**
+   * Dynamic model list is shared with the classic Google engine (same /models
+   * endpoint and same API key). get_models() is also called during final_checks()
+   * to validate the requested model, so it must be implemented.
+   */
+  public function get_models() {
+    return $this->core->get_engine_models( 'google' );
+  }
+
+  /**
+   * Called by the framework to price a reply. The classic engine already prices
+   * every Google model and query type correctly (text, token-based Flash Image,
+   * and per-image Imagen), so reuse it rather than keep a second partial copy.
+   * Interaction usage carries prompt_tokens/completion_tokens/total_tokens, which
+   * is exactly what the classic pricing expects.
+   */
+  public function get_price( Meow_MWAI_Query_Base $query, Meow_MWAI_Reply $reply ) {
+    return $this->classic_engine()->get_price( $query, $reply );
+  }
+
+  /**
+   * The Interactions API only covers chat completions. Everything else still
+   * runs against the classic Google endpoints (same API key and env), so we lazily
+   * build the classic engine and delegate those operations to it.
+   */
+  protected function classic_engine() {
+    if ( $this->classicEngine === null ) {
+      $this->classicEngine = Meow_MWAI_Engines_Google::create( $this->core, $this->env );
+    }
+    return $this->classicEngine;
+  }
+
+  /**
+   * Whether the query carries an attachment that is not an inline image (e.g. a
+   * PDF or document). Those need the classic engine's Files API handling.
+   */
+  protected function has_non_image_attachment( $query ) {
+    $attachments = method_exists( $query, 'getAttachments' ) ? $query->getAttachments() : [];
+    foreach ( $attachments as $file ) {
+      $mime = $file->get_mimeType();
+      if ( !empty( $mime ) && strpos( $mime, 'image/' ) !== 0 ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The base engine's connection_check() throws "not implemented"; the test runs
+   * through the factory which now returns this engine for Google envs. The check
+   * (same /models endpoint + key) is identical to the classic engine, so delegate.
+   */
+  public function connection_check() {
+    return $this->classic_engine()->connection_check();
+  }
+
+  /**
+   * Fetching + tagging the model list (the "Refresh Models" action) is identical
+   * to the classic Google engine: same /models endpoint, same API key, same tag
+   * derivation (vision, functions, web_search...). Delegate to it rather than
+   * duplicate that logic, so refreshed Gemini models carry the right tools.
+   */
+  public function retrieve_models() {
+    return $this->classic_engine()->retrieve_models();
+  }
+
+  public function run_embedding_query( Meow_MWAI_Query_Base $query ) {
+    return $this->classic_engine()->run_embedding_query( $query );
+  }
+
+  public function run_image_query( Meow_MWAI_Query_Base $query, $streamCallback = null ) {
+    return $this->classic_engine()->run_image_query( $query, $streamCallback );
+  }
+
+  public function run_editimage_query( Meow_MWAI_Query_Base $query ) {
+    return $this->classic_engine()->run_editimage_query( $query );
+  }
+
+  public function run_transcribe_query( Meow_MWAI_Query_Base $query ) {
+    return $this->classic_engine()->run_transcribe_query( $query );
+  }
+}
