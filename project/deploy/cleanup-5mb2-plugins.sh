@@ -21,6 +21,7 @@ fi
 PLUGINS="$WP/wp-content/plugins"
 THEMES="$WP/wp-content/themes"
 
+# Удаляем только явно лишнее (AI/дубли форм). Elementor/Astra — НЕ трогаем файлы.
 REMOVE_PLUGINS=(
   aibuddy-openai-chatgpt
   ai-engine
@@ -29,10 +30,6 @@ REMOVE_PLUGINS=(
   gpt3-ai-content-generator
   wpforms-lite
   wp-rss-aggregator
-  elementor
-  elementor-pro
-  essential-addons-for-elementor-lite
-  essential-addons-for-elementor
 )
 
 REMOVE_THEMES=(
@@ -42,9 +39,6 @@ REMOVE_THEMES=(
   twentytwentytwo
   twentytwentyone
   twentytwenty
-  astra
-  astra-child
-  hello-elementor
 )
 
 echo "[>>] WP root: $WP"
@@ -70,8 +64,8 @@ rm -rf "$WP/wp-content/uploads/elementor" 2>/dev/null || true
 rm -f "$ROOT/wp-config.php.bak-aihelper" 2>/dev/null || true
 
 echo ""
-echo "[OK] Оболочка: только 5mb2-dark. Формы: CF7 + Flamingo."
-echo "Полная зачистка Elementor + активация темы:"
+echo "[OK] AI/WPForms сняты. Elementor не удаляли."
+echo "Отключить Elementor и включить тему:"
 echo "  bash $SCRIPT_DIR/purge-elementor-5mb2.sh"
 ls "$PLUGINS"
 ls "$THEMES"
