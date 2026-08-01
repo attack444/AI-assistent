@@ -19,22 +19,29 @@ bash project/deploy/sync-5mb2-theme.sh
 
 ## 1) HTTPS (обязательно для «нормального» сайта)
 
-**Сейчас:** HTTP работает, HTTPS на 443 рвёт TLS.
+**Сейчас снаружи:** HTTP=200, HTTPS = TCP есть, но TLS сразу `Connection reset`  
+(сертификат «на домене» часто уже лежит в `/etc/letsencrypt/live/`, а nginx после HTTP-фикса слушает только `:80` — SSL не подключён).
 
-1. У регистратора DNS:
-   - `A @` и `A www` → IP VPS (`80.78.248.195`)
-   - лишний **AAAA** (IPv6 на старый хостинг) — **удали**, иначе часть людей уйдёт «в никуда»
-2. На VPS от root:
+1. DNS у регистратора: `A @` / `www` → IP VPS; лишний **AAAA** — удали  
+2. На VPS от root — сначала почини уже существующий cert:
 
 ```bash
 cd /opt/ai-helper
-bash project/deploy/enable-https-5mb2.sh
+git pull origin cursor/complete-ai-helper-17f9
+sudo bash project/deploy/repair-https-5mb2.sh
 ```
 
-3. Проверка: `https://5mb2.ru/` и `https://5mb2.ru/wp-admin/`  
-4. WP `home`/`siteurl` скрипт переключит на https сам.
+Скрипт покажет: кто слушает 443, есть ли `fullchain.pem`, срок сертификата, затем пропишет nginx 443 + редирект с 80.
 
-Письма восстановления пароля от HTTPS **почти не зависят**. Для почты нужен SMTP (п.2).
+Если скажет «файлов сертификата не видно» — выпусти заново:
+
+```bash
+sudo bash project/deploy/enable-https-5mb2.sh
+```
+
+3. Проверка: `https://5mb2.ru/` и `https://5mb2.ru/wp-admin/`
+
+Письма «забыли пароль» от HTTPS почти не зависят — нужен SMTP (п.2).
 
 ---
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Включает рабочий HTTPS для 5mb2.ru (Let's Encrypt) и переводит WP на https://
 #
-# Сейчас: порт 443 на VPS принимает TCP, но рвёт TLS (нет нормального сертификата).
-# AAAA (IPv6) у 5mb2.ru часто смотрит на СТАРЫЙ хостинг — лучше убрать AAAA у reg.ru
-# или поставить AAAA на IPv6 этого VPS.
+# Если сертификат УЖЕ есть на VPS, но https не открывается — сначала:
+#   sudo bash project/deploy/repair-https-5mb2.sh
+# (часто cert лежит в /etc/letsencrypt/live/, а nginx слушает только :80)
+#
+# AAAA (IPv6) на старый хостинг мешает — удали AAAA у reg.ru.
 #
 #   bash project/deploy/enable-https-5mb2.sh
 #   SSL_EMAIL=you@gmail.com bash project/deploy/enable-https-5mb2.sh
