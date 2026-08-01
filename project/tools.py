@@ -2125,6 +2125,37 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "dns_lookup",
+            "description": (
+                "Проверить DNS домена: A/AAAA/NS/MX/TXT/CNAME и совпадение с IP VPS. "
+                "Используй при проблемах доступа к сайту / «сайт не открывается»."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Домен, например 5mb2.ru",
+                    },
+                },
+                "required": ["domain"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "system_overview",
+            "description": (
+                "Сводка системы: здоровье панели/API/DeepSeek/сайтов, DNS, docker, "
+                "что DeepSeek может править (сайты vs бэкенд)."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
     # ── Self-evolution ────────────────────────────────────────────────────────
     {
         "type": "function",
@@ -2202,6 +2233,19 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     },
 ]
 
+def dns_lookup(domain: str = "") -> Dict[str, Any]:
+    import dns_tools as dt
+
+    return dt.lookup_domain(domain, expected_ip=dt.detect_vps_ip())
+
+
+def system_overview_tool() -> Dict[str, Any]:
+    import importlib
+
+    so = importlib.import_module("system_overview")
+    return so.build_overview(include_health=True, include_dns=True)
+
+
 def _hosting_fns() -> Dict[str, Any]:
     import hosting_tools as ht
     return {
@@ -2212,6 +2256,8 @@ def _hosting_fns() -> Dict[str, Any]:
         "php_lint": ht.php_lint,
         "nginx_test": ht.nginx_test,
         "site_health_check": ht.site_health_check,
+        "dns_lookup": dns_lookup,
+        "system_overview": system_overview_tool,
     }
 
 

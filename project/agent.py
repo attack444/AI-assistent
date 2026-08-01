@@ -54,6 +54,7 @@ _TOOL_TRIGGERS = frozenset([
     "site_status", "wp_replace", "fix_perms", "smart_search", "health",
     "автопровер", "автоисправ", "съехал", "clearfix",
     "watchdog", "сбой", "инцидент", "таймаут", "critical error",
+    "dns", "ns-запис", "а-запис", "не открывается", "бэкенд", "backend",
 ])
 
 # Soft site-review questions → answer from prefetched server data (no tool drama)
@@ -71,7 +72,8 @@ _TOOLS_FILE    = {"read_file", "read_file_lines", "write_file", "str_replace",
 _TOOLS_CODE    = {"search_code", "smart_search", "format_code", "str_replace",
                   "diff_preview", "apply_edits"}
 _TOOLS_HOST    = {"site_status", "wp_replace_urls", "site_fix_perms",
-                  "flatten_site_layout", "php_lint", "nginx_test", "site_health_check"}
+                  "flatten_site_layout", "php_lint", "nginx_test", "site_health_check",
+                  "dns_lookup", "system_overview"}
 _TOOLS_GIT     = {"git_run", "diff_preview"}
 _TOOLS_CMD     = {"run_command", "run_powershell", "run_tests"}
 _TOOLS_WIN     = {"get_env_var", "set_env_var", "get_windows_info",
@@ -95,8 +97,9 @@ _CATEGORY_KEYWORDS: List[tuple[frozenset[str], frozenset[str]]] = [
      _TOOLS_CODE | _TOOLS_FILE),
     (frozenset(["wordpress", "wp-", "siteurl", "белый экран", "mysql",
                 "базу", "права", "permission", "nginx", "public_html",
-                "хостинг", "домен", "съехал", "заголовок", "health",
-                "автопровер", "автоисправ", "верстк", "layout"]),
+                "хостинг", "домен", "dns", "ns ", "съехал", "заголовок", "health",
+                "автопровер", "автоисправ", "верстк", "layout", "доступ",
+                "не открыв", "watchdog", "обзор систем"]),
      _TOOLS_HOST | _TOOLS_FILE | _TOOLS_CODE),
     (frozenset(["найди файл", "найди папк", "поиск по", "smart_search",
                 "где файл", "где лежит", "фрагмент"]),

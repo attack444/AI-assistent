@@ -215,6 +215,67 @@ export function runSystemWatchdog(opts?: {
   });
 }
 
+export type DnsInfo = {
+  ok?: boolean;
+  domain?: string;
+  site?: string;
+  records?: {
+    A?: string[];
+    AAAA?: string[];
+    NS?: string[];
+    MX?: string[];
+    TXT?: string[];
+    CNAME?: string[];
+  };
+  www_a?: string[];
+  expected_ip?: string | null;
+  points_to_vps?: boolean | null;
+  issues?: string[];
+  healthy?: boolean;
+  error?: string;
+};
+
+export type Capability = {
+  id?: string;
+  label?: string;
+  deepseek?: boolean;
+  panel?: boolean;
+  how?: string;
+  note?: string;
+  available_now?: boolean;
+  workspace?: string;
+};
+
+export type SystemOverview = {
+  ok: boolean;
+  at?: string;
+  vps_ip?: string;
+  api_status?: ApiStatus & { llm_prefer_free?: boolean; free_llm?: boolean };
+  health?: SystemHealthReport;
+  dns?: DnsInfo[];
+  docker?: { name?: string; status?: string; ports?: string }[];
+  incidents?: FeedbackItem[];
+  capabilities?: Capability[];
+  workspaces?: {
+    sites_root?: string;
+    server_project?: string;
+    server_editable?: boolean;
+    chat_server_hint?: string;
+  };
+  links?: Record<string, string>;
+};
+
+export function getSystemOverview() {
+  return request<SystemOverview>("/system/overview");
+}
+
+export function getSystemDns(domain?: string) {
+  const q = domain ? `?domain=${encodeURIComponent(domain)}` : "";
+  return request<{ ok?: boolean; items?: DnsInfo[]; vps_ip?: string } & DnsInfo>(
+    `/system/dns${q}`,
+  );
+}
+
 export function listSites() {
   return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites");
 }

@@ -62,6 +62,26 @@ function quickPrompts(site: string, ctx: SiteContext | null): { label: string; t
   if (!site) {
     return [
       { label: "Что умеешь?", text: "Кратко перечисли что умеешь на сервере с сайтами и файлами." },
+      {
+        label: "Обзор системы",
+        text: "Вызови system_overview и dns_lookup для 5mb2.ru. Покажи что сломано и что DeepSeek может чинить.",
+      },
+    ];
+  }
+  if (site === "server" || site === "panel" || site === "backend") {
+    return [
+      {
+        label: "Обзор",
+        text: "Вызови system_overview. Кратко: здоровье, DNS, что можно править в бэкенде.",
+      },
+      {
+        label: "DNS 5mb2",
+        text: "dns_lookup domain=5mb2.ru — сравни с IP VPS, NS, что мешает доступу.",
+      },
+      {
+        label: "API/agent",
+        text: "Посмотри api.py и system_health.py в этом workspace. Есть ли явные баги мониторинга? Предложи правку.",
+      },
     ];
   }
   const base = [
@@ -130,8 +150,32 @@ export function ChatPanel() {
 
   useEffect(() => {
     listSites()
-      .then((r) => setSites(r.sites || []))
-      .catch(() => setSites([]));
+      .then((r) => {
+        const real = r.sites || [];
+        const server: SiteInfo = {
+          name: "server",
+          path: "/opt/ai-helper/project",
+          url: "/chat?site=server",
+          files: 0,
+          size_bytes: 0,
+          has_index: true,
+          domain: "бэкенд панели",
+        };
+        setSites([server, ...real.filter((s) => s.name !== "server")]);
+      })
+      .catch(() =>
+        setSites([
+          {
+            name: "server",
+            path: "/opt/ai-helper/project",
+            url: "/chat?site=server",
+            files: 0,
+            size_bytes: 0,
+            has_index: true,
+            domain: "бэкенд панели",
+          },
+        ]),
+      );
   }, []);
 
   useEffect(() => {

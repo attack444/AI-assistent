@@ -546,6 +546,29 @@ class APIHandler(BaseHTTPRequestHandler):
     def _qs(self) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
 
+    def _server_workspace(self) -> Optional[Path]:
+        """Workspace бэкенда панели для чата site=server|panel|backend."""
+        candidates = [
+            Path(os.environ.get("AI_HELPER_PROJECT", "").strip())
+            if os.environ.get("AI_HELPER_PROJECT", "").strip()
+            else None,
+            PROJECT_DIR,  # /opt/ai-helper/project внутри смонтирован
+            Path("/opt/ai-helper/project"),
+            Path("/opt/ai-helper"),
+        ]
+        for cand in candidates:
+            if cand is None:
+                continue
+            try:
+                p = cand.expanduser().resolve()
+            except Exception:
+                continue
+            if p.is_dir() and ((p / "api.py").is_file() or (p / "project" / "api.py").is_file()):
+                if (p / "project" / "api.py").is_file() and not (p / "api.py").is_file():
+                    return p / "project"
+                return p
+        return None
+
     def _load_context(self, project_name: str = "", site_name: str = "") -> tuple:
         settings = load_settings()
         profile = load_profile()
@@ -553,8 +576,11 @@ class APIHandler(BaseHTTPRequestHandler):
         projects = load_projects()
         project_root: Optional[Path] = None
         # Site folder takes priority (hosting workspace for chat/tools)
-        site = (site_name or "").strip()
-        if site and _SAFE_NAME.match(site):
+        site = (site_name or "").strip().lower()
+        # Специальный workspace: DeepSeek правит бэкенд, не только файлы сайта
+        if site in {"server", "panel", "backend"}:
+            project_root = self._server_workspace()
+        elif site and _SAFE_NAME.match(site):
             candidate = _ensure_sites_root() / site
             if candidate.is_dir():
                 project_root = candidate
@@ -648,7 +674,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.9.1",
+            "version": "2.10.0",
             "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -1875,6 +1901,56 @@ class APIHandler(BaseHTTPRequestHandler):
         items = sh.list_incidents(limit=limit)
         self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
 
+    def _get_system_overview(self):
+        import system_overview as so
+
+        # reuse status payload bits
+        status_payload: Dict[str, Any] = {}
+        try:
+            import free_llm as fl
+
+            settings = load_settings()
+            ost = check_ollama_status(settings.ollama_host)
+            status_payload = {
+                "deepseek": bool(
+                    settings.deepseek_api_key
+                    or os.environ.get("DEEPSEEK_API_KEY", "").strip()
+                ),
+                "deepseek_model": settings.deepseek_model,
+                "ollama": ost.reachable,
+                "free_llm": True,
+                "llm_prefer_free": fl.prefer_free(),
+                "version": "2.10.0",
+                "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
+                "sites_root": str(SITES_ROOT),
+            }
+        except Exception as exc:
+            status_payload = {"error": str(exc)[:200]}
+        overview = so.build_overview(
+            api_status=status_payload,
+            sites_root=_ensure_sites_root(),
+        )
+        self._send(200, _json(overview))
+
+    def _get_system_dns(self):
+        import dns_tools as dt
+
+        qs = self._qs()
+        domain = (qs.get("domain") or "").strip()
+        if not domain:
+            # all known domains
+            import system_overview as so
+
+            items = so._collect_domains(_ensure_sites_root())
+            self._send(200, _json({
+                "ok": True,
+                "vps_ip": dt.detect_vps_ip(),
+                "items": items,
+            }))
+            return
+        info = dt.lookup_domain(domain, expected_ip=dt.detect_vps_ip())
+        self._send(200, _json(info))
+
     def _post_system_watchdog(self):
         import system_health as sh
 
@@ -2231,6 +2307,10 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_system_health()
         elif path == "/system/incidents":
             self._get_system_incidents()
+        elif path == "/system/overview":
+            self._get_system_overview()
+        elif path == "/system/dns":
+            self._get_system_dns()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 

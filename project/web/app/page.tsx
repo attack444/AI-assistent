@@ -40,20 +40,23 @@ export default function HomePage() {
           сайт <strong>ai</strong> — витрина и среда для правок. HTTPS позже.
         </p>
         <div className="hero-actions">
-          <Link className="btn" href="/sites">
+          <Link className="btn" href="/overview">
+            Обзор системы
+          </Link>
+          <Link className="btn ghost" href="/sites">
             Сайты
           </Link>
           <Link className="btn ghost" href="/health">
             Здоровье
+          </Link>
+          <Link className="btn ghost" href="/chat?site=server">
+            DeepSeek → бэкенд
           </Link>
           <Link className="btn ghost" href="/feedback">
             Обратная связь
           </Link>
           <Link className="btn ghost" href="/files?path=/opt/sites/ai">
             Редактор ai
-          </Link>
-          <Link className="btn ghost" href="/chat?site=ai">
-            Чат по ai
           </Link>
           <Link className="btn ghost" href="/login">
             Вход
