@@ -879,20 +879,18 @@ body.nav-open .nav-backdrop {
   .site-header { z-index: 70; }
   .header-panel {
     position: fixed;
-    top: 0;
+    top: var(--header-h);
     right: 0;
     bottom: 0;
-    width: min(360px, 88vw);
+    width: min(340px, 86vw);
     z-index: 55;
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    padding:
-      calc(var(--header-h) + 8px)
-      20px
-      calc(20px + env(safe-area-inset-bottom));
+    padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
     background: rgba(8, 12, 9, 0.985);
     border-left: 1px solid var(--line);
+    border-top: 1px solid var(--line);
     box-shadow: -20px 0 48px rgba(0, 0, 0, 0.45);
     transform: translateX(104%);
     transition: transform .28s cubic-bezier(0.2, 0.8, 0.2, 1);
