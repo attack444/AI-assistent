@@ -772,10 +772,40 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
 .ov-log .is-done .ov-log-mark { background: var(--accent); box-shadow: 0 0 10px var(--glow); }
 .ov-log .is-progress .ov-log-mark { background: var(--accent-2); }
 .ov-log .is-request .ov-log-mark { background: rgba(255,255,255,0.35); }
+.check-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.check-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .check-st {
+  flex-shrink: 0;
   display: inline-block;
-  margin-left: 8px;
-  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(0,0,0,0.25);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.check-list li.is-done .check-st {
+  color: var(--accent-2);
+  border-color: rgba(118, 185, 0, 0.35);
+}
+.check-list li.is-progress .check-st {
+  color: var(--ink);
+  border-color: rgba(164, 230, 0, 0.35);
 }
 .ov-expect {
   margin-top: 18px;
@@ -1403,5 +1433,10 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   .onboard-step { padding: 12px 10px; }
   .cabinet-panel { padding: 18px 16px; }
   .cabinet-side-actions { grid-template-columns: 1fr; }
-  .check-st { display: block; margin: 4px 0 0; margin-left: 0; }
+  .check-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .check-st { margin: 0; }
 }

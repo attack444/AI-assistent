@@ -367,12 +367,16 @@ $steps = [
                   $st = $c['status'] ?? 'todo';
                   $cls = $st === 'done' ? 'is-done' : ($st === 'progress' ? 'is-progress' : '');
                   $st_label = $st === 'done' ? 'Готово' : ($st === 'progress' ? 'В работе' : 'Ожидает');
+                  $label = (string) ($c['label'] ?? '');
+                  if (function_exists('mb2_checklist_label_broken') && mb2_checklist_label_broken($label)) {
+                      $label = 'Пункт работ';
+                  }
                   ?>
                 <li class="<?php echo esc_attr($cls); ?>">
                   <span class="dot" aria-hidden="true"></span>
-                  <span>
-                    <?php echo esc_html($c['label'] ?? ''); ?>
-                    <span class="check-st muted tiny"><?php echo esc_html($st_label); ?></span>
+                  <span class="check-body">
+                    <span class="check-label"><?php echo esc_html($label); ?></span>
+                    <span class="check-st"><?php echo esc_html($st_label); ?></span>
                   </span>
                 </li>
               <?php endforeach; ?>

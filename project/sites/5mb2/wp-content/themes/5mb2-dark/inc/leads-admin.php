@@ -103,7 +103,7 @@ function mb2_render_clients_admin() {
                 }
                 $checks[$i]['status'] = $st;
             }
-            update_user_meta($uid, 'mb2_checklist', wp_json_encode($checks));
+            mb2_set_checklist($uid, $checks);
 
             $title = sanitize_text_field(wp_unslash($_POST['report_title'] ?? ''));
             $url = esc_url_raw(wp_unslash($_POST['report_url'] ?? ''));

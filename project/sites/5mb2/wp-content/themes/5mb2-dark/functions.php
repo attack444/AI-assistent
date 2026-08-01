@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.1');
+define('MB2_THEME_VER', '1.9.2');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';
@@ -206,7 +206,7 @@ function mb2_ajax_register() {
     update_user_meta($user_id, 'mb2_plan', 'start');
     update_user_meta($user_id, 'mb2_site_url', '');
     update_user_meta($user_id, 'mb2_phone', '');
-    update_user_meta($user_id, 'mb2_checklist', wp_json_encode(mb2_default_checklist()));
+    mb2_set_checklist($user_id, mb2_default_checklist());
     update_user_meta($user_id, 'mb2_onboarding', 'profile');
     wp_set_current_user($user_id);
     wp_set_auth_cookie($user_id, true, is_ssl());
@@ -367,7 +367,7 @@ function mb2_ajax_onboard_request() {
     $checks = mb2_get_checklist($uid);
     if ($checks && ($checks[0]['status'] ?? '') === 'todo') {
         $checks[0]['status'] = 'progress';
-        update_user_meta($uid, 'mb2_checklist', wp_json_encode($checks));
+        mb2_set_checklist($uid, $checks);
     }
     wp_send_json_success([
         'ok'         => true,
@@ -459,20 +459,122 @@ function mb2_default_checklist() {
     ];
 }
 
-function mb2_get_checklist($user_id) {
-    $raw = get_user_meta($user_id, 'mb2_checklist', true);
-    if (is_string($raw) && $raw !== '') {
-        $decoded = json_decode($raw, true);
-        if (is_array($decoded)) {
-            return $decoded;
+/**
+ * Починка подписей вида u0422u0435… (JSON \uXXXX после stripslashes).
+ */
+function mb2_fix_unicode_mojibake($text) {
+    $text = (string) $text;
+    if ($text === '' || !preg_match('/(?<!\\\\)u04[0-9a-fA-F]{2}/', $text)) {
+        return $text;
+    }
+    $jsonish = '"' . preg_replace('/(?<!\\\\)u([0-9a-fA-F]{4})/', '\\\\u$1', $text) . '"';
+    $decoded = json_decode($jsonish);
+    if (is_string($decoded) && $decoded !== '' && !preg_match('/(?<!\\\\)u04[0-9a-fA-F]{2}/', $decoded)) {
+        return $decoded;
+    }
+    $fixed = preg_replace_callback('/(?<!\\\\)u([0-9a-fA-F]{4})/', static function ($m) {
+        return html_entity_decode('&#x' . $m[1] . ';', ENT_QUOTES, 'UTF-8');
+    }, $text);
+    return is_string($fixed) && $fixed !== '' ? $fixed : $text;
+}
+
+function mb2_checklist_label_broken($label) {
+    $label = (string) $label;
+    if ($label === '') {
+        return true;
+    }
+    // u04xx — кириллица в «сломанном» JSON; также отсекаем сырой JSON-мусор
+    return (bool) preg_match('/(?<!\\\\)u04[0-9a-fA-F]{2}/', $label)
+        || str_contains($label, '\\u04')
+        || str_contains($label, 'u040');
+}
+
+function mb2_normalize_checklist($items) {
+    $defaults = mb2_default_checklist();
+    $by_key = [];
+    foreach ($defaults as $d) {
+        $by_key[$d['key']] = $d;
+    }
+    if (!is_array($items) || !$items) {
+        return ['items' => $defaults, 'changed' => true];
+    }
+    $out = [];
+    $changed = false;
+    foreach ($items as $i => $c) {
+        if (!is_array($c)) {
+            $changed = true;
+            continue;
+        }
+        $key = (string) ($c['key'] ?? ($defaults[$i]['key'] ?? ('item' . $i)));
+        $status = (string) ($c['status'] ?? 'todo');
+        if (!in_array($status, ['todo', 'progress', 'done'], true)) {
+            $status = 'todo';
+            $changed = true;
+        }
+        $original = (string) ($c['label'] ?? '');
+        $label = mb2_fix_unicode_mojibake($original);
+        if (mb2_checklist_label_broken($label) || $label === '') {
+            $label = $by_key[$key]['label'] ?? ($defaults[$i]['label'] ?? 'Пункт работ');
+            $changed = true;
+        } elseif ($label !== $original) {
+            $changed = true;
+        }
+        $out[] = [
+            'key'    => $key,
+            'label'  => $label,
+            'status' => $status,
+        ];
+    }
+    if (!$out) {
+        return ['items' => $defaults, 'changed' => true];
+    }
+    foreach ($out as $j => $row) {
+        if (mb2_checklist_label_broken($row['label'])) {
+            $out[$j]['label'] = $by_key[$row['key']]['label'] ?? 'Пункт работ';
+            $changed = true;
         }
     }
+    return ['items' => $out, 'changed' => $changed];
+}
+
+function mb2_set_checklist($user_id, array $items) {
+    $norm = mb2_normalize_checklist($items);
+    $list = $norm['items'];
+    // Массив в usermeta — без JSON \uXXXX и stripslashes
+    update_user_meta((int) $user_id, 'mb2_checklist', $list);
+    return $list;
+}
+
+function mb2_get_checklist($user_id) {
+    $user_id = (int) $user_id;
+    $raw = get_user_meta($user_id, 'mb2_checklist', true);
+    $items = null;
+
     if (is_array($raw) && $raw) {
-        return $raw;
+        $items = $raw;
+    } elseif (is_string($raw) && $raw !== '') {
+        // Старые записи: JSON, иногда с «съеденными» слэшами у \uXXXX
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            $repaired = preg_replace('/(?<!\\\\)u([0-9a-fA-F]{4})/', '\\\\u$1', $raw);
+            $decoded = is_string($repaired) ? json_decode($repaired, true) : null;
+        }
+        if (is_array($decoded)) {
+            $items = $decoded;
+        }
     }
-    $def = mb2_default_checklist();
-    update_user_meta($user_id, 'mb2_checklist', wp_json_encode($def));
-    return $def;
+
+    if ($items === null) {
+        return mb2_set_checklist($user_id, mb2_default_checklist());
+    }
+
+    $norm = mb2_normalize_checklist($items);
+    $list = $norm['items'];
+    // Всегда мигрируем на массив + чиним битые подписи один раз
+    if (!is_array($raw) || !empty($norm['changed'])) {
+        mb2_set_checklist($user_id, $list);
+    }
+    return $list;
 }
 
 /** Фазы проекта в кабинете (как у клиентских порталов агентств). */
