@@ -55,11 +55,13 @@ bash project/deploy/setup-smtp-5mb2.sh
 | From Email | `hello@5mb2.ru` |
 | From Name | `5MB2 Digital` |
 | Host | `smtp.yandex.ru` |
-| Encryption | SSL |
-| Port | `465` |
+| Encryption | **TLS** |
+| Port | **587** |
 | Auth | On |
 | Username | `hello@5mb2.ru` |
 | Password | пароль приложения |
+
+(Альтернатива Яндекса: SSL + порт 465 — тоже работает; TLS/587 предпочтительнее.)
 
 3. Send a Test Email → себе на почту  
 4. Настройки → Общие → E-mail администратора = ящик, куда падают **заявки**
@@ -71,4 +73,4 @@ bash project/deploy/setup-smtp-5mb2.sh
 - Форма на сайте → письмо админу + запись в **Заявки 5MB2**  
 - «Забыли пароль» на `/wp-login.php` → письмо приходит  
 
-Если тест не уходит: пароль приложения (не обычный), порт 465/SSL, From = тот же ящик, что User.
+Если тест не уходит: пароль приложения (не обычный), порт **587 / TLS**, From = тот же ящик, что User.

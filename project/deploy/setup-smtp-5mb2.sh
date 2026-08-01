@@ -7,8 +7,11 @@
 #   bash project/deploy/setup-smtp-5mb2.sh
 #
 # Опционально:
-#   SMTP_HOST=smtp.yandex.ru SMTP_PORT=465 SMTP_SSL=ssl
+#   SMTP_HOST=smtp.yandex.ru SMTP_PORT=587 SMTP_SSL=tls
 #   SMTP_FROM_NAME='5MB2 Digital' SMTP_TEST_TO='you@mail.ru'
+#
+# По умолчанию TLS (STARTTLS) на 587 — как рекомендует Яндекс.
+# Старый вариант SSL/465: SMTP_PORT=465 SMTP_SSL=ssl
 set -euo pipefail
 
 SITE_NAME="${SITE_NAME:-5mb2}"
@@ -17,8 +20,8 @@ ROOT="${SITES_DIR}/${SITE_NAME}"
 SMTP_USER="${SMTP_USER:-}"
 SMTP_PASS="${SMTP_PASS:-}"
 SMTP_HOST="${SMTP_HOST:-smtp.yandex.ru}"
-SMTP_PORT="${SMTP_PORT:-465}"
-SMTP_SSL="${SMTP_SSL:-ssl}"
+SMTP_PORT="${SMTP_PORT:-587}"
+SMTP_SSL="${SMTP_SSL:-tls}"
 SMTP_FROM_NAME="${SMTP_FROM_NAME:-5MB2 Digital}"
 SMTP_TEST_TO="${SMTP_TEST_TO:-}"
 
