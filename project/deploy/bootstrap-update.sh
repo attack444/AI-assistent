@@ -32,11 +32,13 @@ else
   fi
 fi
 
+BRANCH="${BRANCH:-main}"
+
 cd "$REPO"
-echo "[>>] git pull…"
-git fetch origin main || true
-git checkout main 2>/dev/null || true
-git pull origin main || git pull
+echo "[>>] git pull ($BRANCH)…"
+git fetch origin "$BRANCH" || git fetch origin || true
+git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH" 2>/dev/null || true
+git pull origin "$BRANCH" || git pull || true
 
 if [ -x "$REPO/project/deploy/update.sh" ]; then
   bash "$REPO/project/deploy/update.sh"
@@ -46,9 +48,16 @@ else
   docker compose -f docker-compose.prod.yml up -d --force-recreate app web
 fi
 
+# Обновить публичную витрину ai (index + widget), не трогая 5mb2
+if [ -x "$REPO/project/deploy/create-ai-site.sh" ]; then
+  echo "[>>] Обновляю /sites/ai …"
+  bash "$REPO/project/deploy/create-ai-site.sh" || true
+fi
+
 echo ""
 echo "============================================"
-echo "  REPO=$REPO"
+echo "  REPO=$REPO  BRANCH=$BRANCH"
 echo "  Панель: http://$(curl -s --max-time 3 ifconfig.me)/"
+echo "  Витрина: http://$(curl -s --max-time 3 ifconfig.me)/sites/ai/"
 echo "  API version: $(curl -s --max-time 5 http://127.0.0.1:8502/status | python3 -c 'import sys,json;print(json.load(sys.stdin).get("version","?"))' 2>/dev/null || echo '?')"
 echo "============================================"

@@ -2,9 +2,32 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="AI Helper — платформа для деплоя сайтов, проверки кода и работы с AI-моделями. Как Vercel, с ассистентом внутри." />
-  <title>AI Helper — деплой сайтов и AI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#e9f1ef" />
+  <meta name="description" content="AI Helper — деплой статики (ZIP, tar.gz, HTML), чат с AI и виджет для сайтов. Бесплатная локальная модель + DeepSeek для сложных задач." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="/sites/ai/" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AI Helper — деплой и AI для сайтов" />
+  <meta property="og:description" content="Задеплойте статику за минуту, подключите виджет чата и работайте с AI. Бесплатный слой Ollama на сервере." />
+  <meta property="og:url" content="/sites/ai/" />
+  <meta property="og:site_name" content="AI Helper" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <title>AI Helper — деплой статики и AI-чат для сайтов</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AI Helper",
+    "url": "/sites/ai/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Web",
+    "description": "Публичная платформа: деплой статики, AI-чат и виджет для сайтов.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "RUB" },
+    "inLanguage": "ru"
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet" />
@@ -418,6 +441,60 @@
     .plan ul { margin: 0; padding-left: 1.1rem; color: var(--muted); line-height: 1.55; }
     .plan.featured { border-color: rgba(11, 127, 110, 0.45); box-shadow: 0 12px 30px rgba(11,127,110,0.1); }
 
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin-top: 8px;
+    }
+    .matrix th, .matrix td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .matrix th { color: var(--muted); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .matrix td strong { color: var(--accent-ink); }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+    .chip-row button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.75);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--ink);
+    }
+    .chip-row button:hover { border-color: var(--accent); color: var(--accent-ink); }
+
+    .faq details {
+      border-top: 1px solid var(--line);
+      padding: 14px 0;
+    }
+    .faq details:first-child { border-top: none; }
+    .faq summary {
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq details p { margin: 8px 0 0; color: var(--muted); line-height: 1.5; }
+
+    .embed-box {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 14px;
+      background: #0f1714;
+      color: #d7e6df;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
     .deploy-box {
       border: 1px solid var(--line);
       border-radius: 18px;
@@ -524,6 +601,36 @@
     }
 
     @media (max-width: 800px) {
+      body {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+      .topbar {
+        padding: 10px 14px;
+        padding-top: calc(10px + env(safe-area-inset-top));
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .topbar-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+      .top-btn {
+        min-height: 40px;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+      }
+      .auth-user {
+        width: 100%;
+        order: -1;
+        font-size: 0.82rem;
+      }
+
+      .hero {
+        min-height: 100svh;
+        min-height: 100dvh;
+        padding: calc(72px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+      }
       .hero-visual::before {
         inset: 42% 0 -5% 0;
         border-radius: 40px 40px 0 0;
@@ -537,11 +644,195 @@
         height: 28vh;
       }
       .hero-inner { max-width: 100%; }
-      .brand { max-width: none; }
+      .brand { max-width: none; font-size: clamp(2.1rem, 11vw, 3.2rem); }
+      .hero h1 { max-width: none; font-size: clamp(1.2rem, 5.5vw, 1.55rem); }
+      .hero-lead { max-width: none; font-size: 1rem; }
+      .cta-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .cta-row .btn {
+        width: 100%;
+        min-height: 48px;
+      }
+      .btn:hover { transform: none; }
+
+      .section {
+        width: min(960px, calc(100% - 28px));
+        padding: clamp(48px, 12vw, 80px) 0;
+      }
       .feature-list li {
         grid-template-columns: 1fr;
         gap: 6px;
       }
+      .plans {
+        grid-template-columns: 1fr;
+      }
+      .matrix {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .matrix th, .matrix td { white-space: nowrap; }
+
+      .chat-preview form {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .chat-preview input,
+      .auth-input {
+        font-size: 16px; /* iOS no-zoom */
+        width: 100%;
+      }
+      .chat-preview button {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      .deploy-box .drop { padding: 22px 16px; }
+      .auth-card {
+        width: min(420px, calc(100% - 28px));
+        margin: 16px;
+        max-height: calc(100svh - 32px);
+        overflow-y: auto;
+      }
+      .auth-modal {
+        align-items: flex-end;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      footer {
+        padding: 28px 16px calc(28px + env(safe-area-inset-bottom));
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+
+
+    /* Need paths + feedback */
+    .need-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .need-card {
+      display: grid;
+      gap: 6px;
+      padding: 16px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      transition: border-color .2s, transform .2s;
+      min-height: 92px;
+    }
+    .need-card:hover {
+      border-color: rgba(11, 127, 110, 0.45);
+      transform: translateY(-2px);
+    }
+    .need-card strong {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.98rem;
+    }
+    .need-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+
+    .fb-section-grid {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 22px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    .fb-points {
+      margin: 0;
+      padding-left: 1.15rem;
+      color: var(--muted);
+      display: grid;
+      gap: 10px;
+    }
+    .fb-points strong { color: var(--ink); }
+    .fb-form--section {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+    .fb-fab {
+      position: fixed;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      z-index: 60;
+      border: 1px solid rgba(11, 127, 110, 0.4);
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 12px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(12, 26, 22, 0.16);
+      min-height: 44px;
+    }
+    .fb-backdrop {
+      position: fixed; inset: 0; z-index: 70;
+      background: rgba(12, 26, 22, 0.35);
+    }
+    .fb-panel {
+      position: fixed;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(72px, calc(env(safe-area-inset-bottom) + 64px));
+      z-index: 80;
+      width: min(400px, calc(100vw - 24px));
+      max-height: min(78vh, 640px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f7fbfa;
+      box-shadow: 0 24px 50px rgba(12, 26, 22, 0.18);
+    }
+    .fb-panel[hidden], .fb-backdrop[hidden] { display: none !important; }
+    .fb-panel-head {
+      display: flex; justify-content: space-between; gap: 12px; align-items: flex-start;
+    }
+    .fb-panel-head h3 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+    }
+    .fb-close {
+      border: 0; background: transparent; font-size: 1.5rem; cursor: pointer;
+      color: var(--muted); min-width: 40px; min-height: 40px;
+    }
+    .fb-form { display: grid; gap: 10px; margin-top: 12px; }
+    .fb-form label { display: grid; gap: 6px; color: var(--muted); font-size: 0.9rem; }
+    .fb-form input, .fb-form select, .fb-form textarea {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      font: inherit;
+      font-size: 16px;
+      background: #fff;
+      color: var(--ink);
+    }
+    .fb-form textarea { min-height: 110px; resize: vertical; }
+    .fb-note { margin: 0; min-height: 1.2em; font-size: 0.9rem; }
+    .fb-note.is-ok { color: var(--accent); }
+    .fb-note.is-error { color: #b42318; }
+    .fb-hp { position: absolute; left: -9999px; height: 1px; width: 1px; overflow: hidden; }
+
+    @media (max-width: 480px) {
+      .brand-mini { font-size: 0.95rem; }
+      .topbar-actions .btn-ghost#btn-login { order: 1; }
+    }
+
+    @media (max-width: 900px) {
+      .need-grid { grid-template-columns: 1fr; }
+      .fb-section-grid { grid-template-columns: 1fr; }
+      .fb-panel { left: 12px; right: 12px; width: auto; bottom: max(130px, calc(env(safe-area-inset-bottom) + 120px)); }
     }
   </style>
 </head>
@@ -577,10 +868,10 @@
     <div class="hero-visual" aria-hidden="true"></div>
     <div class="hero-inner">
       <p class="brand"><span>platform</span>AI Helper</p>
-      <h1>Деплой сайта и проверка кода с AI</h1>
-      <p class="hero-lead">Публичная среда: аккаунт → деплой → превью → чат с моделью. Платно, по делу.</p>
+      <h1>Деплой сайта и AI-чат на своём сервере</h1>
+      <p class="hero-lead">Аккаунт → ZIP → превью → вопросы модели. Для правок на живых сайтах — панель владельца и DeepSeek.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#deploy">Задеплоить ZIP</a>
+        <a class="btn btn-primary" href="#deploy">Задеплоить сайт</a>
         <a class="btn btn-ghost" href="#models">Чат с AI</a>
       </div>
     </div>
@@ -588,50 +879,123 @@
 
   <section class="section" id="how">
     <h2>Одна платформа — три действия</h2>
-    <p>Не панель админа, а сервис для людей: развернуть сайт, проверить код в браузере и говорить с моделью в контексте проекта.</p>
+    <p>Публичная витрина: развернуть статику, править в браузере и спросить модель. Панель владельца — отдельно, для живых сайтов вроде WordPress.</p>
     <ul class="feature-list">
       <li>
         <strong>Деплой</strong>
-        <span>Загрузка проекта и мгновенный превью на сервере — логика как у Vercel, свой хостинг.</span>
+        <span>ZIP со статикой → мгновенный превью. Без PHP и без доступа к чужим сайтам.</span>
       </li>
       <li>
         <strong>Код</strong>
-        <span>Редактор в браузере: поправил файл — сразу открыл страницу и проверил.</span>
+        <span>Редактор в браузере по token: поправил файл — сразу открыл страницу.</span>
       </li>
       <li>
         <strong>Модели</strong>
-        <span>Сейчас DeepSeek; позже подключим ещё — у каждой площадки свой чат и сценарий.</span>
+        <span>Чат: бесплатная Ollama на сервере. Сложные ответы — DeepSeek, если ключ подключён.</span>
       </li>
     </ul>
   </section>
 
+  <section class="section" id="stack">
+    <h2>Какая модель что умеет</h2>
+    <p>Чтобы не ждать от лёгкой модели правок файлов: честно по задачам.</p>
+    <table class="matrix">
+      <thead>
+        <tr><th>Задача</th><th>Здесь на витрине</th><th>В панели владельца</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Вопросы про деплой и код</td>
+          <td><strong>Ollama 1.5b</strong> (бесплатно)</td>
+          <td>Ollama → DeepSeek</td>
+        </tr>
+        <tr>
+          <td>Правки HTML/CSS/PHP на сайте</td>
+          <td>Редактор по token (вручную)</td>
+          <td><strong>DeepSeek + tools</strong></td>
+        </tr>
+        <tr>
+          <td>WordPress, белый экран, URL</td>
+          <td>—</td>
+          <td><strong>DeepSeek</strong> + проверки сайта</td>
+        </tr>
+        <tr>
+          <td>Чат на клиентском сайте</td>
+          <td colspan="2">Виджет ниже — встраивается в 5mb2 и другие площадки</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
   <section class="section" id="models">
-    <h2>Чат здесь — про среду</h2>
-    <p>На этом сайте ассистент помогает с деплоем и кодом. На клиентских сайтах (например 5mb2) — отдельный чат-бот под их задачи.</p>
+    <h2>Чат — про деплой и код</h2>
+    <p>Ассистент витрины не читает диск сервера. Для правок живого WordPress — панель владельца или VS Code extension.</p>
+    <div class="chip-row" id="chat-chips">
+      <button type="button" data-q="Как задеплоить ZIP и получить ссылку?">Как задеплоить?</button>
+      <button type="button" data-q="Чем бесплатная модель отличается от DeepSeek?">Ollama vs DeepSeek</button>
+      <button type="button" data-q="Можно ли залить PHP или WordPress через этот деплой?">PHP / WordPress?</button>
+      <button type="button" data-q="Как встроить чат на свой сайт виджетом?">Виджет на сайт</button>
+    </div>
     <div class="chat-preview" role="group" aria-label="Чат AI Helper">
-      <div class="chat-preview-head">AI Helper · бесплатная модель <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
+      <div class="chat-preview-head">AI Helper · Ollama / DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
       <div class="chat-preview-body" id="demo-chat">
-        <div class="bubble bot">Привет! Отвечаю на бесплатной модели на сервере (Ollama). Спроси про деплой и код — без доступа к файлам сервера.</div>
+        <div class="bubble bot">Привет! Сначала бесплатная Ollama, при необходимости — DeepSeek. Спроси про деплой, тарифы или виджет.</div>
       </div>
       <form class="chat-preview form" id="demo-form">
         <input id="chat-input" type="text" placeholder="Напиши вопрос…" autocomplete="off" maxlength="2000" required />
         <button type="submit" id="chat-send">Отправить</button>
       </form>
     </div>
-    <p class="hint">Нужен аккаунт. Лимит: до 30 сообщений / час с IP. Панель сервера и чужие файлы недоступны.</p>
+    <p class="hint">Нужен аккаунт. Лимит: по тарифу (Free ≈ 30/день) и до 30 сообщений/час с IP.</p>
+  </section>
+
+  <section class="section" id="widget">
+    <h2>Фишка: чат-виджет для своего сайта</h2>
+    <p>Для площадок вроде лендинга или магазина — тот же публичный чат во всплывающем окне. Не открывает панель и не правит файлы.</p>
+    <div class="embed-box" id="embed-snippet">&lt;script src="/sites/ai/widget.js" defer&gt;&lt;/script&gt;
+&lt;script&gt;
+  document.addEventListener("DOMContentLoaded", function () {
+    AIHelperChat.mount({ title: "Помощник", placeholder: "Спросите про заказ…" });
+  });
+&lt;/script&gt;</div>
+    <p class="hint">Гости отвечают без логина (PUBLIC_WIDGET_GUEST=1). На VPS: <code>bash project/deploy/install-5mb2-widget.sh</code></p>
+  </section>
+
+  <section class="section faq" id="faq">
+    <h2>Коротко по делу</h2>
+    <details open>
+      <summary>Почему «исправь сайт» не работает в этом чате?</summary>
+      <p>Витринный чат без доступа к файлам — так безопаснее. Правки делает панель владельца / VS Code с DeepSeek.</p>
+    </details>
+    <details>
+      <summary>Нужен ли DeepSeek?</summary>
+      <p>Для болтовни — нет. Чтобы AI сам правил файлы и чинил WP — да. Ollama 1.5b остаётся бесплатным слоем для простых ответов.</p>
+    </details>
+    <details>
+      <summary>Что с тарифами?</summary>
+      <p>Free после регистрации. Starter/Pro — вручную после оплаты (письмо владельцу). Лимиты — в блоке «Мой лимит».</p>
+    </details>
+    <details>
+      <summary>Какие форматы деплоя?</summary>
+      <p>ZIP, tar.gz / tgz, tar или один HTML. Только статика (HTML/CSS/JS/картинки). PHP и WordPress-бэкапы — через панель владельца.</p>
+    </details>
+    <details>
+      <summary>Как сообщить об ошибке или идее?</summary>
+      <p>Внизу страницы блок «Идея или ошибка?» (#feedback). Сообщения видит владелец в панели сервера → «Обратная связь».</p>
+    </details>
   </section>
 
   <section class="section" id="deploy">
     <h2>Деплой за минуту</h2>
-    <p>Залей ZIP со статикой (HTML/CSS/JS). Получишь ссылку на превью и token для правок. PHP и чужие сайты сервера недоступны.</p>
+    <p>Залей статику: <strong>ZIP</strong>, <strong>tar.gz / tgz</strong>, <strong>tar</strong> или один <strong>HTML</strong>. Получишь превью и token для правок. PHP и чужие сайты недоступны.</p>
     <div class="deploy-box">
       <div class="drop">
-        <strong>ZIP до 15 МБ</strong>
-        <span class="hint" style="margin:0">index.html внутри архива или в папке</span>
+        <strong>Архив или HTML · до 15 МБ</strong>
+        <span class="hint" style="margin:0">ZIP · tar.gz · tar · index.html</span>
         <div class="cta-row" style="justify-content:center;margin-top:16px">
           <label class="btn btn-primary" style="cursor:pointer">
-            Выбрать ZIP
-            <input id="deploy-file" type="file" accept=".zip,application/zip" hidden />
+            Выбрать файл
+            <input id="deploy-file" type="file" accept=".zip,.tar,.gz,.tgz,.html,.htm,application/zip,application/gzip,application/x-tar,text/html" hidden />
           </label>
         </div>
         <p id="deploy-filename" class="hint" style="margin-top:12px"></p>
@@ -655,7 +1019,7 @@
         </div>
       </div>
     </div>
-    <p class="hint">Нужен аккаунт · 8 деплоев / час · ~14 дней · только статика</p>
+    <p class="hint">Нужен аккаунт · лимит деплоев по тарифу (Free ≈ 5/день) · хранение превью ~14 дней · только статика</p>
   </section>
 
   <section class="section" id="start">
@@ -671,12 +1035,112 @@
     </div>
   </section>
 
+
+  <section class="section" id="need">
+    <h2>Что вам нужно?</h2>
+    <p>Короткий путь: деплой, чат, виджет, тариф — или напишите идею / ошибку. Мы делаем продукт вместе с вами.</p>
+    <div class="need-grid">
+      <a class="need-card" href="#deploy"><strong>Задеплоить сайт</strong><span>ZIP / HTML → превью за минуту</span></a>
+      <a class="need-card" href="#models"><strong>Спросить AI</strong><span>Чат про деплой и код</span></a>
+      <a class="need-card" href="#widget"><strong>Виджет на сайт</strong><span>Чат для ваших гостей</span></a>
+      <a class="need-card" href="#start"><strong>Тарифы и лимиты</strong><span>Free после регистрации</span></a>
+      <a class="need-card" href="#how"><strong>Как это устроено</strong><span>Три действия платформы</span></a>
+      <a class="need-card" href="#feedback"><strong>Идея или ошибка</strong><span>Форма ниже на странице</span></a>
+    </div>
+  </section>
+
+
+
+  <section class="section" id="feedback">
+    <h2>Идея или ошибка?</h2>
+    <p>Помогите улучшить AI Helper. Баг на витрине, идея по деплою/чату или «мне нужно…» — форма ниже. Сообщения попадают в панель владельца → «Обратная связь».</p>
+    <div class="fb-section-grid">
+      <ul class="fb-points">
+        <li><strong>Ошибка</strong> — деплой, чат, виджет, мобильная вёрстка</li>
+        <li><strong>Идея</strong> — чего не хватает на витрине</li>
+        <li><strong>Мне нужно…</strong> — опишите задачу, подскажем путь</li>
+      </ul>
+      <form class="fb-form fb-form--section" id="ai-feedback-form">
+        <label class="fb-hp" aria-hidden="true">Сайт<input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+        <label>Тип
+          <select name="type">
+            <option value="idea">Идея / улучшение</option>
+            <option value="bug">Ошибка на сайте</option>
+            <option value="need">Мне нужно…</option>
+            <option value="other">Другое</option>
+          </select>
+        </label>
+        <label>Сообщение
+          <textarea name="message" required minlength="8" maxlength="4000" placeholder="Что улучшить или где ошибка?"></textarea>
+        </label>
+        <label>Email (необязательно)
+          <input type="email" name="email" autocomplete="email" placeholder="если нужен ответ" />
+        </label>
+        <input type="hidden" name="page" id="ai-fb-page" value="" />
+        <p class="fb-note" id="ai-fb-note" hidden></p>
+        <button class="btn btn-primary" type="submit">Отправить сообщение</button>
+      </form>
+    </div>
+  </section>
+
   <footer>
     <div>© AI Helper · витрина среды</div>
-    <div>Панель управления сервером — только для владельца</div>
+    <div>Панель управления сервером — только для владельца · <a href="#feedback">Идея / ошибка</a></div>
   </footer>
 
   <script>
+
+    // —— Feedback (section #feedback) ——
+    (function () {
+      const form = document.getElementById("ai-feedback-form");
+      if (!form) return;
+      const note = document.getElementById("ai-fb-note");
+      const pageInput = document.getElementById("ai-fb-page");
+      if (location.hash === "#feedback") {
+        const sec = document.getElementById("feedback");
+        if (sec) setTimeout(() => sec.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      }
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
+        if (note) { note.hidden = true; note.className = "fb-note"; }
+        if (pageInput) pageInput.value = location.href;
+        const fd = new FormData(form);
+        const body = {
+          type: fd.get("type"),
+          message: fd.get("message"),
+          email: fd.get("email") || "",
+          page: fd.get("page") || location.href,
+          website: fd.get("website") || "",
+          source: "ai-helper",
+        };
+        try {
+          const res = await fetch("/api/public/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Не удалось отправить");
+          if (note) {
+            note.hidden = false;
+            note.className = "fb-note is-ok";
+            note.textContent = data.message || "Спасибо!";
+          }
+          form.reset();
+        } catch (err) {
+          if (note) {
+            note.hidden = false;
+            note.className = "fb-note is-error";
+            note.textContent = err.message || "Ошибка сети";
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    })();
+
     // Soft reveal
     const els = document.querySelectorAll(".section, footer");
     const io = new IntersectionObserver((entries) => {
@@ -873,6 +1337,13 @@
     const statusEl = document.getElementById("chat-status");
     const history = [];
 
+    document.getElementById("chat-chips")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-q]");
+      if (!btn) return;
+      input.value = btn.getAttribute("data-q") || "";
+      input.focus();
+    });
+
     function addBubble(role, text) {
       const div = document.createElement("div");
       div.className = "bubble " + (role === "user" ? "user" : "bot");
@@ -979,12 +1450,21 @@
     async function deployZip(file) {
       if (!file) return;
       if (!ensureAuth()) return;
+      const lower = (file.name || "").toLowerCase();
+      const okExt = [".zip", ".tar", ".tar.gz", ".tgz", ".html", ".htm"].some((ext) =>
+        lower.endsWith(ext)
+      );
+      if (!okExt) {
+        progEl.style.display = "block";
+        progEl.textContent = "Нужен ZIP, tar.gz, tar или HTML";
+        return;
+      }
       fnameEl.textContent = file.name + " · " + Math.round(file.size / 1024) + " КБ";
       progEl.style.display = "block";
       progEl.textContent = "Загружаю…";
       try {
         const headers = {
-          "Content-Type": "application/zip",
+          "Content-Type": "application/octet-stream",
           "X-Filename": file.name.replace(/[^\x20-\x7E]/g, "_"),
         };
         if (userToken) headers.Authorization = "Bearer " + userToken;

@@ -5,9 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { clearToken } from "@/lib/api";
 
 const LINKS = [
+  { href: "/overview", label: "Обзор" },
   { href: "/chat", label: "Чат" },
   { href: "/files", label: "Файлы" },
   { href: "/sites", label: "Сайты" },
+  { href: "/health", label: "Здоровье" },
+  { href: "/feedback", label: "Обратная связь" },
 ];
 
 export function Sidebar() {

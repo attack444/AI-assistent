@@ -19,13 +19,18 @@ elif [ -f /opt/ai-helper/project/sites/ai/index.html ]; then
   SRC=/opt/ai-helper/project/sites/ai/index.html
 fi
 
+DIR_SRC="$(dirname "$SRC" 2>/dev/null || true)"
 if [ -n "$SRC" ]; then
   cp "$SRC" "$ROOT/index.html"
+  if [ -f "${DIR_SRC}/widget.js" ]; then
+    cp "${DIR_SRC}/widget.js" "$ROOT/widget.js"
+  fi
   echo "[OK] Скопировал витрину из $SRC"
 else
-  # fallback: скачать с GitHub
-  curl -fsSL "https://raw.githubusercontent.com/attack444/AI-assistent/main/project/sites/ai/index.html" \
-    -o "$ROOT/index.html"
+  # fallback: скачать с GitHub (ветка по умолчанию main; при необходимости подставь свою)
+  BASE="https://raw.githubusercontent.com/attack444/AI-assistent/main/project/sites/ai"
+  curl -fsSL "$BASE/index.html" -o "$ROOT/index.html"
+  curl -fsSL "$BASE/widget.js" -o "$ROOT/widget.js" 2>/dev/null || true
   echo "[OK] Скачал витрину с GitHub"
 fi
 
