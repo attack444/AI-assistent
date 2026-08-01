@@ -645,10 +645,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
             "version": "2.8.3",
-            "widget_guest": bool(
-                __import__("os").environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
-                not in {"0", "false", "no", "off"}
-            ),
+            "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
+            not in {"0", "false", "no", "off"},
         }
         # Paths / project names only for authenticated panel clients
         if (not _auth_enabled()) or self._authorized():
