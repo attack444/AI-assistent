@@ -1,7 +1,6 @@
 #!/bin/bash
-# Ставит чат-виджет AI Helper на WordPress-сайт 5mb2 (mu-plugin).
+# Ставит чат-виджет на 5mb2 + чинит nginx домена (JS локально + /api proxy).
 #   bash project/deploy/install-5mb2-widget.sh
-#   SITE_NAME=mysite bash project/deploy/install-5mb2-widget.sh
 set -euo pipefail
 
 SITE_NAME="${SITE_NAME:-5mb2}"
@@ -16,7 +15,7 @@ if [ ! -d "$ROOT" ]; then
   exit 1
 fi
 
-# 1) Обновить витрину ai (нужен widget.js)
+# 1) Витрина ai (на всякий случай)
 if [ -x "$SCRIPT_DIR/create-ai-site.sh" ]; then
   bash "$SCRIPT_DIR/create-ai-site.sh" || true
 fi
@@ -26,7 +25,7 @@ if [ -f "$REPO_AI/widget.js" ]; then
   cp "$REPO_AI/index.html" "${SITES_DIR}/ai/index.html" 2>/dev/null || true
 fi
 
-# 2) Найти WordPress и поставить mu-plugin
+# 2) WordPress root
 WP=""
 for cand in "$ROOT" "$ROOT/wordpress" "$ROOT/public_html" "$ROOT/www" "$ROOT/httpdocs"; do
   if [ -f "$cand/wp-config.php" ] || [ -d "$cand/wp-content" ]; then
@@ -34,38 +33,75 @@ for cand in "$ROOT" "$ROOT/wordpress" "$ROOT/public_html" "$ROOT/www" "$ROOT/htt
     break
   fi
 done
-
 if [ -z "$WP" ]; then
-  # глубокий поиск (не дальше 3 уровней)
   WP=$(find "$ROOT" -maxdepth 3 -type f -name wp-config.php 2>/dev/null | head -1 | xargs -r dirname || true)
 fi
-
 if [ -z "$WP" ] || [ ! -d "$WP" ]; then
-  echo "[WARN] WordPress не найден в $ROOT — кладу HTML-сниппет в $ROOT/ai-helper-widget.html"
-  cp "$REPO_KIT/wp-chat-widget.html" "$ROOT/ai-helper-widget.html"
-  echo "Вставь содержимое вручную в footer темы."
-  exit 0
+  echo "[ERR] WordPress не найден в $ROOT"
+  exit 1
 fi
 
 MU="$WP/wp-content/mu-plugins"
 mkdir -p "$MU"
-cp "$REPO_KIT/ai-helper-chat-widget.php" "$MU/ai-helper-chat-widget.php"
 
-# Подставить имя сайта в mu-plugin
-sed -i "s/'5mb2'/'${SITE_NAME}'/g" "$MU/ai-helper-chat-widget.php" 2>/dev/null || true
+# 3) mu-plugin + локальный JS (главный фикс для 5mb2.ru)
+cp "$REPO_KIT/ai-helper-chat-widget.php" "$MU/ai-helper-chat-widget.php"
+if [ -f "$REPO_AI/widget.js" ]; then
+  cp "$REPO_AI/widget.js" "$MU/ai-helper-widget.js"
+elif [ -f "${SITES_DIR}/ai/widget.js" ]; then
+  cp "${SITES_DIR}/ai/widget.js" "$MU/ai-helper-widget.js"
+else
+  echo "[ERR] Нет widget.js"
+  exit 1
+fi
 
 chown -R www-data:www-data "$MU" 2>/dev/null || true
-chmod -R a+rX "${SITES_DIR}/ai" "$MU" 2>/dev/null || true
+chmod -R a+rX "$MU" 2>/dev/null || true
 
-# Сброс кэша object/cache если есть
+# 4) nginx vhost: /api proxy
+VHOST_SRC="$ROOT/nginx.vhost.conf"
+if [ -f "$SCRIPT_DIR/../sites/5mb2/nginx.vhost.conf" ]; then
+  cp "$SCRIPT_DIR/../sites/5mb2/nginx.vhost.conf" "$VHOST_SRC"
+fi
+
+apply_nginx() {
+  local dest=""
+  if [ -d /etc/nginx/sites-available ]; then
+    dest=/etc/nginx/sites-available/5mb2.ru
+    cp "$VHOST_SRC" "$dest"
+    ln -sfn "$dest" /etc/nginx/sites-enabled/5mb2.ru 2>/dev/null || true
+  elif [ -d /etc/nginx/conf.d ]; then
+    dest=/etc/nginx/conf.d/5mb2.ru.conf
+    cp "$VHOST_SRC" "$dest"
+  else
+    echo "[WARN] nginx conf dir не найден — скопируй $VHOST_SRC вручную"
+    return 1
+  fi
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null || nginx -s reload 2>/dev/null || true
+    echo "[OK] nginx обновлён: $dest"
+  else
+    echo "[WARN] nginx -t failed — проверь конфиг вручную"
+    nginx -t || true
+  fi
+}
+
+if [ "$(id -u)" -eq 0 ] && [ -f "$VHOST_SRC" ]; then
+  apply_nginx || true
+else
+  echo "[>>] Для nginx нужен root. Выполни:"
+  echo "  sudo cp $VHOST_SRC /etc/nginx/sites-available/5mb2.ru"
+  echo "  sudo ln -sfn /etc/nginx/sites-available/5mb2.ru /etc/nginx/sites-enabled/5mb2.ru"
+  echo "  sudo nginx -t && sudo systemctl reload nginx"
+fi
+
+# 5) Сброс кэша WP
 rm -rf "$WP/wp-content/cache/"* 2>/dev/null || true
 
-IP=$(curl -s --max-time 3 ifconfig.me 2>/dev/null || echo "IP")
 echo "============================================"
-echo "  Виджет на сайте: ${SITE_NAME}"
 echo "  mu-plugin: $MU/ai-helper-chat-widget.php"
-echo "  JS: http://${IP}/sites/ai/widget.js"
-echo "  Сайт: http://${IP}/sites/${SITE_NAME}/"
-echo "  (если домен) https://5mb2.ru/"
+echo "  JS local:  $MU/ai-helper-widget.js"
+echo "  Проверь:   http://5mb2.ru/wp-content/mu-plugins/ai-helper-widget.js"
+echo "  API:       http://5mb2.ru/api/status"
 echo "============================================"
-echo "Открой сайт → кнопка «Чат» справа внизу."
+echo "Открой http://5mb2.ru/ → кнопка «Чат» справа внизу (Ctrl+F5)."
