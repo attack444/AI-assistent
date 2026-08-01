@@ -18,7 +18,10 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  overflow-x: clip;
+}
 body.mb2-body {
   margin: 0;
   font-family: var(--font);
@@ -31,8 +34,17 @@ body.mb2-body {
   font-size: 16.5px;
   font-weight: 400;
   letter-spacing: 0.01em;
-  overflow-x: hidden;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
+}
+
+/* WP admin bar: не ломаем sticky-шапку; клиентам бар скрыт в PHP */
+body.admin-bar .site-header { top: 32px; }
+@media screen and (max-width: 782px) {
+  body.admin-bar .site-header { top: 46px; }
+}
+body.admin-bar.mb2-body {
+  padding-top: 0;
 }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; height: auto; }
@@ -625,8 +637,21 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
 .help-list strong { color: var(--ink); }
 
 .cabinet-grid {
-  display: grid; grid-template-columns: 260px 1fr; gap: 18px; align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
+.cabinet-side,
+.cabinet-main,
+.cabinet-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.check-hint { margin: -4px 0 14px; }
 .cabinet-side .plan-badge {
   display: inline-block;
   margin: 0;
@@ -1186,8 +1211,21 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   }
   body.mb2-body {
     font-size: 16px;
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .wrap {
+    width: var(--wrap);
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 100%;
+  }
+  .cabinet-hero .wrap,
+  .cabinet-grid,
+  .cabinet-side,
+  .cabinet-main {
+    max-width: 100%;
+    overflow-x: clip;
   }
   body.nav-open {
     overflow: hidden;

@@ -75,7 +75,13 @@ function mb2_render_clients_admin() {
         $uid = (int) ($_POST['user_id'] ?? 0);
         if ($uid && get_userdata($uid)) {
             $plan = sanitize_text_field(wp_unslash($_POST['plan'] ?? 'start'));
-            update_user_meta($uid, 'mb2_plan', $plan);
+            $labels = mb2_plan_labels();
+            if (!isset($labels[$plan])) {
+                $plan = 'start';
+            }
+            $reset_checks = !empty($_POST['reset_checklist']);
+            mb2_apply_client_plan($uid, $plan, $reset_checks);
+
             update_user_meta($uid, 'mb2_client_note', sanitize_textarea_field(wp_unslash($_POST['note'] ?? '')));
             update_user_meta($uid, 'mb2_summary', sanitize_textarea_field(wp_unslash($_POST['summary'] ?? '')));
             update_user_meta($uid, 'mb2_next_action', sanitize_text_field(wp_unslash($_POST['next_action'] ?? '')));
@@ -94,16 +100,18 @@ function mb2_render_clients_admin() {
                 'leads'    => sanitize_text_field(wp_unslash($_POST['kpi_leads'] ?? '')),
             ]);
 
-            $checks = mb2_get_checklist($uid);
-            foreach ($checks as $i => $c) {
-                $key = $c['key'] ?? ('i' . $i);
-                $st = sanitize_text_field(wp_unslash($_POST['check_' . $key] ?? 'todo'));
-                if (!in_array($st, ['todo', 'progress', 'done'], true)) {
-                    $st = 'todo';
+            if (!$reset_checks) {
+                $checks = mb2_get_checklist($uid);
+                foreach ($checks as $i => $c) {
+                    $key = $c['key'] ?? ('i' . $i);
+                    $st = sanitize_text_field(wp_unslash($_POST['check_' . $key] ?? 'todo'));
+                    if (!in_array($st, ['todo', 'progress', 'done'], true)) {
+                        $st = 'todo';
+                    }
+                    $checks[$i]['status'] = $st;
                 }
-                $checks[$i]['status'] = $st;
+                mb2_set_checklist($uid, $checks, $plan);
             }
-            mb2_set_checklist($uid, $checks);
 
             $title = sanitize_text_field(wp_unslash($_POST['report_title'] ?? ''));
             $url = esc_url_raw(wp_unslash($_POST['report_url'] ?? ''));
@@ -188,11 +196,13 @@ function mb2_render_clients_admin() {
             echo '<input type="hidden" name="user_id" value="' . esc_attr((string) $edit_id) . '" />';
 
             echo '<h3>Обзор проекта (видно клиенту)</h3>';
-            echo '<p><label>Тариф<br><select name="plan">';
-            foreach (['start' => 'Старт', 'audit' => 'Аудит', 'monthly' => 'Ежемесячное SEO', 'local' => 'Local SEO'] as $k => $lab) {
+            echo '<p><label>Тариф (сценарий чеклиста)<br><select name="plan">';
+            foreach (mb2_plan_labels() as $k => $lab) {
                 echo '<option value="' . esc_attr($k) . '"' . selected($plan, $k, false) . '>' . esc_html($lab) . '</option>';
             }
             echo '</select></label></p>';
+            echo '<p><label><input type="checkbox" name="reset_checklist" value="1" /> Сбросить чеклист под выбранный тариф</label><br>';
+            echo '<span class="description">Включите, если клиент взял аудит, а в кабинете ещё «семантика / контент-план». Статусы обнулятся.</span></p>';
 
             echo '<p><label>Фаза проекта<br><select name="phase">';
             echo '<option value="auto"' . selected($saved_phase, '', false) . '>Авто (сейчас: ' . esc_html($phases[$inferred] ?? $inferred) . ')</option>';
@@ -222,7 +232,7 @@ function mb2_render_clients_admin() {
                 $st = $c['status'] ?? 'todo';
                 echo '<p><strong>' . esc_html($c['label'] ?? $key) . '</strong><br>';
                 echo '<select name="check_' . esc_attr($key) . '">';
-                foreach (['todo' => 'Ожидает', 'progress' => 'В работе', 'done' => 'Готово'] as $sk => $sl) {
+                foreach (['todo' => 'В очереди', 'progress' => 'Делаем сейчас', 'done' => 'Сделано'] as $sk => $sl) {
                     echo '<option value="' . esc_attr($sk) . '"' . selected($st, $sk, false) . '>' . esc_html($sl) . '</option>';
                 }
                 echo '</select></p>';

@@ -25,10 +25,10 @@ if (!is_array($reports)) {
     $reports = [];
 }
 
-$plan_labels = [
+$plan_labels = function_exists('mb2_plan_labels') ? mb2_plan_labels() : [
     'start'   => 'Старт',
-    'audit'   => 'Аудит',
-    'monthly' => 'Ежемесячное SEO',
+    'audit'   => 'SEO-аудит',
+    'monthly' => 'SEO-продвижение',
     'local'   => 'Local SEO',
 ];
 $plan_label = $plan_labels[$plan] ?? $plan;
@@ -170,12 +170,12 @@ $steps = [
                 <select name="service">
                   <option value="">Выберите услугу (необязательно)</option>
                   <?php foreach ($services as $slug => $svc) : ?>
-                    <option value="<?php echo esc_attr($svc['title']); ?>"><?php echo esc_html($svc['title']); ?> — <?php echo esc_html($svc['price']); ?></option>
+                    <option value="<?php echo esc_attr($slug); ?>"><?php echo esc_html($svc['title']); ?> — <?php echo esc_html($svc['price']); ?></option>
                   <?php endforeach; ?>
                 </select>
               </label>
               <label>Кратко о задаче
-                <textarea name="message" required minlength="10" placeholder="Например: сайт услуг в Казани, нужен аудит и оценка бюджета на 3 месяца"></textarea>
+                <textarea name="message" required minlength="10" placeholder="Например: сайт услуг в Казани, нужен SEO-аудит"></textarea>
               </label>
               <p class="muted tiny">Сайт в заявке: <strong><?php echo $site ? esc_html($site) : 'не указан'; ?></strong>
                 · <button type="button" class="text-link" data-cab-tab="project" id="mb2-edit-site-link">изменить</button>
@@ -361,12 +361,13 @@ $steps = [
               </section>
             </div>
 
-            <h4 class="cab-sub">Чеклист SEO</h4>
+            <h4 class="cab-sub"><?php echo esc_html($ov['checklist_title'] ?? 'Чеклист работ'); ?></h4>
+            <p class="muted tiny check-hint">Статусы: <strong>Делаем сейчас</strong> — в работе у 5MB2 · <strong>В очереди</strong> — ещё не начали · <strong>Сделано</strong> — закрыто. Список зависит от тарифа «<?php echo esc_html($plan_label); ?>».</p>
             <ul class="check-list">
               <?php foreach ($checks as $c) :
                   $st = $c['status'] ?? 'todo';
                   $cls = $st === 'done' ? 'is-done' : ($st === 'progress' ? 'is-progress' : '');
-                  $st_label = $st === 'done' ? 'Готово' : ($st === 'progress' ? 'В работе' : 'Ожидает');
+                  $st_label = function_exists('mb2_status_label') ? mb2_status_label($st) : $st;
                   $label = (string) ($c['label'] ?? '');
                   if (function_exists('mb2_checklist_label_broken') && mb2_checklist_label_broken($label)) {
                       $label = 'Пункт работ';
@@ -383,7 +384,7 @@ $steps = [
             </ul>
 
             <aside class="ov-expect">
-              <p>SEO — накопительный канал: заметные сдвиги обычно через 2–4 месяца после базы. Здесь видно, что уже сделано и что в очереди — без сюрпризов в переписке.</p>
+              <p><?php echo esc_html($ov['expect'] ?? 'Здесь видно, что уже сделано и что в очереди.'); ?></p>
             </aside>
           </div>
 
@@ -449,7 +450,7 @@ $steps = [
                 <select name="service">
                   <option value="">Не выбрано</option>
                   <?php foreach ($services as $slug => $svc) : ?>
-                    <option value="<?php echo esc_attr($svc['title']); ?>"><?php echo esc_html($svc['title']); ?></option>
+                    <option value="<?php echo esc_attr($slug); ?>"><?php echo esc_html($svc['title']); ?></option>
                   <?php endforeach; ?>
                 </select>
               </label>

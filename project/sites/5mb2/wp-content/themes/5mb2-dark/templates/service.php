@@ -59,7 +59,7 @@ if (!$svc) {
       <aside class="service-aside reveal" id="order">
         <h2>Заказать услугу</h2>
         <p class="muted tiny">Оставьте заявку — ответим с оценкой и следующим шагом.</p>
-        <?php mb2_render_lead_form($svc['title']); ?>
+        <?php mb2_render_lead_form($slug); ?>
       </aside>
     </div>
   </div>
