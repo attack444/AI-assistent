@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.0');
+define('MB2_THEME_VER', '1.9.1');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';
@@ -473,6 +473,234 @@ function mb2_get_checklist($user_id) {
     $def = mb2_default_checklist();
     update_user_meta($user_id, 'mb2_checklist', wp_json_encode($def));
     return $def;
+}
+
+/** Фазы проекта в кабинете (как у клиентских порталов агентств). */
+function mb2_project_phases() {
+    return [
+        'onboarding'  => 'Знакомство',
+        'audit'       => 'Аудит',
+        'foundation'  => 'База SEO',
+        'growth'      => 'Рост',
+        'reporting'   => 'Отчётный период',
+        'paused'      => 'На паузе',
+    ];
+}
+
+function mb2_infer_project_phase($user_id) {
+    $onb = mb2_get_onboarding($user_id);
+    if ($onb !== 'done') {
+        return 'onboarding';
+    }
+    $checks = mb2_get_checklist($user_id);
+    $done = 0;
+    $progress = 0;
+    $keys_done = [];
+    foreach ($checks as $c) {
+        $st = $c['status'] ?? 'todo';
+        if ($st === 'done') {
+            $done++;
+            $keys_done[$c['key'] ?? ''] = true;
+        } elseif ($st === 'progress') {
+            $progress++;
+        }
+    }
+    $total = max(count($checks), 1);
+    if (!empty($keys_done['report']) || $done >= $total) {
+        return 'reporting';
+    }
+    if ($done >= 3 || (!empty($keys_done['content']) || !empty($keys_done['links']))) {
+        return 'growth';
+    }
+    if ($done >= 1 || $progress > 0) {
+        $first_key = $checks[0]['key'] ?? 'audit';
+        if ($first_key === 'audit' && empty($keys_done['audit']) && ($checks[0]['status'] ?? '') === 'progress') {
+            return 'audit';
+        }
+        return $done < 2 ? 'audit' : 'foundation';
+    }
+    return 'audit';
+}
+
+function mb2_get_project_phase($user_id) {
+    $phase = (string) get_user_meta($user_id, 'mb2_phase', true);
+    $phases = mb2_project_phases();
+    if ($phase !== '' && isset($phases[$phase])) {
+        return $phase;
+    }
+    return mb2_infer_project_phase($user_id);
+}
+
+function mb2_get_project_kpis($user_id) {
+    $raw = get_user_meta($user_id, 'mb2_kpis', true);
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $raw = $decoded;
+        }
+    }
+    if (!is_array($raw)) {
+        $raw = [];
+    }
+    return [
+        'organic'  => sanitize_text_field((string) ($raw['organic'] ?? '')),
+        'keywords' => sanitize_text_field((string) ($raw['keywords'] ?? '')),
+        'leads'    => sanitize_text_field((string) ($raw['leads'] ?? '')),
+    ];
+}
+
+/**
+ * Тексты для «Обзора проекта»: сводка, следующий шаг, журнал.
+ *
+ * @return array{
+ *   phase:string,phase_label:string,summary:string,next:array,log:array,progress:array,kpis:array
+ * }
+ */
+function mb2_cabinet_overview_data($user_id) {
+    $phases = mb2_project_phases();
+    $phase = mb2_get_project_phase($user_id);
+    $onb = mb2_get_onboarding($user_id);
+    $site = (string) get_user_meta($user_id, 'mb2_site_url', true);
+    $checks = mb2_get_checklist($user_id);
+    $reqs = get_user_meta($user_id, 'mb2_requests', true);
+    $reports = get_user_meta($user_id, 'mb2_reports', true);
+    $summary = trim((string) get_user_meta($user_id, 'mb2_summary', true));
+    $note = trim((string) get_user_meta($user_id, 'mb2_client_note', true));
+    $next_override = trim((string) get_user_meta($user_id, 'mb2_next_action', true));
+    $kpis = mb2_get_project_kpis($user_id);
+
+    if (!is_array($reqs)) {
+        $reqs = [];
+    }
+    if (!is_array($reports)) {
+        $reports = [];
+    }
+
+    $done = 0;
+    $in_progress = null;
+    $next_check = null;
+    $log_progress = [];
+    $log_done = [];
+    foreach ($checks as $c) {
+        $st = $c['status'] ?? 'todo';
+        $label = (string) ($c['label'] ?? '');
+        if ($st === 'done') {
+            $done++;
+            $log_done[] = [
+                'type'  => 'done',
+                'title' => $label,
+                'meta'  => 'Готово',
+            ];
+        } elseif ($st === 'progress') {
+            if (!$in_progress) {
+                $in_progress = $c;
+            }
+            $log_progress[] = [
+                'type'  => 'progress',
+                'title' => $label,
+                'meta'  => 'В работе',
+            ];
+        } elseif (!$next_check) {
+            $next_check = $c;
+        }
+    }
+    $total = max(count($checks), 1);
+    $pct = (int) round(($done / $total) * 100);
+
+    $log_reqs = [];
+    foreach (array_slice($reqs, 0, 3) as $r) {
+        $log_reqs[] = [
+            'type'  => 'request',
+            'title' => wp_trim_words((string) ($r['message'] ?? 'Заявка'), 12, '…'),
+            'meta'  => trim(((string) ($r['at'] ?? '')) . (!empty($r['service']) ? ' · ' . $r['service'] : '')),
+        ];
+    }
+    // В работе → готовое → заявки
+    $log = array_slice(array_merge($log_progress, array_reverse($log_done), $log_reqs), 0, 8);
+
+    if ($summary === '') {
+        if ($onb === 'profile') {
+            $summary = 'Кабинет создан. Укажите сайт и телефон — без этого не начнём оценку проекта.';
+        } elseif ($onb === 'request') {
+            $summary = 'Данные проекта сохранены. Отправьте первую заявку — откроем чеклист и ответим в рабочие часы.';
+        } elseif (!$site) {
+            $summary = 'Профиль почти готов. Добавьте URL сайта во вкладке «Проект», чтобы мы привязали работы к площадке.';
+        } elseif ($note !== '') {
+            $summary = $note;
+        } else {
+            $host = wp_parse_url($site, PHP_URL_HOST) ?: $site;
+            $summary = sprintf(
+                'Работаем по проекту %s. Сейчас фаза «%s»: %d из %d пунктов чеклиста закрыто. Ниже — что в работе и что нужно от вас.',
+                $host,
+                $phases[$phase] ?? $phase,
+                $done,
+                $total
+            );
+        }
+    }
+
+    $next = [
+        'eyebrow' => 'Следующий шаг',
+        'title'   => '',
+        'text'    => '',
+        'cta'     => '',
+        'tab'     => '',
+        'done'    => false,
+    ];
+    if ($next_override !== '') {
+        $next['eyebrow'] = 'От специалиста';
+        $next['title'] = $next_override;
+        $next['text'] = 'Если нужна уточняющая информация — напишите во вкладке «Заявка».';
+        $next['cta'] = 'Написать заявку';
+        $next['tab'] = 'request';
+    } elseif ($onb === 'profile') {
+        $next['title'] = 'Укажите сайт и телефон';
+        $next['text'] = 'Форма настройки выше на этой странице. Без контакта и URL оценку не начнём.';
+    } elseif ($onb === 'request') {
+        $next['title'] = 'Отправьте первую заявку';
+        $next['text'] = 'Коротко опишите задачу — откроем работу и ответим.';
+    } elseif (!$site) {
+        $next['title'] = 'Добавьте URL сайта';
+        $next['text'] = 'Так мы привяжем аудит и отчёты к вашей площадке.';
+        $next['cta'] = 'Открыть проект';
+        $next['tab'] = 'project';
+    } elseif ($in_progress) {
+        $next['eyebrow'] = 'В работе у 5MB2';
+        $next['title'] = (string) ($in_progress['label'] ?? 'Текущий этап');
+        $next['text'] = 'Статус обновляем мы. Вопросы и материалы — во вкладке «Заявка».';
+        $next['cta'] = 'Написать команде';
+        $next['tab'] = 'request';
+    } elseif ($next_check) {
+        $next['eyebrow'] = 'В очереди';
+        $next['title'] = (string) ($next_check['label'] ?? 'Следующий пункт');
+        $next['text'] = 'Пункт ещё не стартовал. Обычно берём следующий после закрытия текущего.';
+        $next['cta'] = 'Задать вопрос';
+        $next['tab'] = 'request';
+    } else {
+        $next['eyebrow'] = 'Период закрыт';
+        $next['title'] = 'Чеклист за период выполнен';
+        $next['text'] = 'Ждите отчёт или опишите новую задачу — откроем следующий цикл.';
+        $next['cta'] = $reports ? 'Смотреть отчёты' : 'Новая задача';
+        $next['tab'] = $reports ? 'reports' : 'request';
+        $next['done'] = true;
+    }
+
+    return [
+        'phase'       => $phase,
+        'phase_label' => $phases[$phase] ?? $phase,
+        'summary'     => $summary,
+        'note'        => $note,
+        'next'        => $next,
+        'log'         => $log,
+        'progress'    => [
+            'done'  => $done,
+            'total' => $total,
+            'pct'   => $pct,
+        ],
+        'kpis'        => $kpis,
+        'latest_report' => $reports[0] ?? null,
+        'site_host'   => $site ? (string) (wp_parse_url($site, PHP_URL_HOST) ?: $site) : '',
+    ];
 }
 
 add_filter('ai_helper_chat_title', function () {

@@ -1,6 +1,6 @@
 <?php
 /**
- * Заявки + клиенты (чеклист / отчёты) в админке WP.
+ * Заявки + клиенты (чеклист / отчёты / обзор) в админке WP.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -77,6 +77,22 @@ function mb2_render_clients_admin() {
             $plan = sanitize_text_field(wp_unslash($_POST['plan'] ?? 'start'));
             update_user_meta($uid, 'mb2_plan', $plan);
             update_user_meta($uid, 'mb2_client_note', sanitize_textarea_field(wp_unslash($_POST['note'] ?? '')));
+            update_user_meta($uid, 'mb2_summary', sanitize_textarea_field(wp_unslash($_POST['summary'] ?? '')));
+            update_user_meta($uid, 'mb2_next_action', sanitize_text_field(wp_unslash($_POST['next_action'] ?? '')));
+
+            $phase = sanitize_text_field(wp_unslash($_POST['phase'] ?? ''));
+            $phases = mb2_project_phases();
+            if ($phase === 'auto' || $phase === '') {
+                delete_user_meta($uid, 'mb2_phase');
+            } elseif (isset($phases[$phase])) {
+                update_user_meta($uid, 'mb2_phase', $phase);
+            }
+
+            update_user_meta($uid, 'mb2_kpis', [
+                'organic'  => sanitize_text_field(wp_unslash($_POST['kpi_organic'] ?? '')),
+                'keywords' => sanitize_text_field(wp_unslash($_POST['kpi_keywords'] ?? '')),
+                'leads'    => sanitize_text_field(wp_unslash($_POST['kpi_leads'] ?? '')),
+            ]);
 
             $checks = mb2_get_checklist($uid);
             foreach ($checks as $i => $c) {
@@ -105,7 +121,7 @@ function mb2_render_clients_admin() {
                 ]);
                 update_user_meta($uid, 'mb2_reports', array_slice($reports, 0, 40));
             }
-            echo '<div class="updated"><p>Клиент обновлён. Кабинет на сайте покажет новый прогресс.</p></div>';
+            echo '<div class="updated"><p>Клиент обновлён. Кабинет на сайте покажет новый прогресс и обзор.</p></div>';
         }
     }
 
@@ -117,7 +133,7 @@ function mb2_render_clients_admin() {
     ]);
 
     echo '<div class="wrap"><h1>Клиенты SEO</h1>';
-    echo '<p>Внутрянка: после заявки найдите клиента → выставьте тариф и статусы чеклиста → добавьте ссылку на отчёт. Клиент видит это в <code>/cabinet/</code>.</p>';
+    echo '<p>Внутрянка: тариф, фаза проекта, сводка для «Обзора», чеклист, KPI и отчёты. Клиент видит это в <code>/cabinet/</code>.</p>';
 
     if (!$users) {
         echo '<p>Пока нет зарегистрированных клиентов (meta <code>mb2_plan</code>). Пусть зарегистрируются в кабинете или создайте пользователя вручную и поставьте meta.</p></div>';
@@ -125,9 +141,10 @@ function mb2_render_clients_admin() {
     }
 
     $edit_id = isset($_GET['uid']) ? (int) $_GET['uid'] : 0;
+    $phases = mb2_project_phases();
 
     echo '<table class="widefat striped"><thead><tr>';
-    echo '<th>Клиент</th><th>Email</th><th>Тариф</th><th>Сайт</th><th>Прогресс</th><th></th>';
+    echo '<th>Клиент</th><th>Email</th><th>Тариф</th><th>Фаза</th><th>Сайт</th><th>Прогресс</th><th></th>';
     echo '</tr></thead><tbody>';
     foreach ($users as $u) {
         $checks = mb2_get_checklist($u->ID);
@@ -140,10 +157,12 @@ function mb2_render_clients_admin() {
         $total = max(count($checks), 1);
         $site = get_user_meta($u->ID, 'mb2_site_url', true);
         $plan = get_user_meta($u->ID, 'mb2_plan', true) ?: 'start';
+        $phase = mb2_get_project_phase($u->ID);
         echo '<tr>';
         echo '<td>' . esc_html($u->display_name) . '</td>';
         echo '<td>' . esc_html($u->user_email) . '</td>';
         echo '<td>' . esc_html($plan) . '</td>';
+        echo '<td>' . esc_html($phases[$phase] ?? $phase) . '</td>';
         echo '<td>' . esc_html($site ?: '—') . '</td>';
         echo '<td>' . esc_html($done . '/' . $total) . '</td>';
         echo '<td><a href="' . esc_url(admin_url('admin.php?page=mb2-clients&uid=' . $u->ID)) . '">Редактировать</a></td>';
@@ -157,17 +176,46 @@ function mb2_render_clients_admin() {
             $checks = mb2_get_checklist($edit_id);
             $plan = get_user_meta($edit_id, 'mb2_plan', true) ?: 'start';
             $note = get_user_meta($edit_id, 'mb2_client_note', true) ?: '';
+            $summary = get_user_meta($edit_id, 'mb2_summary', true) ?: '';
+            $next_action = get_user_meta($edit_id, 'mb2_next_action', true) ?: '';
+            $saved_phase = (string) get_user_meta($edit_id, 'mb2_phase', true);
+            $inferred = mb2_infer_project_phase($edit_id);
+            $kpis = mb2_get_project_kpis($edit_id);
+
             echo '<hr><h2>Редактировать: ' . esc_html($u->display_name) . ' &lt;' . esc_html($u->user_email) . '&gt;</h2>';
             echo '<form method="post" style="max-width:720px">';
             wp_nonce_field('mb2_save_client');
             echo '<input type="hidden" name="user_id" value="' . esc_attr((string) $edit_id) . '" />';
+
+            echo '<h3>Обзор проекта (видно клиенту)</h3>';
             echo '<p><label>Тариф<br><select name="plan">';
             foreach (['start' => 'Старт', 'audit' => 'Аудит', 'monthly' => 'Ежемесячное SEO', 'local' => 'Local SEO'] as $k => $lab) {
                 echo '<option value="' . esc_attr($k) . '"' . selected($plan, $k, false) . '>' . esc_html($lab) . '</option>';
             }
             echo '</select></label></p>';
-            echo '<p><label>Комментарий клиенту (видно в кабинете)<br>';
-            echo '<textarea name="note" rows="3" class="large-text">' . esc_textarea($note) . '</textarea></label></p>';
+
+            echo '<p><label>Фаза проекта<br><select name="phase">';
+            echo '<option value="auto"' . selected($saved_phase, '', false) . '>Авто (сейчас: ' . esc_html($phases[$inferred] ?? $inferred) . ')</option>';
+            foreach ($phases as $k => $lab) {
+                echo '<option value="' . esc_attr($k) . '"' . selected($saved_phase, $k, false) . '>' . esc_html($lab) . '</option>';
+            }
+            echo '</select></label></p>';
+
+            echo '<p><label>Сводка для обзора (30 секунд, простым языком)<br>';
+            echo '<textarea name="summary" rows="3" class="large-text" placeholder="Что сделали, что меняется, что дальше. Пусто = текст соберётся сам.">' . esc_textarea($summary) . '</textarea></label></p>';
+
+            echo '<p><label>Короткий комментарий специалисту → клиенту<br>';
+            echo '<textarea name="note" rows="2" class="large-text" placeholder="Если сводка пуста — покажем этот текст.">' . esc_textarea($note) . '</textarea></label></p>';
+
+            echo '<p><label>Следующий шаг (переопределение)<br>';
+            echo '<input type="text" name="next_action" class="large-text" value="' . esc_attr($next_action) . '" placeholder="Напр.: пришлите доступы к Метрике" /></label></p>';
+
+            echo '<h3>KPI в обзоре (опционально)</h3>';
+            echo '<p class="description">Если пусто — клиент видит прогресс чеклиста, сайт и число обращений. Заполняйте цифры вручную из Search Console / отчёта.</p>';
+            echo '<p><label>Органика / трафик<br><input type="text" name="kpi_organic" class="regular-text" value="' . esc_attr($kpis['organic']) . '" placeholder="+18% к прошлому месяцу" /></label></p>';
+            echo '<p><label>Запросы в топе<br><input type="text" name="kpi_keywords" class="regular-text" value="' . esc_attr($kpis['keywords']) . '" placeholder="12 в топ-10" /></label></p>';
+            echo '<p><label>Лиды / заявки с сайта<br><input type="text" name="kpi_leads" class="regular-text" value="' . esc_attr($kpis['leads']) . '" placeholder="4 заявки за месяц" /></label></p>';
+
             echo '<h3>Чеклист</h3>';
             foreach ($checks as $c) {
                 $key = $c['key'] ?? '';

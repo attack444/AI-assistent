@@ -530,11 +530,40 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   margin: 0 0 16px;
   letter-spacing: -0.02em;
 }
+.cabinet-side-top h2 { margin-bottom: 6px; }
+.cabinet-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.phase-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.phase-badge--lg {
+  align-self: flex-start;
+  margin-top: 4px;
+  color: var(--accent-2);
+  border-color: rgba(118, 185, 0, 0.35);
+}
 .cab-sub {
   margin: 22px 0 10px;
   font-size: 0.95rem;
   color: var(--muted);
   font-weight: 600;
+}
+.btn-sm {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.92rem;
 }
 
 /* Onboarding */
@@ -600,7 +629,7 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
 }
 .cabinet-side .plan-badge {
   display: inline-block;
-  margin: 8px 0 16px;
+  margin: 0;
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid rgba(118, 185, 0, 0.35);
@@ -610,6 +639,7 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   text-transform: uppercase;
   font-weight: 600;
 }
+.cabinet-side-actions { display: grid; gap: 8px; margin-top: 8px; }
 .cabinet-nav {
   display: grid; gap: 4px; margin: 18px 0;
 }
@@ -622,6 +652,7 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
+  font: inherit;
 }
 .cabinet-nav button:hover,
 .cabinet-nav button.is-active {
@@ -630,6 +661,136 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
 }
 .cabinet-main { display: grid; gap: 16px; }
 .cabinet-panel[hidden] { display: none !important; }
+
+/* Обзор проекта */
+.cabinet-panel--overview > h3 { margin-bottom: 0; }
+.ov-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.ov-head h3 {
+  margin: 4px 0 0;
+  font-size: clamp(1.25rem, 2.4vw, 1.55rem);
+}
+.ov-summary {
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(118, 185, 0, 0.18);
+  background:
+    radial-gradient(ellipse 80% 120% at 0% 0%, rgba(118,185,0,0.1), transparent 55%),
+    rgba(0,0,0,0.22);
+}
+.ov-summary-text {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.55;
+  max-width: 62ch;
+}
+.ov-note {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.ov-progress { margin: 0 0 16px; }
+.ov-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.ov-progress-meta strong { color: var(--ink); font-weight: 600; }
+.ov-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.ov-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #5a8f00, var(--accent-2));
+  transition: width .4s ease;
+}
+.status-row.ov-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 16px;
+}
+.next-step-cta { margin: 12px 0 0; }
+.ov-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+  margin: 18px 0 8px;
+}
+.ov-block {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(0,0,0,0.18);
+}
+.ov-block h4 {
+  margin: 0 0 12px;
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+.ov-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.ov-log li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.ov-log strong { color: var(--ink); font-weight: 600; }
+.ov-log-mark {
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--line);
+  flex-shrink: 0;
+}
+.ov-log .is-done .ov-log-mark { background: var(--accent); box-shadow: 0 0 10px var(--glow); }
+.ov-log .is-progress .ov-log-mark { background: var(--accent-2); }
+.ov-log .is-request .ov-log-mark { background: rgba(255,255,255,0.35); }
+.check-st {
+  display: inline-block;
+  margin-left: 8px;
+  font-weight: 500;
+}
+.ov-expect {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.14);
+}
+.ov-expect p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  max-width: 68ch;
+}
 .check-list {
   list-style: none; margin: 0; padding: 0;
   display: grid; gap: 10px;
@@ -1004,9 +1165,56 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   }
 
   .service-list, .steps, .stats, .auth-shell, .cabinet-grid, .footer-grid, .cta-inner, .status-row,
-  .service-cards, .service-layout, .post-grid, .tools-grid, .onboard-steps {
+  .service-cards, .service-layout, .post-grid, .tools-grid, .onboard-steps, .ov-grid,
+  .status-row.ov-kpis {
     grid-template-columns: 1fr;
   }
+
+  .cabinet-side {
+    padding: 16px;
+  }
+  .cabinet-side-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .cabinet-side .mono { font-size: 0.82rem; word-break: break-all; }
+  .cabinet-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin: 14px 0 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .cabinet-nav::-webkit-scrollbar { display: none; }
+  .cabinet-nav button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    text-align: center;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    background: rgba(0,0,0,0.25);
+  }
+  .cabinet-nav button.is-active {
+    border-color: rgba(118, 185, 0, 0.4);
+  }
+  .cabinet-side-actions {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .cabinet-side-actions .btn-block { width: 100%; }
+  .ov-head { align-items: center; }
+  .ov-summary { padding: 14px; }
+  .status-row.ov-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+  .next-step-cta .btn { width: 100%; }
   .service-aside { position: static; }
   .service-item,
   .service-item:nth-child(3n-1),
@@ -1193,4 +1401,7 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   .cabinet-nav button { min-height: 44px; }
   .auth-shell { max-width: none; }
   .onboard-step { padding: 12px 10px; }
+  .cabinet-panel { padding: 18px 16px; }
+  .cabinet-side-actions { grid-template-columns: 1fr; }
+  .check-st { display: block; margin: 4px 0 0; margin-left: 0; }
 }

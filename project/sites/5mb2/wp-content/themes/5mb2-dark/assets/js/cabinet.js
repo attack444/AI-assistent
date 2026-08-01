@@ -41,14 +41,24 @@
   });
 
   function openCabTab(tab) {
+    if (!tab) return;
     document.querySelectorAll("[data-cab-tab]").forEach(function (b) {
       b.classList.toggle("is-active", b.getAttribute("data-cab-tab") === tab);
     });
     document.querySelectorAll("[data-cab-panel]").forEach(function (panel) {
       panel.hidden = panel.getAttribute("data-cab-panel") !== tab;
     });
+    try {
+      if (history.replaceState) {
+        history.replaceState(null, "", "#" + tab);
+      }
+    } catch (e) {}
     var grid = document.querySelector(".cabinet-grid");
     if (grid) grid.scrollIntoView({ behavior: "smooth", block: "start" });
+    var activeNav = document.querySelector('.cabinet-nav [data-cab-tab="' + tab + '"]');
+    if (activeNav && activeNav.scrollIntoView) {
+      activeNav.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
   }
 
   document.querySelectorAll("[data-cab-tab]").forEach(function (btn) {
@@ -56,6 +66,11 @@
       openCabTab(btn.getAttribute("data-cab-tab"));
     });
   });
+
+  var hash = (window.location.hash || "").replace(/^#/, "");
+  if (hash && document.querySelector('[data-cab-panel="' + hash + '"]')) {
+    openCabTab(hash);
+  }
 
   var editSite = document.getElementById("mb2-edit-site-link");
   if (editSite) {
