@@ -668,8 +668,13 @@
       .plans {
         grid-template-columns: 1fr;
       }
-      .matrix { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      .matrix table { min-width: 520px; }
+      .matrix {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .matrix th, .matrix td { white-space: nowrap; }
 
       .chat-preview form {
         flex-direction: column;
