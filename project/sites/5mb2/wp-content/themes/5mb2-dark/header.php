@@ -16,32 +16,46 @@
       <span class="logo-mark" aria-hidden="true"></span>
       <span class="logo-text">5MB2<span>Digital</span></span>
     </a>
-    <nav class="nav" aria-label="Главное меню">
-      <?php
-      if (has_nav_menu('primary')) {
-          wp_nav_menu([
-              'theme_location' => 'primary',
-              'container'      => false,
-              'menu_class'     => 'nav-list',
-              'depth'          => 1,
-              'fallback_cb'    => 'mb2_nav_fallback',
-          ]);
-      } else {
-          mb2_nav_fallback();
-      }
-      ?>
-    </nav>
-    <div class="header-cta">
-      <?php if (is_user_logged_in()) : ?>
-        <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Кабинет</a>
-      <?php else : ?>
-        <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
-      <?php endif; ?>
-      <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
-    </div>
-    <button class="nav-toggle" type="button" aria-label="Меню" aria-expanded="false" data-nav-toggle>
-      <span></span><span></span>
+
+    <button
+      class="nav-toggle"
+      type="button"
+      aria-label="Открыть меню"
+      aria-expanded="false"
+      aria-controls="site-menu"
+      data-nav-toggle
+    >
+      <span class="nav-toggle-bars" aria-hidden="true">
+        <i></i><i></i><i></i>
+      </span>
     </button>
+
+    <div class="header-panel" id="site-menu" data-nav-panel>
+      <nav class="nav" aria-label="Главное меню">
+        <?php
+        if (has_nav_menu('primary')) {
+            wp_nav_menu([
+                'theme_location' => 'primary',
+                'container'      => false,
+                'menu_class'     => 'nav-list',
+                'depth'          => 1,
+                'fallback_cb'    => 'mb2_nav_fallback',
+            ]);
+        } else {
+            mb2_nav_fallback();
+        }
+        ?>
+      </nav>
+      <div class="header-cta">
+        <?php if (is_user_logged_in()) : ?>
+          <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Кабинет</a>
+        <?php else : ?>
+          <a class="btn btn-ghost" href="<?php echo esc_url(home_url('/cabinet/')); ?>">Войти</a>
+        <?php endif; ?>
+        <a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Заявка</a>
+      </div>
+    </div>
   </div>
+  <button class="nav-backdrop" type="button" aria-label="Закрыть меню" data-nav-close tabindex="-1"></button>
 </header>
 <main id="main">

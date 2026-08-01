@@ -11,19 +11,30 @@
   }
 
   var toggle = document.querySelector("[data-nav-toggle]");
+  var panel = document.querySelector("[data-nav-panel]");
   function setNavOpen(open) {
     document.body.classList.toggle("nav-open", open);
-    if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.setAttribute("aria-label", open ? "Закрыть меню" : "Открыть меню");
+    }
   }
   if (toggle) {
     toggle.addEventListener("click", function () {
       setNavOpen(!document.body.classList.contains("nav-open"));
     });
-    document.querySelectorAll(".nav-list a, .header-cta a").forEach(function (a) {
-      a.addEventListener("click", function () {
+    document.querySelectorAll("[data-nav-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
         setNavOpen(false);
       });
     });
+    if (panel) {
+      panel.querySelectorAll("a").forEach(function (a) {
+        a.addEventListener("click", function () {
+          setNavOpen(false);
+        });
+      });
+    }
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") setNavOpen(false);
     });

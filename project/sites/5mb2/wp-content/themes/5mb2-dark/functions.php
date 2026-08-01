@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.8.1');
+define('MB2_THEME_VER', '1.8.2');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';
@@ -75,14 +75,13 @@ add_action('init', function () {
 
 function mb2_nav_fallback() {
     echo '<ul class="nav-list">';
+    // Короче: кабинет и заявка — в кнопках справа, не в списке
     $items = [
         ['Услуги', home_url('/services/')],
         ['Инструменты', home_url('/instrumenty/')],
         ['Проекты', home_url('/kejsy/')],
         ['Материалы', home_url('/materialy/')],
         ['О нас', home_url('/o-nas/')],
-        ['Контакты', home_url('/contacts/')],
-        ['Кабинет', home_url('/cabinet/')],
     ];
     foreach ($items as $item) {
         echo '<li><a href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a></li>';

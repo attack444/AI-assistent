@@ -205,18 +205,16 @@ function mb2_ensure_menus() {
         ['title' => 'Проекты', 'url' => $home . 'kejsy/'],
         ['title' => 'Материалы', 'url' => $home . 'materialy/'],
         ['title' => 'О нас', 'url' => $home . 'o-nas/'],
-        ['title' => 'Контакты', 'url' => $home . 'contacts/'],
-        ['title' => 'Кабинет', 'url' => $home . 'cabinet/'],
-        ['title' => 'Заявка', 'url' => $home . '#contact'],
     ];
     $footer = [
         ['title' => 'Услуги', 'url' => $home . 'services/'],
         ['title' => 'Инструменты', 'url' => $home . 'instrumenty/'],
         ['title' => 'Проекты', 'url' => $home . 'kejsy/'],
         ['title' => 'Материалы', 'url' => $home . 'materialy/'],
+        ['title' => 'Контакты', 'url' => $home . 'contacts/'],
+        ['title' => 'Кабинет', 'url' => $home . 'cabinet/'],
         ['title' => 'Оферта', 'url' => $home . 'oferta/'],
         ['title' => 'Конфиденциальность', 'url' => $home . 'privacy-policy/'],
-        ['title' => 'Контакты', 'url' => $home . 'contacts/'],
     ];
     mb2_assign_menu('primary', '5MB2 Главное', $primary);
     mb2_assign_menu('footer', '5MB2 Подвал', $footer);
