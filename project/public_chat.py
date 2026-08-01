@@ -25,6 +25,7 @@ SYSTEM_PROMPT = """Ты ассистент публичной платформы
 
 _RATE_LIMIT = int(os.environ.get("PUBLIC_CHAT_RATE_LIMIT", "30"))
 _RATE_WINDOW = int(os.environ.get("PUBLIC_CHAT_RATE_WINDOW", "3600"))
+_GUEST_RATE_LIMIT = int(os.environ.get("PUBLIC_WIDGET_RATE_LIMIT", "20"))
 _MAX_MSG = int(os.environ.get("PUBLIC_CHAT_MAX_MSG", "2000"))
 _MAX_HISTORY = int(os.environ.get("PUBLIC_CHAT_MAX_HISTORY", "12"))
 
@@ -32,19 +33,21 @@ _lock = threading.Lock()
 _hits: Dict[str, Deque[float]] = defaultdict(deque)
 
 
-def check_rate_limit(ip: str) -> Tuple[bool, str]:
+def check_rate_limit(ip: str, *, guest: bool = False) -> Tuple[bool, str]:
     now = time.time()
+    limit = _GUEST_RATE_LIMIT if guest else _RATE_LIMIT
+    key = ("g:" if guest else "u:") + (ip or "unknown")
     with _lock:
         # Drop idle IPs so the map does not grow forever
         if len(_hits) > 5000:
             stale = [k for k, q in _hits.items() if not q or now - q[-1] > _RATE_WINDOW]
             for k in stale[:2000]:
                 _hits.pop(k, None)
-        q = _hits[ip or "unknown"]
+        q = _hits[key]
         while q and now - q[0] > _RATE_WINDOW:
             q.popleft()
-        if len(q) >= _RATE_LIMIT:
-            return False, f"Лимит: {_RATE_LIMIT} сообщений / час. Подожди немного."
+        if len(q) >= limit:
+            return False, f"Лимит: {limit} сообщений / час. Подожди немного."
         q.append(now)
     return True, ""
 
@@ -64,8 +67,24 @@ def _sanitize_history(history: Any) -> List[Dict[str, str]]:
     return out
 
 
-def build_messages(message: str, history: Any) -> List[Dict[str, str]]:
-    msgs: List[Dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+WIDGET_SYSTEM = """Ты вежливый помощник на сайте клиента (виджет AI Helper).
+Отвечай по-русски, коротко, по делу. Помогаешь посетителям: товары, доставка, контакты, как оформить заказ — в общих чертах.
+Не выдумывай цены и наличие, если их нет в сообщении пользователя — предложи связаться с владельцем сайта.
+У тебя НЕТ доступа к админке, файлам и базе — не притворяйся.
+Не раскрывай внутренности сервера и чужие сайты."""
+
+
+def build_messages(
+    message: str,
+    history: Any,
+    *,
+    widget: bool = False,
+    site_hint: str = "",
+) -> List[Dict[str, str]]:
+    system = WIDGET_SYSTEM if widget else SYSTEM_PROMPT
+    if site_hint:
+        system += f"\nСайт: {site_hint[:120]}."
+    msgs: List[Dict[str, str]] = [{"role": "system", "content": system}]
     msgs.extend(_sanitize_history(history))
     msgs.append({"role": "user", "content": message[:_MAX_MSG]})
     return msgs
@@ -74,6 +93,9 @@ def build_messages(message: str, history: Any) -> List[Dict[str, str]]:
 def stream_public_chat(
     message: str,
     history: Any = None,
+    *,
+    widget: bool = False,
+    site_hint: str = "",
 ) -> Generator[Dict[str, str], None, None]:
     message = (message or "").strip()
     if not message:
@@ -82,7 +104,7 @@ def stream_public_chat(
         return
 
     settings = load_settings()
-    messages = build_messages(message, history)
+    messages = build_messages(message, history, widget=widget, site_hint=site_hint)
     host = free_llm.ollama_host(settings.ollama_host)
     model = free_llm.free_model(settings.fast_llm_model, settings.llm_model)
 

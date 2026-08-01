@@ -19,6 +19,10 @@ SESSIONS_FILE = USERS_DIR / "sessions.json"
 
 # Require login for public chat/deploy (1=yes). Set 0 to allow anonymous.
 AUTH_REQUIRED = os.environ.get("PUBLIC_AUTH_REQUIRED", "1").strip() not in {"0", "false", "no"}
+# Guest chat from embed widget (5mb2 etc.) without platform login. Deploy still needs auth.
+WIDGET_GUEST = os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower() not in {
+    "0", "false", "no", "off",
+}
 
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 _lock = threading.RLock()

@@ -644,7 +644,11 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.8.2",
+            "version": "2.8.3",
+            "widget_guest": bool(
+                __import__("os").environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
+                not in {"0", "false", "no", "off"}
+            ),
         }
         # Paths / project names only for authenticated panel clients
         if (not _auth_enabled()) or self._authorized():
@@ -1482,7 +1486,7 @@ class APIHandler(BaseHTTPRequestHandler):
         import public_chat as pch
         return pch.client_ip(self)
 
-    def _require_public_user(self):
+    def _require_public_user(self, *, allow_widget_guest: bool = False):
         """Return user dict or send 401 and None."""
         import public_users as pu
 
@@ -1490,7 +1494,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if user:
             return user
         if not pu.AUTH_REQUIRED:
-            return {"id": "", "email": "", "name": "guest"}
+            return {"id": "", "email": "", "name": "guest", "guest": True}
+        if allow_widget_guest and pu.WIDGET_GUEST:
+            return {"id": "", "email": "", "name": "widget-guest", "guest": True}
         self._send(401, _json({
             "error": "Нужен вход",
             "auth_required": True,
@@ -1586,12 +1592,14 @@ class APIHandler(BaseHTTPRequestHandler):
         import public_chat as pch
         import public_users as pu
 
-        user = self._require_public_user()
+        body = self._read_body()
+        is_widget = str(body.get("source") or "").strip().lower() in {"widget", "embed", "guest"}
+        user = self._require_public_user(allow_widget_guest=is_widget)
         if user is None:
             return
-        body = self._read_body()
         message = (body.get("message") or "").strip()
         history = body.get("history") or []
+        site_hint = str(body.get("site") or body.get("site_hint") or "").strip()[:120]
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
@@ -1600,13 +1608,15 @@ class APIHandler(BaseHTTPRequestHandler):
             if not ok_q:
                 self._send(429, _json({"error": why_q, "upgrade": True}))
                 return
-        ok, why = pch.check_rate_limit(pch.client_ip(self))
+        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
         if not ok:
             self._send(429, _json({"error": why}))
             return
         parts: List[str] = []
         err = ""
-        for ev in pch.stream_public_chat(message, history):
+        for ev in pch.stream_public_chat(
+            message, history, widget=is_widget or bool(user.get("guest")), site_hint=site_hint
+        ):
             if ev["type"] == "text":
                 parts.append(ev["content"])
             elif ev["type"] == "error":
@@ -1617,21 +1627,24 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send(200, _json({
             "ok": True,
             "response": "".join(parts),
-            "model": "deepseek",
+            "model": "auto",
             "user": user.get("email") or None,
             "plan": user.get("plan"),
+            "guest": bool(user.get("guest")),
         }))
 
     def _post_public_chat_stream(self):
         import public_chat as pch
         import public_users as pu
 
-        user = self._require_public_user()
+        body = self._read_body()
+        is_widget = str(body.get("source") or "").strip().lower() in {"widget", "embed", "guest"}
+        user = self._require_public_user(allow_widget_guest=is_widget)
         if user is None:
             return
-        body = self._read_body()
         message = (body.get("message") or "").strip()
         history = body.get("history") or []
+        site_hint = str(body.get("site") or body.get("site_hint") or "").strip()[:120]
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
@@ -1640,7 +1653,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if not ok_q:
                 self._send(429, _json({"error": why_q, "upgrade": True}))
                 return
-        ok, why = pch.check_rate_limit(pch.client_ip(self))
+        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
         if not ok:
             self._send(429, _json({"error": why}))
             return
@@ -1660,7 +1673,9 @@ class APIHandler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
-        for ev in pch.stream_public_chat(message, history):
+        for ev in pch.stream_public_chat(
+            message, history, widget=is_widget or bool(user.get("guest")), site_hint=site_hint
+        ):
             _sse(ev)
 
     def _post_public_deploy(self):

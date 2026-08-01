@@ -1,10 +1,8 @@
 /*!
- * AI Helper — embeddable public chat widget
+ * AI Helper — embeddable public chat widget (guest OK)
  * Usage:
  *   <script src="/sites/ai/widget.js" defer></script>
- *   <script>AIHelperChat.mount({ title: "Помощник" });</script>
- *
- * Talks to /api/public/chat/stream. Does NOT access server files.
+ *   <script>AIHelperChat.mount({ title: "Помощник", site: "5mb2" });</script>
  */
 (function (global) {
   "use strict";
@@ -25,14 +23,15 @@
       "#aih-head{padding:12px 14px;background:#0f1714;color:#e7f0ea;font:700 14px Unbounded,Manrope,sans-serif;}",
       "#aih-head small{display:block;font:500 11px Manrope,sans-serif;opacity:.7;margin-top:2px;}",
       "#aih-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}",
-      ".aih-b{max-width:90%;padding:10px 12px;border-radius:12px;font:500 13px/1.45 Manrope,sans-serif;}",
+      ".aih-b{max-width:90%;padding:10px 12px;border-radius:12px;font:500 13px/1.45 Manrope,sans-serif;white-space:pre-wrap;}",
       ".aih-bot{background:#fff;border:1px solid rgba(12,26,22,.1);align-self:flex-start;}",
       ".aih-user{background:#0b7f6e;color:#fff;align-self:flex-end;}",
       "#aih-form{display:flex;gap:8px;padding:10px;border-top:1px solid rgba(12,26,22,.1);background:#fff;}",
       "#aih-form input{flex:1;border:1px solid rgba(12,26,22,.15);border-radius:10px;padding:10px;font:inherit;}",
       "#aih-form button{border:0;border-radius:10px;padding:10px 12px;background:#0c1a16;color:#fff;cursor:pointer;font:600 13px Manrope,sans-serif;}",
-      "#aih-login{padding:10px 12px;font:500 12px/1.4 Manrope,sans-serif;background:#eef5f2;color:#3d534c;}",
-      "#aih-login a{color:#0b7f6e;font-weight:700;}",
+      "#aih-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;background:#eef5f2;}",
+      "#aih-chips button{border:1px solid rgba(12,26,22,.12);background:#fff;border-radius:999px;padding:6px 10px;",
+      "font:500 11px Manrope,sans-serif;cursor:pointer;color:#0c1a16;}",
     ].join("");
   }
 
@@ -45,10 +44,12 @@
 
   function mount(opts) {
     opts = opts || {};
-    var title = opts.title || "AI Helper";
+    var title = opts.title || "Помощник";
     var placeholder = opts.placeholder || "Ваш вопрос…";
     var apiBase = (opts.apiBase || "/api").replace(/\/$/, "");
-    var platformUrl = opts.platformUrl || "/sites/ai/";
+    var site = opts.site || "";
+    var greeting = opts.greeting || "Здравствуйте! Чем помочь?";
+    var chips = opts.chips || ["Доставка", "Как заказать?", "Контакты"];
 
     if (document.getElementById("aih-root")) return;
 
@@ -60,18 +61,25 @@
     var fab = el("button", { id: "aih-fab", type: "button" }, opts.fabLabel || "Чат");
     var panel = el("div", { id: "aih-panel" });
     var head = el("div", { id: "aih-head" }, title);
-    head.appendChild(el("small", null, "Ответы без доступа к файлам сервера"));
-    var login = el("div", { id: "aih-login" });
-    login.innerHTML = 'Нужен аккаунт платформы. <a href="' + platformUrl + '" target="_blank" rel="noopener">Войти на AI Helper</a>';
+    head.appendChild(el("small", null, "Ответы онлайн · без доступа к админке"));
+    var chipRow = el("div", { id: "aih-chips" });
+    chips.forEach(function (c) {
+      var b = el("button", { type: "button" }, c);
+      b.addEventListener("click", function () {
+        input.value = c;
+        input.focus();
+      });
+      chipRow.appendChild(b);
+    });
     var body = el("div", { id: "aih-body" });
-    body.appendChild(el("div", { class: "aih-b aih-bot" }, "Здравствуйте! Задайте вопрос — отвечу кратко."));
+    body.appendChild(el("div", { class: "aih-b aih-bot" }, greeting));
     var form = el("form", { id: "aih-form" });
     var input = el("input", { type: "text", maxlength: "2000", placeholder: placeholder, autocomplete: "off" });
     var send = el("button", { type: "submit" }, "→");
     form.appendChild(input);
     form.appendChild(send);
     panel.appendChild(head);
-    panel.appendChild(login);
+    panel.appendChild(chipRow);
     panel.appendChild(body);
     panel.appendChild(form);
     root.appendChild(panel);
@@ -88,12 +96,6 @@
       e.preventDefault();
       var text = (input.value || "").trim();
       if (!text || send.disabled) return;
-      var token = localStorage.getItem(AUTH_KEY) || "";
-      if (!token) {
-        login.style.display = "block";
-        login.innerHTML = 'Сначала <a href="' + platformUrl + '" target="_blank" rel="noopener">войдите на AI Helper</a> в этой же вкладке браузера, затем вернитесь.';
-        return;
-      }
       input.value = "";
       body.appendChild(el("div", { class: "aih-b aih-user" }, text));
       history.push({ role: "user", content: text });
@@ -102,19 +104,20 @@
       body.scrollTop = body.scrollHeight;
       send.disabled = true;
       var full = "";
+      var token = localStorage.getItem(AUTH_KEY) || "";
+      var headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
       try {
         var res = await fetch(apiBase + "/public/chat/stream", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-          },
-          body: JSON.stringify({ message: text, history: history.slice(0, -1) }),
+          headers: headers,
+          body: JSON.stringify({
+            message: text,
+            history: history.slice(0, -1),
+            source: "widget",
+            site: site,
+          }),
         });
-        if (res.status === 401) {
-          localStorage.removeItem(AUTH_KEY);
-          throw new Error("Нужен вход на платформе AI Helper");
-        }
         if (!res.ok || !res.body) {
           var err = await res.json().catch(function () { return {}; });
           throw new Error(err.error || ("HTTP " + res.status));
@@ -145,7 +148,7 @@
             }
           }
         }
-        if (!full) throw new Error("Пустой ответ");
+        if (!full) throw new Error("Пустой ответ — обнови API на сервере");
         history.push({ role: "assistant", content: full });
       } catch (err) {
         bot.textContent = (err && err.message) || "Ошибка";
