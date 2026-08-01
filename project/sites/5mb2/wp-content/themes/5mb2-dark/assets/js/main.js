@@ -11,17 +11,29 @@
   }
 
   var toggle = document.querySelector("[data-nav-toggle]");
+  function setNavOpen(open) {
+    document.body.classList.toggle("nav-open", open);
+    if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
   if (toggle) {
     toggle.addEventListener("click", function () {
-      var open = document.body.classList.toggle("nav-open");
-      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      setNavOpen(!document.body.classList.contains("nav-open"));
     });
-    document.querySelectorAll(".nav-list a").forEach(function (a) {
+    document.querySelectorAll(".nav-list a, .header-cta a").forEach(function (a) {
       a.addEventListener("click", function () {
-        document.body.classList.remove("nav-open");
-        toggle.setAttribute("aria-expanded", "false");
+        setNavOpen(false);
       });
     });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") setNavOpen(false);
+    });
+    window.addEventListener(
+      "resize",
+      function () {
+        if (window.innerWidth > 960) setNavOpen(false);
+      },
+      { passive: true }
+    );
   }
 
   var reveals = document.querySelectorAll(".reveal");
@@ -195,6 +207,30 @@
     var next = root.querySelector("[data-carousel-next]");
     if (prev) prev.addEventListener("click", function () { go(i - 1); restart(); });
     if (next) next.addEventListener("click", function () { go(i + 1); restart(); });
+
+    // Swipe на телефоне
+    var touchX = null;
+    root.addEventListener(
+      "touchstart",
+      function (e) {
+        if (!e.changedTouches || !e.changedTouches[0]) return;
+        touchX = e.changedTouches[0].clientX;
+      },
+      { passive: true }
+    );
+    root.addEventListener(
+      "touchend",
+      function (e) {
+        if (touchX == null || !e.changedTouches || !e.changedTouches[0]) return;
+        var dx = e.changedTouches[0].clientX - touchX;
+        touchX = null;
+        if (Math.abs(dx) < 40) return;
+        if (dx < 0) go(i + 1);
+        else go(i - 1);
+        restart();
+      },
+      { passive: true }
+    );
 
     function restart() {
       clearInterval(timer);

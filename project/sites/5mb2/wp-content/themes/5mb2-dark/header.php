@@ -2,7 +2,9 @@
 <html <?php language_attributes(); ?>>
 <head>
   <meta charset="<?php bloginfo('charset'); ?>" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#060806" />
+  <meta name="format-detection" content="telephone=no" />
   <?php wp_head(); ?>
 </head>
 <body <?php body_class('mb2-body'); ?>>

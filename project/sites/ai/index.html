@@ -2,7 +2,8 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#e9f1ef" />
   <meta name="description" content="AI Helper — деплой статики (ZIP, tar.gz, HTML), чат с AI и виджет для сайтов. Бесплатная локальная модель + DeepSeek для сложных задач." />
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href="/sites/ai/" />
@@ -600,6 +601,36 @@
     }
 
     @media (max-width: 800px) {
+      body {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+      .topbar {
+        padding: 10px 14px;
+        padding-top: calc(10px + env(safe-area-inset-top));
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .topbar-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+      .top-btn {
+        min-height: 40px;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+      }
+      .auth-user {
+        width: 100%;
+        order: -1;
+        font-size: 0.82rem;
+      }
+
+      .hero {
+        min-height: 100svh;
+        min-height: 100dvh;
+        padding: calc(72px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+      }
       .hero-visual::before {
         inset: 42% 0 -5% 0;
         border-radius: 40px 40px 0 0;
@@ -613,11 +644,68 @@
         height: 28vh;
       }
       .hero-inner { max-width: 100%; }
-      .brand { max-width: none; }
+      .brand { max-width: none; font-size: clamp(2.1rem, 11vw, 3.2rem); }
+      .hero h1 { max-width: none; font-size: clamp(1.2rem, 5.5vw, 1.55rem); }
+      .hero-lead { max-width: none; font-size: 1rem; }
+      .cta-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .cta-row .btn {
+        width: 100%;
+        min-height: 48px;
+      }
+      .btn:hover { transform: none; }
+
+      .section {
+        width: min(960px, calc(100% - 28px));
+        padding: clamp(48px, 12vw, 80px) 0;
+      }
       .feature-list li {
         grid-template-columns: 1fr;
         gap: 6px;
       }
+      .plans {
+        grid-template-columns: 1fr;
+      }
+      .matrix { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .matrix table { min-width: 520px; }
+
+      .chat-preview form {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .chat-preview input,
+      .auth-input {
+        font-size: 16px; /* iOS no-zoom */
+        width: 100%;
+      }
+      .chat-preview button {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      .deploy-box .drop { padding: 22px 16px; }
+      .auth-card {
+        width: min(420px, calc(100% - 28px));
+        margin: 16px;
+        max-height: calc(100svh - 32px);
+        overflow-y: auto;
+      }
+      .auth-modal {
+        align-items: flex-end;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      footer {
+        padding: 28px 16px calc(28px + env(safe-area-inset-bottom));
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .brand-mini { font-size: 0.95rem; }
+      .topbar-actions .btn-ghost#btn-login { order: 1; }
     }
   </style>
 </head>
