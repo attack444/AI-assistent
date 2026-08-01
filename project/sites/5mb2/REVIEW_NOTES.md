@@ -13,7 +13,7 @@
 
 | Наблюдение | Рекомендация |
 |------------|--------------|
-| 4 AI-плагина: `chatbot`, `ai-engine`, `aibuddy-openai-chatgpt`, `gpt3-ai-content-generator` | Оставить **один** чат + при необходимости один генератор контента. Остальное выключить. |
+| AI-плагины и WPForms | **Удалены** из репо (и скрипт `deploy/cleanup-5mb2-plugins.sh` для VPS). Формы: Contact Form 7 + Flamingo. Чат — виджет AI Helper. |
 | Тема Astra без child-theme | Кастом — через Astra/Elementor или завести `astra-child`, не править ядро темы. |
 | Wordfence + `wordfence-waf.php` | На новом VPS проверь, что WAF не ломает сайт; auto_prepend чистили скриптами раньше. |
 | `wp-fastest-cache` + Imagify | Норм; после деплоя очисти кэш. |
