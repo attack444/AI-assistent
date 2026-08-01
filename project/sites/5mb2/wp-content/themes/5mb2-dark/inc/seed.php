@@ -78,6 +78,7 @@ function mb2_upsert_page($slug, $title, $content, $template = '', $parent = 0) {
 
 function mb2_ensure_core_pages() {
     mb2_upsert_page('cabinet', 'Личный кабинет', '', 'templates/cabinet.php');
+    mb2_upsert_page('instrumenty', 'SEO-инструменты', '', 'templates/tools.php');
     mb2_upsert_page('privacy-policy', 'Политика конфиденциальности', mb2_privacy_html());
     mb2_upsert_page('oferta', 'Публичная оферта', mb2_oferta_html());
     mb2_upsert_page('contacts', 'Контакты', mb2_contacts_html());
@@ -113,10 +114,6 @@ function mb2_ensure_service_pages() {
 }
 
 function mb2_ensure_sample_posts() {
-    if (get_option('mb2_sample_posts_v3')) {
-        return;
-    }
-
     $mat = get_term_by('slug', 'materialy', 'category');
     $mat_id = $mat ? (int) $mat->term_id : 0;
 
@@ -140,6 +137,16 @@ function mb2_ensure_sample_posts() {
             'title' => 'Сколько стоит SEO в России в 2026',
             'slug'  => 'skolko-stoit-seo-rossiya-2026',
             'body'  => '<p>По рынку 2026 у большинства компаний бюджет на SEO — <strong>50–150 тыс. ₽/мес</strong>. Локальный старт часто от 40–70 тыс. ₽/мес. Разовый аудит — ориентир 25–80 тыс. ₽.</p><p>На сайте 5MB2 указаны входные цены «от» для самозанятого специалиста. Итог — после брифа по нише и состоянию сайта.</p>',
+        ],
+        [
+            'title' => 'Чеклист перед заказом SEO: 12 пунктов',
+            'slug'  => 'cheklist-pered-zakazom-seo',
+            'body'  => '<p>Перед аудитом или продвижением соберите: цели (заявки / трафик / бренд), регион, доступ к Метрике и Вебмастеру, список конкурентов, кто правит сайт, бюджет на 3 месяца.</p><p>Бесплатно проверьте базу в <a href="/instrumenty/">SEO-инструментах</a>, затем оставьте заявку — в кабинете появится рабочий чеклист.</p>',
+        ],
+        [
+            'title' => 'Почему «гарантия топ-1» — красный флаг',
+            'slug'  => 'pochemu-garantiya-top-1-krasnyj-flag',
+            'body'  => '<p>Поисковики меняют выдачу. Честный подрядчик обещает процесс, прозрачные метрики и гипотезы — не место любой ценой.</p><p>В 5MB2 вы видите прогресс в кабинете: аудит → семантика → структура → контент → отчёт.</p>',
         ],
     ];
 
@@ -165,13 +172,14 @@ function mb2_ensure_sample_posts() {
         }
     }
 
-    update_option('mb2_sample_posts_v3', 1, false);
+    update_option('mb2_sample_posts_v4', 1, false);
 }
 
 function mb2_ensure_menus() {
     $home = trailingslashit(home_url('/'));
     $primary = [
         ['title' => 'Услуги', 'url' => $home . 'services/'],
+        ['title' => 'Инструменты', 'url' => $home . 'instrumenty/'],
         ['title' => 'Проекты', 'url' => $home . 'kejsy/'],
         ['title' => 'Материалы', 'url' => $home . 'materialy/'],
         ['title' => 'О нас', 'url' => $home . 'o-nas/'],
@@ -181,6 +189,7 @@ function mb2_ensure_menus() {
     ];
     $footer = [
         ['title' => 'Услуги', 'url' => $home . 'services/'],
+        ['title' => 'Инструменты', 'url' => $home . 'instrumenty/'],
         ['title' => 'Проекты', 'url' => $home . 'kejsy/'],
         ['title' => 'Материалы', 'url' => $home . 'materialy/'],
         ['title' => 'Оферта', 'url' => $home . 'oferta/'],

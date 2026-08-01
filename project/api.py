@@ -1696,15 +1696,21 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._send(429, _json({"error": why}))
                 return
             ctype = (self.headers.get("Content-Type") or "").lower()
-            tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+            filename = (
+                self.headers.get("X-Filename")
+                or self._qs().get("filename")
+                or "site.zip"
+            )
+            tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
             if "json" in ctype:
                 body = self._read_body()
+                filename = body.get("filename") or filename
                 raw = base64.b64decode(body.get("content_b64") or "")
                 if not raw:
-                    self._send(400, _json({"error": "Нужен ZIP (content_b64)"}))
+                    self._send(400, _json({"error": "Нужен файл (content_b64): ZIP / tar.gz / HTML"}))
                     return
                 if len(raw) > pd.MAX_ZIP:
-                    self._send(400, _json({"error": f"ZIP > {pd.MAX_ZIP // (1024*1024)} МБ"}))
+                    self._send(400, _json({"error": f"Файл > {pd.MAX_ZIP // (1024*1024)} МБ"}))
                     return
                 tmp.write_bytes(raw)
             else:
@@ -1714,6 +1720,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 ip=self._public_ip(),
                 user_id=user.get("id") or "",
                 user_email=user.get("email") or "",
+                filename=str(filename),
             )
             if user.get("email"):
                 pu.consume_quota(user["email"], "deploy")
@@ -1733,20 +1740,22 @@ class APIHandler(BaseHTTPRequestHandler):
             name = (qs.get("name") or "").strip()
             token = (qs.get("token") or self.headers.get("X-Public-Token") or "").strip()
             ctype = (self.headers.get("Content-Type") or "").lower()
+            filename = self.headers.get("X-Filename") or qs.get("filename") or "site.zip"
             if "json" in ctype:
                 body = self._read_body()
                 name = (body.get("name") or name).strip()
                 token = (body.get("token") or token).strip()
+                filename = body.get("filename") or filename
                 raw = base64.b64decode(body.get("content_b64") or "")
                 if not raw:
-                    self._send(400, _json({"error": "Нужен ZIP"}))
+                    self._send(400, _json({"error": "Нужен файл (ZIP / tar.gz / HTML)"}))
                     return
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
                 tmp.write_bytes(raw)
             else:
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
                 self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
-            result = pd.redeploy(name, token, tmp)
+            result = pd.redeploy(name, token, tmp, filename=str(filename))
             self._send(200, _json(result))
         except Exception as exc:
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400

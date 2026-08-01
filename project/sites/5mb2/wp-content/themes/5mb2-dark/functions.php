@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.5.0');
+define('MB2_THEME_VER', '1.6.0');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';
@@ -46,6 +46,10 @@ add_action('wp_enqueue_scripts', function () {
         $cjs = $dir . '/assets/js/cabinet.js';
         wp_enqueue_script('mb2-cabinet', $uri . '/assets/js/cabinet.js', ['mb2-main'], file_exists($cjs) ? (string) filemtime($cjs) : MB2_THEME_VER, true);
     }
+    if (is_page_template('templates/tools.php') || is_page('instrumenty')) {
+        $tjs = $dir . '/assets/js/tools.js';
+        wp_enqueue_script('mb2-tools', $uri . '/assets/js/tools.js', ['mb2-main'], file_exists($tjs) ? (string) filemtime($tjs) : MB2_THEME_VER, true);
+    }
 
     wp_localize_script('mb2-main', 'MB2', [
         'ajax'    => admin_url('admin-ajax.php'),
@@ -72,6 +76,7 @@ function mb2_nav_fallback() {
     echo '<ul class="nav-list">';
     $items = [
         ['Услуги', home_url('/services/')],
+        ['Инструменты', home_url('/instrumenty/')],
         ['Проекты', home_url('/kejsy/')],
         ['Материалы', home_url('/materialy/')],
         ['О нас', home_url('/o-nas/')],
@@ -350,8 +355,8 @@ add_filter('ai_helper_chat_title', function () {
     return '5MB2 · помощник';
 });
 add_filter('ai_helper_chat_greeting', function () {
-    return 'Здравствуйте! Подскажу по услугам SEO и помогу оформить заявку.';
+    return 'Здравствуйте! Подскажу по услугам и ценам 5MB2, инструментам и заявке.';
 });
 add_filter('ai_helper_chat_chips', function () {
-    return ['Услуги', 'Сроки и цены', 'Local SEO', 'Оставить заявку'];
+    return ['Услуги и цены', 'Local SEO', 'Инструменты', 'Оставить заявку'];
 });

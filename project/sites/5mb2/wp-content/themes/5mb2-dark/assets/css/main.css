@@ -688,9 +688,92 @@ button, input, textarea, select { font: inherit; }
 }
 .post-card p { color: var(--muted); margin: 0 0 10px; }
 
+/* Tools + cabinet extras */
+.tools-hero { padding-top: clamp(40px, 6vw, 72px); }
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.tool-block, .tools-cta, .next-step, .client-note {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: clamp(18px, 3vw, 26px);
+}
+.tool-block h2, .tools-cta h2 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+}
+.tool-block label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.tool-block input, .tool-block textarea, .tool-block select {
+  width: 100%;
+  background: rgba(0,0,0,.35);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 11px 12px;
+}
+.tool-meter {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  overflow: hidden;
+  margin-top: -4px;
+}
+.tool-meter span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .25s ease, background .25s ease;
+}
+.tool-meter[data-state="ok"] span { background: var(--accent-2); }
+.tool-meter[data-state="long"] span { background: #ffb74d; }
+.tool-hint { margin: 6px 0 0; color: var(--muted); font-size: 0.85rem; }
+.budget-result {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.budget-result strong {
+  font-family: var(--display);
+  font-size: 1.25rem;
+  display: block;
+  margin-bottom: 8px;
+}
+.tools-cta { margin-top: 28px; text-align: center; }
+.tools-cta .cta-row { justify-content: center; margin-top: 14px; }
+.next-step { margin: 16px 0; }
+.next-step strong { font-family: var(--display); font-weight: 500; }
+.next-step.is-done { border-color: rgba(118,185,0,.35); }
+.client-note { margin: 12px 0 18px; }
+.perk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.perk-list li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.perk-list li:last-child { border-bottom: 0; }
+
 @media (max-width: 960px) {
   .service-list, .steps, .stats, .auth-grid, .cabinet-grid, .footer-grid, .cta-inner, .status-row,
-  .service-cards, .service-layout, .post-grid {
+  .service-cards, .service-layout, .post-grid, .tools-grid {
     grid-template-columns: 1fr;
   }
   .service-aside { position: static; }

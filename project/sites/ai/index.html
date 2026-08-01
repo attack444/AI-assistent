@@ -634,7 +634,7 @@
       <h1>Деплой сайта и AI-чат на своём сервере</h1>
       <p class="hero-lead">Аккаунт → ZIP → превью → вопросы модели. Для правок на живых сайтах — панель владельца и DeepSeek.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#deploy">Задеплоить ZIP</a>
+        <a class="btn btn-primary" href="#deploy">Задеплоить сайт</a>
         <a class="btn btn-ghost" href="#models">Чат с AI</a>
       </div>
     </div>
@@ -738,19 +738,23 @@
       <summary>Что с тарифами?</summary>
       <p>Free после регистрации. Starter/Pro — вручную после оплаты (письмо владельцу). Лимиты — в блоке «Мой лимит».</p>
     </details>
+    <details>
+      <summary>Какие форматы деплоя?</summary>
+      <p>ZIP, tar.gz / tgz, tar или один HTML. Только статика (HTML/CSS/JS/картинки). PHP и WordPress-бэкапы — через панель владельца.</p>
+    </details>
   </section>
 
   <section class="section" id="deploy">
     <h2>Деплой за минуту</h2>
-    <p>Залей ZIP со статикой (HTML/CSS/JS). Получишь ссылку на превью и token для правок. PHP и чужие сайты сервера недоступны.</p>
+    <p>Залей статику: <strong>ZIP</strong>, <strong>tar.gz / tgz</strong>, <strong>tar</strong> или один <strong>HTML</strong>. Получишь превью и token для правок. PHP и чужие сайты недоступны.</p>
     <div class="deploy-box">
       <div class="drop">
-        <strong>ZIP до 15 МБ</strong>
-        <span class="hint" style="margin:0">index.html внутри архива или в папке</span>
+        <strong>Архив или HTML · до 15 МБ</strong>
+        <span class="hint" style="margin:0">ZIP · tar.gz · tar · index.html</span>
         <div class="cta-row" style="justify-content:center;margin-top:16px">
           <label class="btn btn-primary" style="cursor:pointer">
-            Выбрать ZIP
-            <input id="deploy-file" type="file" accept=".zip,application/zip" hidden />
+            Выбрать файл
+            <input id="deploy-file" type="file" accept=".zip,.tar,.gz,.tgz,.html,.htm,application/zip,application/gzip,application/x-tar,text/html" hidden />
           </label>
         </div>
         <p id="deploy-filename" class="hint" style="margin-top:12px"></p>
@@ -1105,12 +1109,21 @@
     async function deployZip(file) {
       if (!file) return;
       if (!ensureAuth()) return;
+      const lower = (file.name || "").toLowerCase();
+      const okExt = [".zip", ".tar", ".tar.gz", ".tgz", ".html", ".htm"].some((ext) =>
+        lower.endsWith(ext)
+      );
+      if (!okExt) {
+        progEl.style.display = "block";
+        progEl.textContent = "Нужен ZIP, tar.gz, tar или HTML";
+        return;
+      }
       fnameEl.textContent = file.name + " · " + Math.round(file.size / 1024) + " КБ";
       progEl.style.display = "block";
       progEl.textContent = "Загружаю…";
       try {
         const headers = {
-          "Content-Type": "application/zip",
+          "Content-Type": "application/octet-stream",
           "X-Filename": file.name.replace(/[^\x20-\x7E]/g, "_"),
         };
         if (userToken) headers.Authorization = "Bearer " + userToken;

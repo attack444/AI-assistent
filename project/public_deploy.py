@@ -1,4 +1,4 @@
-"""Public deploy sandbox — ZIP → /sites/pXXXX/ with edit token. No panel auth."""
+"""Public deploy sandbox — archive/HTML → /sites/pXXXX/ with edit token. No panel auth."""
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import shutil
+import tarfile
 import threading
 import time
 import zipfile
@@ -116,8 +117,7 @@ def _safe_member(name: str) -> bool:
     return ext in _ALLOWED_EXT
 
 
-def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
-    """Extract allowed static files only into root (replace contents)."""
+def _clear_root(root: Path) -> None:
     if root.exists():
         for child in root.iterdir():
             if child.is_dir():
@@ -127,35 +127,8 @@ def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
     else:
         root.mkdir(parents=True, exist_ok=True)
 
-    kept = 0
-    skipped = 0
-    total_bytes = 0
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        infos = zf.infolist()
-        if len(infos) > MAX_FILES * 2:
-            raise ValueError(f"Слишком много файлов в ZIP (>{MAX_FILES})")
-        for info in infos:
-            if info.is_dir():
-                continue
-            if not _safe_member(info.filename):
-                skipped += 1
-                continue
-            if info.file_size > MAX_UNCOMPRESSED:
-                raise ValueError("Файл в архиве слишком большой")
-            total_bytes += info.file_size
-            if total_bytes > MAX_UNCOMPRESSED:
-                raise ValueError(f"Распаковка > {MAX_UNCOMPRESSED // (1024*1024)} МБ")
-            target = (root / info.filename).resolve()
-            if not str(target).startswith(str(root.resolve())):
-                raise PermissionError(f"Небезопасный путь: {info.filename}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(info) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
-            kept += 1
-            if kept > MAX_FILES:
-                raise ValueError(f"Лимит {MAX_FILES} файлов")
 
-    # Flatten single top-level folder
+def _flatten_single_folder(root: Path) -> None:
     entries = [e for e in root.iterdir() if e.name not in {".user.ini"}]
     if len(entries) == 1 and entries[0].is_dir():
         inner = entries[0]
@@ -169,22 +142,169 @@ def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
             shutil.move(str(child), str(dest))
         shutil.rmtree(inner, ignore_errors=True)
 
-    # Ensure something to open
-    if not (root / "index.html").exists() and not (root / "index.htm").exists():
-        htmls = sorted(root.rglob("*.html"))
-        if htmls:
-            # copy nearest html to index.html for preview
-            shutil.copyfile(htmls[0], root / "index.html")
-        else:
-            (root / "index.html").write_text(
-                "<!doctype html><meta charset=utf-8><title>Deploy</title>"
-                "<body style='font-family:system-ui;padding:40px'>"
-                "<h1>Деплой принят</h1><p>Добавь index.html в архив.</p></body>",
-                encoding="utf-8",
+
+def _ensure_index(root: Path) -> None:
+    if (root / "index.html").exists() or (root / "index.htm").exists():
+        return
+    htmls = sorted(root.rglob("*.html"))
+    if htmls:
+        shutil.copyfile(htmls[0], root / "index.html")
+    else:
+        (root / "index.html").write_text(
+            "<!doctype html><meta charset=utf-8><title>Deploy</title>"
+            "<body style='font-family:system-ui;padding:40px'>"
+            "<h1>Деплой принят</h1><p>Добавь index.html в архив.</p></body>",
+            encoding="utf-8",
+        )
+    (root / ".user.ini").write_text("auto_prepend_file =\n", encoding="utf-8")
+
+
+def _write_member(root: Path, rel: str, data: bytes, *, kept: int, total_bytes: int) -> Tuple[int, int]:
+    if not _safe_member(rel):
+        return kept, total_bytes
+    if len(data) > MAX_UNCOMPRESSED:
+        raise ValueError("Файл в архиве слишком большой")
+    total_bytes += len(data)
+    if total_bytes > MAX_UNCOMPRESSED:
+        raise ValueError(f"Распаковка > {MAX_UNCOMPRESSED // (1024*1024)} МБ")
+    target = (root / rel).resolve()
+    if not str(target).startswith(str(root.resolve())):
+        raise PermissionError(f"Небезопасный путь: {rel}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    kept += 1
+    if kept > MAX_FILES:
+        raise ValueError(f"Лимит {MAX_FILES} файлов")
+    return kept, total_bytes
+
+
+def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
+    """Extract allowed static files only into root (replace contents)."""
+    _clear_root(root)
+    kept = 0
+    skipped = 0
+    total_bytes = 0
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        infos = zf.infolist()
+        if len(infos) > MAX_FILES * 2:
+            raise ValueError(f"Слишком много файлов в ZIP (>{MAX_FILES})")
+        for info in infos:
+            if info.is_dir():
+                continue
+            if not _safe_member(info.filename):
+                skipped += 1
+                continue
+            with zf.open(info) as src:
+                data = src.read()
+            kept, total_bytes = _write_member(
+                root, info.filename, data, kept=kept, total_bytes=total_bytes
             )
 
+    _flatten_single_folder(root)
+    _ensure_index(root)
+    return {"files_kept": kept, "files_skipped": skipped, "bytes": total_bytes, "format": "zip"}
+
+
+def extract_public_tar(tar_path: Path, root: Path, *, gzipped: bool = False) -> Dict[str, Any]:
+    _clear_root(root)
+    kept = 0
+    skipped = 0
+    total_bytes = 0
+    mode = "r:gz" if gzipped else "r:"
+    with tarfile.open(tar_path, mode) as tf:
+        members = [m for m in tf.getmembers() if m.isfile()]
+        if len(members) > MAX_FILES * 2:
+            raise ValueError(f"Слишком много файлов в архиве (>{MAX_FILES})")
+        for m in members:
+            name = m.name
+            if name.startswith("./"):
+                name = name[2:]
+            if not _safe_member(name):
+                skipped += 1
+                continue
+            if m.size > MAX_UNCOMPRESSED:
+                raise ValueError("Файл в архиве слишком большой")
+            f = tf.extractfile(m)
+            if f is None:
+                skipped += 1
+                continue
+            data = f.read()
+            kept, total_bytes = _write_member(root, name, data, kept=kept, total_bytes=total_bytes)
+
+    _flatten_single_folder(root)
+    _ensure_index(root)
+    return {
+        "files_kept": kept,
+        "files_skipped": skipped,
+        "bytes": total_bytes,
+        "format": "tar.gz" if gzipped else "tar",
+    }
+
+
+def deploy_single_html(html_path: Path, root: Path) -> Dict[str, Any]:
+    _clear_root(root)
+    data = html_path.read_bytes()
+    if len(data) > MAX_UNCOMPRESSED:
+        raise ValueError("HTML слишком большой")
+    # Basic sanity: look like markup
+    sample = data[:2000].lower()
+    if b"<" not in sample:
+        raise ValueError("Файл не похож на HTML")
+    (root / "index.html").write_bytes(data)
     (root / ".user.ini").write_text("auto_prepend_file =\n", encoding="utf-8")
-    return {"files_kept": kept, "files_skipped": skipped, "bytes": total_bytes}
+    return {"files_kept": 1, "files_skipped": 0, "bytes": len(data), "format": "html"}
+
+
+def detect_format(path: Path, filename: str = "") -> str:
+    name = (filename or path.name or "").lower()
+    head = b""
+    try:
+        with path.open("rb") as f:
+            head = f.read(16)
+    except OSError:
+        pass
+
+    if name.endswith(".tar.gz") or name.endswith(".tgz"):
+        return "tar.gz"
+    if name.endswith(".tar"):
+        return "tar"
+    if name.endswith((".html", ".htm")):
+        return "html"
+    if name.endswith(".zip") or zipfile.is_zipfile(path):
+        return "zip"
+    if head[:2] == b"\x1f\x8b":
+        return "tar.gz"
+    # ustar at offset 257
+    try:
+        with path.open("rb") as f:
+            f.seek(257)
+            magic = f.read(5)
+            if magic in (b"ustar", b"ustar\x00"[:5]):
+                return "tar"
+    except OSError:
+        pass
+    sample = head.lower()
+    if sample.startswith(b"<!doctype") or sample.startswith(b"<html") or b"<html" in sample:
+        return "html"
+    # gzip masquerading without extension
+    if head[:2] == b"\x1f\x8b":
+        return "tar.gz"
+    raise ValueError(
+        "Поддерживаются: ZIP, tar.gz / tgz, tar или один HTML-файл (статика HTML/CSS/JS)."
+    )
+
+
+def extract_upload(path: Path, root: Path, filename: str = "") -> Dict[str, Any]:
+    fmt = detect_format(path, filename)
+    if fmt == "zip":
+        return extract_public_zip(path, root)
+    if fmt == "tar.gz":
+        return extract_public_tar(path, root, gzipped=True)
+    if fmt == "tar":
+        return extract_public_tar(path, root, gzipped=False)
+    if fmt == "html":
+        return deploy_single_html(path, root)
+    raise ValueError("Неизвестный формат")
 
 
 def create_deployment(
@@ -192,16 +312,15 @@ def create_deployment(
     ip: str = "",
     user_id: str = "",
     user_email: str = "",
+    filename: str = "",
 ) -> Dict[str, Any]:
     if zip_path.stat().st_size > MAX_ZIP:
-        raise ValueError(f"ZIP больше {MAX_ZIP // (1024*1024)} МБ")
-    if not zipfile.is_zipfile(zip_path):
-        raise ValueError("Нужен ZIP-архив (html/css/js…)")
+        raise ValueError(f"Файл больше {MAX_ZIP // (1024*1024)} МБ")
 
     name = new_site_name()
     token = secrets.token_urlsafe(24)
     root = SITES_ROOT / name
-    stats = extract_public_zip(zip_path, root)
+    stats = extract_upload(zip_path, root, filename=filename)
 
     now = time.time()
     meta = {
@@ -211,6 +330,7 @@ def create_deployment(
         "expires_at": now + TTL_DAYS * 86400,
         "ip": ip,
         "kind": "public_static",
+        "format": stats.get("format") or "zip",
         "user_id": user_id or "",
         "user_email": user_email or "",
     }
@@ -235,14 +355,15 @@ def create_deployment(
     }
 
 
-def redeploy(name: str, token: str, zip_path: Path) -> Dict[str, Any]:
+def redeploy(name: str, token: str, zip_path: Path, filename: str = "") -> Dict[str, Any]:
     if not verify_token(name, token):
         raise PermissionError("Неверный token или срок истёк")
     if zip_path.stat().st_size > MAX_ZIP:
-        raise ValueError(f"ZIP больше {MAX_ZIP // (1024*1024)} МБ")
-    stats = extract_public_zip(zip_path, SITES_ROOT / name)
+        raise ValueError(f"Файл больше {MAX_ZIP // (1024*1024)} МБ")
+    stats = extract_upload(zip_path, SITES_ROOT / name, filename=filename)
     meta = load_meta(name) or {}
     meta["updated_at"] = time.time()
+    meta["format"] = stats.get("format") or meta.get("format")
     save_meta(name, meta)
     return {"ok": True, "name": name, "url": f"/sites/{name}/", "stats": stats}
 
