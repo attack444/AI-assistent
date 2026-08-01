@@ -45,35 +45,19 @@ sudo bash project/deploy/enable-https-5mb2.sh
 
 ---
 
-## 2) SMTP (чтобы заявки и «забыли пароль» доходили)
+## 2) SMTP (заявки и «забыли пароль»)
 
-На сайте уже есть плагин **WP Mail SMTP**. Без него `wp_mail` на VPS часто уходит в никуда.
+HTTPS сайта ≠ почта. Отдельный SSL «для SMTP на VPS» не нужен — шлём через Яндекс.
 
-### Вариант A — Яндекс (удобно для RU)
+Полный гайд: **`SETUP_SMTP_RU.md`**
 
-1. Почта на домене или `@yandex.ru`
-2. Пароль приложения: [id.yandex.ru](https://id.yandex.ru) → Безопасность → Пароли приложений
-3. WP → **WP Mail SMTP** → Other SMTP:
+```bash
+SMTP_USER='hello@5mb2.ru' \
+SMTP_PASS='пароль-приложения' \
+bash project/deploy/setup-smtp-5mb2.sh
+```
 
-| Поле | Значение |
-|---|---|
-| Host | `smtp.yandex.ru` |
-| Port | `465` |
-| Encryption | SSL |
-| Auth | On |
-| User | полный email |
-| Password | пароль приложения |
-| From Email | тот же email |
-| From Name | 5MB2 Digital |
-
-4. Отправь тестовое письмо из плагина.  
-5. В WP → Настройки → Общие — **E-mail администратора** = ящик, куда падают заявки.
-
-### Вариант B — Mail.ru / Google
-
-Аналогично: SMTP хост провайдера + пароль приложения (не обычный пароль).
-
-Заявки с сайта дублируются: **Заявки 5MB2** в меню админки + письмо на admin email.
+Перед этим: Яндекс 360 для домена + MX/SPF в DNS + пароль приложения.
 
 ---
 
