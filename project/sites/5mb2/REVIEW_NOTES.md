@@ -1,6 +1,6 @@
 # Ревью 5mb2 (кратко)
 
-Стек: WordPress + **Astra** + **Elementor** + формы/SEO/кэш + **4 AI-плагина сразу**.
+Стек: WordPress + **Astra** + **Elementor** + CF7/SEO/кэш (AI-плагины и WPForms сняты).
 
 ## Срочно (безопасность)
 
@@ -17,7 +17,6 @@
 | Тема Astra без child-theme | Кастом — через Astra/Elementor или завести `astra-child`, не править ядро темы. |
 | Wordfence + `wordfence-waf.php` | На новом VPS проверь, что WAF не ломает сайт; auto_prepend чистили скриптами раньше. |
 | `wp-fastest-cache` + Imagify | Норм; после деплоя очисти кэш. |
-| CF7 + WPForms | Дубль форм — оставь одну систему. |
 | Popup Maker + Essential Addons | Ок, но следи за весом страниц. |
 
 ## Контент / фичи под сайт
