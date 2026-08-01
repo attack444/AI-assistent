@@ -1,79 +1,78 @@
-#!/bin/bash
-# Ставит тёмную тему 5mb2-dark, кабинет, чинит гостевой чат (rebuild app).
-#   bash project/deploy/activate-5mb2-dark.sh
+#!/usr/bin/env bash
+# Активирует тему 5MB2 Dark на VPS.
+# Плагины Elementor отключайте вручную в админке ДО запуска (или с флагом --disable-builders).
+# Использование: bash project/deploy/activate-5mb2-dark.sh [--disable-builders]
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SITE_NAME="${SITE_NAME:-5mb2}"
-SITES_DIR="${SITES_DIR:-/var/ai-helper/sites}"
-ROOT="${SITES_DIR}/${SITE_NAME}"
-THEME_SRC="$SCRIPT_DIR/../sites/5mb2/wp-content/themes/5mb2-dark"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+SITE="${SITES_ROOT:-/var/ai-helper/sites}/5mb2"
+THEME_SRC="$ROOT/project/sites/5mb2/wp-content/themes/5mb2-dark"
+THEME_DST="$SITE/wp-content/themes/5mb2-dark"
+DISABLE_BUILDERS=0
+[[ "${1:-}" == "--disable-builders" ]] && DISABLE_BUILDERS=1
 
-echo "[>>] 1/4 тема → $ROOT"
-WP=""
-for cand in "$ROOT" "$ROOT/wordpress" "$ROOT/public_html"; do
-  [ -d "$cand/wp-content/themes" ] && WP="$cand" && break
-done
-[ -n "$WP" ] || WP=$(find "$ROOT" -maxdepth 3 -type d -path '*/wp-content/themes' 2>/dev/null | head -1 | xargs -r dirname | xargs -r dirname || true)
-[ -d "$WP/wp-content/themes" ] || { echo "[ERR] WP themes не найдены"; exit 1; }
+if [[ ! -d "$SITE" ]]; then
+  echo "Сайт не найден: $SITE"
+  exit 1
+fi
+if [[ ! -d "$THEME_SRC" ]]; then
+  echo "Тема не найдена в репо: $THEME_SRC"
+  exit 1
+fi
 
-mkdir -p "$WP/wp-content/themes/5mb2-dark"
-rsync -a --delete "$THEME_SRC/" "$WP/wp-content/themes/5mb2-dark/"
-chown -R www-data:www-data "$WP/wp-content/themes/5mb2-dark" 2>/dev/null || true
+echo "==> Синхронизация темы 5mb2-dark"
+mkdir -p "$THEME_DST"
+rsync -a --delete \
+  --exclude '.git' \
+  "$THEME_SRC/" "$THEME_DST/"
 
-# Activate via WP-CLI if present, else wp-config option update with php
-activate() {
-  if command -v wp >/dev/null 2>&1; then
-    wp theme activate 5mb2-dark --path="$WP" --allow-root
-    wp rewrite flush --path="$WP" --allow-root || true
-    return
-  fi
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q php; then
-    docker exec ai-helper-php bash -lc "command -v wp >/dev/null && wp theme activate 5mb2-dark --path=/var/ai-helper/sites/${SITE_NAME} --allow-root" 2>/dev/null || true
-  fi
-  # Fallback: set stylesheet/template in DB via mysql if credentials exist
-  ENV="$SCRIPT_DIR/../.env"
-  if [ -f "$ENV" ]; then
-    # shellcheck disable=SC1090
-    set +u
-    DB_NAME=$(grep -E '^MYSQL_DATABASE=' "$ENV" | tail -1 | cut -d= -f2- | tr -d '"' || true)
-    DB_USER=$(grep -E '^MYSQL_USER=' "$ENV" | tail -1 | cut -d= -f2- | tr -d '"' || true)
-    DB_PASS=$(grep -E '^MYSQL_PASSWORD=' "$ENV" | tail -1 | cut -d= -f2- | tr -d '"' || true)
-    set -u
-    if [ -n "${DB_NAME:-}" ] && command -v mysql >/dev/null 2>&1; then
-      PREFIX=$(docker exec ai-helper-mysql mysql -N -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT option_value FROM wp0w_options WHERE option_name='template' LIMIT 1;" 2>/dev/null || echo "")
-      # try common prefixes
-      for pref in wp0w_ wp_; do
-        docker exec ai-helper-mysql mysql -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" -e \
-          "UPDATE ${pref}options SET option_value='5mb2-dark' WHERE option_name IN ('template','stylesheet');" 2>/dev/null && break || true
-      done
-    fi
-  fi
+echo "==> Права"
+chown -R www-data:www-data "$THEME_DST" 2>/dev/null || true
+find "$THEME_DST" -type d -exec chmod 755 {} \;
+find "$THEME_DST" -type f -exec chmod 644 {} \;
+
+if [[ "$DISABLE_BUILDERS" -eq 1 ]]; then
+  echo "==> Отключение Elementor/EAEL через опции WP"
+  php -r "
+  define('ABSPATH', '$SITE/');
+  define('WPINC', 'wp-includes');
+  require '$SITE/wp-load.php';
+  \$drop = [
+    'elementor/elementor.php',
+    'essential-addons-for-elementor-lite/essential_adons_elementor.php',
+    'essential-addons-for-elementor-lite/essential_addons_elementor.php',
+  ];
+  \$active = get_option('active_plugins', []);
+  if (!is_array(\$active)) { \$active = []; }
+  \$active = array_values(array_filter(\$active, function (\$p) use (\$drop) {
+    return !in_array(\$p, \$drop, true);
+  }));
+  update_option('active_plugins', \$active);
+  echo 'builders off' . PHP_EOL;
+  " 2>/dev/null || echo "(пропуск — отключите плагины вручную в админке)"
+fi
+
+echo "==> Активация темы + главная «последние записи»"
+php -r "
+define('ABSPATH', '$SITE/');
+define('WPINC', 'wp-includes');
+require '$SITE/wp-load.php';
+switch_theme('5mb2-dark');
+update_option('show_on_front', 'posts');
+delete_option('page_on_front');
+delete_option('elementor_active_kit');
+echo 'theme=' . get_stylesheet() . PHP_EOL;
+echo 'show_on_front=' . get_option('show_on_front') . PHP_EOL;
+" 2>/dev/null || {
+  echo "PHP/wp-load не сработал. Активируйте тему вручную:"
+  echo "  Внешний вид → Темы → 5MB2 Dark → Активировать"
+  echo "  Настройки → Чтение → На главной: последние записи"
 }
-activate || true
 
-echo "[>>] 2/5 убрать Elementor / Astra (одна оболочка — тема)"
-bash "$SCRIPT_DIR/purge-elementor-5mb2.sh" || true
+# Очистка кэша Wordfence / object cache если есть
+rm -f "$SITE/wp-content/cache/"* 2>/dev/null || true
+rm -rf "$SITE/wp-content/cache/wp-rocket" 2>/dev/null || true
 
-echo "[>>] 3/5 виджет + nginx"
-bash "$SCRIPT_DIR/install-5mb2-widget.sh" || true
-
-echo "[>>] 4/5 PUBLIC_WIDGET_GUEST + rebuild API"
-ENVF="$SCRIPT_DIR/../.env"
-touch "$ENVF"
-grep -q '^PUBLIC_WIDGET_GUEST=' "$ENVF" 2>/dev/null || echo 'PUBLIC_WIDGET_GUEST=1' >> "$ENVF"
-sed -i 's/^PUBLIC_WIDGET_GUEST=.*/PUBLIC_WIDGET_GUEST=1/' "$ENVF" 2>/dev/null || true
-cd "$SCRIPT_DIR"
-docker compose -f docker-compose.prod.yml build app
-docker compose -f docker-compose.prod.yml up -d --force-recreate app
-
-echo "[>>] 5/5 кэш"
-rm -rf "$WP/wp-content/cache/"* 2>/dev/null || true
-
-echo "============================================"
-echo "  Одна оболочка: тема 5mb2-dark (без Elementor)"
-echo "  Кабинет: http://5mb2.ru/cabinet/"
-echo "  Гостевой чат: /api/status → widget_guest:true, version 2.9.0"
-echo "  Ctrl+F5 на http://5mb2.ru/"
-echo "============================================"
+echo ""
+echo "Готово. Откройте http://5mb2.ru/ (не https) и Ctrl+F5."
+echo "Админка: http://5mb2.ru/wp-admin/"

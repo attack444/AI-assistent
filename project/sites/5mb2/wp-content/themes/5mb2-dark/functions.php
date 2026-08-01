@@ -1,12 +1,12 @@
 <?php
 /**
- * 5MB2 Dark — SEO agency theme (NVIDIA-inspired).
+ * 5MB2 Dark — SEO theme. Минимально вмешивается в ядро WP / админку.
  */
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.1.0');
+define('MB2_THEME_VER', '1.2.0');
 
 add_action('after_setup_theme', function () {
     add_theme_support('title-tag');
@@ -16,13 +16,16 @@ add_action('after_setup_theme', function () {
         'primary' => 'Главное меню',
         'footer'  => 'Подвал',
     ]);
-    // Одна оболочка: без кастомайзера Elementor / block template parts конфликтов
-    remove_theme_support('block-templates');
 });
 
+/** Только фронт — стили/скрипты темы */
 add_action('wp_enqueue_scripts', function () {
+    if (is_admin()) {
+        return;
+    }
     $uri = get_template_directory_uri();
     $dir = get_template_directory();
+
     wp_enqueue_style(
         'mb2-fonts',
         'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&display=swap',
@@ -38,46 +41,23 @@ add_action('wp_enqueue_scripts', function () {
         $cjs = $dir . '/assets/js/cabinet.js';
         wp_enqueue_script('mb2-cabinet', $uri . '/assets/js/cabinet.js', ['mb2-main'], file_exists($cjs) ? (string) filemtime($cjs) : MB2_THEME_VER, true);
     }
-}, 5);
 
-/** Выкинуть CSS/JS Elementor / Astra, если плагин ещё не удалили */
-add_action('wp_enqueue_scripts', function () {
-    $styles = [
-        'elementor-frontend', 'elementor-frontend-legacy', 'elementor-icons',
-        'elementor-post-5', 'elementor-global', 'elementor-common',
-        'eael-general', 'essential-addons-elementor', 'astra-theme-css',
-        'astra-addon-css', 'wp-block-library', 'classic-theme-styles', 'global-styles',
-    ];
-    foreach ($styles as $h) {
-        wp_dequeue_style($h);
-        wp_deregister_style($h);
-    }
-    $scripts = [
-        'elementor-frontend', 'elementor-webpack-runtime', 'elementor-common',
-        'eael-general', 'astra-theme-js',
-    ];
-    foreach ($scripts as $h) {
-        wp_dequeue_script($h);
-        wp_deregister_script($h);
-    }
-}, 100);
+    wp_localize_script('mb2-main', 'MB2', [
+        'ajax'  => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('mb2_auth'),
+        'home'  => home_url('/'),
+        'user'  => is_user_logged_in() ? [
+            'name'  => wp_get_current_user()->display_name,
+            'email' => wp_get_current_user()->user_email,
+        ] : null,
+    ]);
+});
 
-add_action('wp_print_styles', function () {
-    global $wp_styles;
-    if (!$wp_styles) {
-        return;
-    }
-    foreach ($wp_styles->queue as $handle) {
-        if (stripos($handle, 'elementor') !== false || stripos($handle, 'eael') !== false || stripos($handle, 'astra') !== false) {
-            wp_dequeue_style($handle);
-        }
-    }
-}, 100);
-
-/** Create cabinet page once + чистая главная = front-page.php темы */
+/** При активации темы — кабинет и главная через front-page.php */
 add_action('after_switch_theme', function () {
     update_option('show_on_front', 'posts');
     delete_option('page_on_front');
+
     if (!get_page_by_path('cabinet')) {
         $id = wp_insert_post([
             'post_title'   => 'Личный кабинет',
@@ -90,29 +70,8 @@ add_action('after_switch_theme', function () {
             update_post_meta($id, '_wp_page_template', 'templates/cabinet.php');
         }
     }
-    if (!get_page_by_path('uslugi')) {
-        wp_insert_post([
-            'post_title'  => 'Услуги',
-            'post_name'   => 'uslugi',
-            'post_status' => 'publish',
-            'post_type'   => 'page',
-        ]);
-    }
-    if (!get_page_by_path('kejsy')) {
-        wp_insert_post([
-            'post_title'  => 'Кейсы',
-            'post_name'   => 'kejsy',
-            'post_status' => 'publish',
-            'post_type'   => 'page',
-        ]);
-    }
-    // Front page = home blog? Prefer static front if none
-    if (!get_option('page_on_front')) {
-        // keep whatever is set; front-page.php still applies when blog is front
-    }
 });
 
-/** AJAX: client register / login (subscribers) */
 add_action('wp_ajax_nopriv_mb2_register', 'mb2_ajax_register');
 add_action('wp_ajax_nopriv_mb2_login', 'mb2_ajax_login');
 add_action('wp_ajax_mb2_logout', 'mb2_ajax_logout');
@@ -154,7 +113,7 @@ function mb2_ajax_login() {
         'user_login'    => $email,
         'user_password' => $pass,
         'remember'      => true,
-    ], is_ssl());
+    ], false);
     if (is_wp_error($user)) {
         wp_send_json_error(['message' => 'Неверный email или пароль'], 401);
     }
@@ -176,22 +135,15 @@ function mb2_ajax_save_site() {
     wp_send_json_success(['ok' => true]);
 }
 
-add_action('wp_enqueue_scripts', function () {
-    wp_localize_script('mb2-main', 'MB2', [
-        'ajax'  => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('mb2_auth'),
-        'home'  => home_url('/'),
-        'user'  => is_user_logged_in() ? [
-            'name'  => wp_get_current_user()->display_name,
-            'email' => wp_get_current_user()->user_email,
-        ] : null,
-    ]);
-}, 20);
-
-/** Soften widget for dark site */
-add_filter('ai_helper_chat_title', fn () => '5MB2 · помощник');
-add_filter('ai_helper_chat_greeting', fn () => 'Здравствуйте! Отвечу про SEO и услуги 5MB2 — без регистрации.');
-add_filter('ai_helper_chat_chips', fn () => ['Что входит в SEO?', 'Сроки роста', 'Стоимость', 'Оставить заявку']);
+add_filter('ai_helper_chat_title', function () {
+    return '5MB2 · помощник';
+});
+add_filter('ai_helper_chat_greeting', function () {
+    return 'Здравствуйте! Отвечу про SEO и услуги 5MB2 — без регистрации.';
+});
+add_filter('ai_helper_chat_chips', function () {
+    return ['Что входит в SEO?', 'Сроки роста', 'Стоимость', 'Оставить заявку'];
+});
 
 function mb2_nav_fallback() {
     echo '<ul class="nav-list">';
