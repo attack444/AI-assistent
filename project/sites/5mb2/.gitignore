@@ -1,11 +1,24 @@
 # Не коммитим секреты и мусор WordPress
 wp-config.php
+wp-config.php.*
 wp-config-*.php
+*.bak
 *.sql
 *.sql.gz
 *.zip
 
-# Медиа и кэш — обычно огромные, для ревью кода не нужны
+# Логи / хостинг-мусор
+logs/
+tmp/
+mail.log
+*.log
+softaculous_backups/
+.softaculous/
+php-bin/
+php-bin-*/
+index.html_
+
+# Медиа и кэш
 wp-content/uploads/
 wp-content/cache/
 wp-content/upgrade/
@@ -15,7 +28,5 @@ wp-content/wflogs/
 wp-content/debug.log
 error_log
 
-# Зависимости/сборки тем (если есть)
 **/node_modules/
-**/vendor/
 **/.sass-cache/
