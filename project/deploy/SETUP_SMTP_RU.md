@@ -73,4 +73,20 @@ bash project/deploy/setup-smtp-5mb2.sh
 - Форма на сайте → письмо админу + запись в **Заявки 5MB2**  
 - «Забыли пароль» на `/wp-login.php` → письмо приходит  
 
-Если тест не уходит: пароль приложения (не обычный), порт **587 / TLS**, From = тот же ящик, что User.
+## Если тест падает
+
+На VPS:
+```bash
+bash project/deploy/diagnose-smtp-5mb2.sh
+```
+
+Частые причины:
+
+| Симптом | Что сделать |
+|---|---|
+| Could not connect / Connection timed out | Хостинг режет порт → в плагине **SSL + 465** вместо TLS/587 |
+| Authentication failed / 535 | Пароль **приложения** Яндекса, не обычный |
+| From address rejected | From Email = тот же, что Username |
+| FAIL из Docker php | Исходящие 465/587 с контейнера — см. вывод diagnose |
+
+Текст ошибки: WP Mail SMTP → **Email Test** (или Tools) — скопируй целиком.
