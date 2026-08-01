@@ -95,15 +95,15 @@ $services = mb2_services_catalog();
 <section class="section" id="cases">
   <div class="wrap">
     <header class="section-head reveal">
-      <h2>Результаты</h2>
-      <p>Ориентиры. Реальные работы — в разделе <a class="text-link" href="<?php echo esc_url(home_url('/kejsy/')); ?>">Проекты</a>.</p>
+      <h2>Почему 5MB2</h2>
+      <p>Честный старт: метод, кабинет и разборы — без накрученных «+400%». Смотрите <a class="text-link" href="<?php echo esc_url(home_url('/kejsy/')); ?>">проекты</a>.</p>
     </header>
     <div class="stats">
-      <div class="stat reveal"><strong data-count="180">0</strong><span>% средний рост органики*</span></div>
-      <div class="stat reveal"><strong data-count="90">0</strong><span>дней до первых сдвигов</span></div>
-      <div class="stat reveal"><strong data-count="24">0</strong><span>проекта в работе / год</span></div>
+      <div class="stat reveal"><strong>90</strong><span>дней — план на старте</span></div>
+      <div class="stat reveal"><strong>1</strong><span>кабинет с чеклистом работ</span></div>
+      <div class="stat reveal"><strong>НПД</strong><span>самозанятый, оферта на сайте</span></div>
     </div>
-    <p class="muted tiny reveal" style="margin-top:20px">*Ориентир по проектам с выполненными рекомендациями.</p>
+    <p class="muted tiny reveal" style="margin-top:20px">Первые сдвиги в поиске обычно через 1–3 месяца при регулярной работе — без гарантии «топ любой ценой».</p>
   </div>
 </section>
 

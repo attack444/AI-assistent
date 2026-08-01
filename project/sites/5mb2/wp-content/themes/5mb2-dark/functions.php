@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.6.0');
+define('MB2_THEME_VER', '1.7.0');
 
 require get_template_directory() . '/inc/services.php';
 require get_template_directory() . '/inc/legal.php';

@@ -1,6 +1,6 @@
 <?php
 /**
- * Реальные проекты (не демо-кейсы) — контент из старой страницы /cases/.
+ * Проекты и разборы: реальные + учебные (явно помечены) + живой кейс 5mb2.
  */
 if (!defined('ABSPATH')) {
     exit;
@@ -8,7 +8,6 @@ if (!defined('ABSPATH')) {
 
 function mb2_vitra_project_html() {
     $u = content_url('uploads/2026/03');
-    // файлы на VPS: Снимок-экрана-221.png … 227.png
     $shots = [];
     foreach ([221, 222, 223, 224, 225, 226, 227] as $n) {
         $shots[] = $u . '/Снимок-экрана-' . $n . '.png';
@@ -55,14 +54,131 @@ function mb2_vitra_project_html() {
 <h2>Этап 9–11. Санкции, приоритеты, стратегия</h2>
 <p>Проверен риск скрытых санкций (в т.ч. переспам). Составлен приоритет внедрения доработок и стратегия дальнейшего продвижения.</p>
 
-<p><em>Это рабочий проект из портфолио 5MB2. Цифры и скриншоты — из реальной работы; детали по NDA с заказчиком не раскрываем.</em></p>
+<p><em>Рабочий проект из портфолио 5MB2. Цифры и скриншоты — из реальной работы; детали по NDA с заказчиком не раскрываем.</em></p>
 <p><a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Обсудить похожий проект</a></p>
     <?php
     return ob_get_clean();
 }
 
+function mb2_kchtz_razbor_html() {
+    ob_start();
+    ?>
+<p><span class="plan-badge">Учебный разбор</span></p>
+<p><strong>Сайт:</strong> kchtz.ru — крупное производственное предприятие на WordPress, сложная структура и много внутренних разделов.</p>
+<p><strong>Задача разбора:</strong> провести технический SEO-аудит и найти точки роста — без обещания «мы уже вывели в топ».</p>
+
+<h2>Проблемы на старте</h2>
+<ul>
+  <li>дубли страниц;</li>
+  <li>некорректные мета-теги;</li>
+  <li>частичная индексация;</li>
+  <li>слабая структура заголовков.</li>
+</ul>
+
+<h2>Что сделано в рамках разбора</h2>
+<ul>
+  <li>анализ структуры URL и навигации;</li>
+  <li>поиск дублей и проверка индексации (Search Console);</li>
+  <li>аудит мета-тегов и заголовков;</li>
+  <li>оценка скорости загрузки;</li>
+  <li>отчёт с приоритетными рекомендациями.</li>
+</ul>
+
+<h2>Инструменты</h2>
+<p>Screaming Frog, Google Search Console, PageSpeed Insights, Excel.</p>
+
+<p><em>Это учебный разбор метода работы, не коммерческий кейс с договором. Нужен такой аудит для вашего сайта — <a href="<?php echo esc_url(home_url('/services/seo-audit/')); ?>">SEO-аудит</a>.</em></p>
+    <?php
+    return ob_get_clean();
+}
+
+function mb2_texturra_razbor_html() {
+    ob_start();
+    ?>
+<p><span class="plan-badge">Учебный разбор</span></p>
+<p><strong>Сайт:</strong> texturra.ru — услуги, CTR-ориентированный сайт с CPC-трафиком.</p>
+<p><strong>Задача:</strong> комплексный SEO-аудит структуры и рекомендации по росту органики рядом с платным трафиком.</p>
+
+<h2>Проблемы</h2>
+<ul>
+  <li>URL с длинными параметрами;</li>
+  <li>слабая SEO-структура;</li>
+  <li>частичная индексация;</li>
+  <li>дубли контента;</li>
+  <li>неоптимальные мета-теги.</li>
+</ul>
+
+<h2>Что проверено</h2>
+<ul>
+  <li>структура категорий и посадочных;</li>
+  <li>мета-теги и конкуренты в нише;</li>
+  <li>robots.txt / sitemap.xml;</li>
+  <li>сформирован SEO-отчёт с точками роста (в т.ч. семантика).</li>
+</ul>
+
+<h2>Инструменты</h2>
+<p>Screaming Frog, Ahrefs, Google Search Console, Excel.</p>
+
+<p><em>Учебный разбор. Для коммерческого сопровождения — <a href="<?php echo esc_url(home_url('/services/prodvizhenie/')); ?>">SEO-продвижение</a> или заявка.</em></p>
+    <?php
+    return ob_get_clean();
+}
+
+function mb2_own_site_case_html() {
+    $report = content_url('uploads/2026/03/Отчёт-по-сайту-5mb2.ru_.pdf');
+    ob_start();
+    ?>
+<p><span class="plan-badge">Живой проект</span></p>
+<p><strong>Сайт:</strong> <a href="https://5mb2.ru/">5mb2.ru</a> — собственный продукт 5MB2 Digital. Показываем процесс на себе, пока копилка клиентских кейсов растёт.</p>
+
+<h2>Что уже сделано</h2>
+<ul>
+  <li>перенос на свой VPS, HTTPS, чистая тема без тяжёлого Elementor;</li>
+  <li>каталог услуг с рыночными ценами «от», оферта самозанятого;</li>
+  <li>личный кабинет с чеклистом SEO и заявками;</li>
+  <li>бесплатные <a href="<?php echo esc_url(home_url('/instrumenty/')); ?>">SEO-инструменты</a> как точка входа;</li>
+  <li>AI-виджет с ответами по услугам сайта;</li>
+  <li>технический отчёт по сайту (PDF) — база для следующих итераций.</li>
+</ul>
+
+<p><a class="btn btn-ghost" href="<?php echo esc_url($report); ?>" target="_blank" rel="noopener">Открыть отчёт по 5mb2.ru</a></p>
+
+<h2>Зачем это клиенту</h2>
+<p>Вы видите не чужие красивые цифры, а рабочую воронку: заявка → кабинет → прозрачный прогресс. Первый коммерческий кейс с вашим сайтом можем разобрать так же честно.</p>
+<p><a class="btn btn-primary" href="<?php echo esc_url(home_url('/#contact')); ?>">Стать следующим проектом</a></p>
+    <?php
+    return ob_get_clean();
+}
+
+function mb2_upsert_project_post($slug, $title, $excerpt, $content, $cat_id, $kind = 'client') {
+    $existing = get_posts([
+        'name'        => $slug,
+        'post_type'   => 'post',
+        'post_status' => 'any',
+        'numberposts' => 1,
+    ]);
+    $postarr = [
+        'post_title'   => $title,
+        'post_name'    => $slug,
+        'post_content' => $content,
+        'post_status'  => 'publish',
+        'post_type'    => 'post',
+        'post_excerpt' => $excerpt,
+    ];
+    if ($existing) {
+        $postarr['ID'] = $existing[0]->ID;
+        $id = wp_update_post($postarr);
+    } else {
+        $id = wp_insert_post($postarr);
+    }
+    if ($id && !is_wp_error($id) && $cat_id) {
+        wp_set_post_categories($id, [$cat_id]);
+        update_post_meta($id, '_mb2_project_kind', $kind);
+    }
+    return $id;
+}
+
 function mb2_ensure_real_projects() {
-    // Убрать демо-кейсы из сида 1.4
     foreach (['kejs-local-usluga', 'kejs-rost-organiki-magazina'] as $slug) {
         $found = get_posts([
             'name'        => $slug,
@@ -73,6 +189,23 @@ function mb2_ensure_real_projects() {
         if ($found) {
             wp_update_post(['ID' => $found[0]->ID, 'post_status' => 'draft']);
         }
+    }
+
+    // Старые RSS-посты (США / Bing) — в черновик: не бьют в позиционирование РФ
+    foreach ([3675, 1276] as $old_id) {
+        if (get_post($old_id)) {
+            wp_update_post(['ID' => $old_id, 'post_status' => 'draft']);
+        }
+    }
+    $rss_like = get_posts([
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => 20,
+        'category_name'  => 'uncategorized',
+        's'              => 'Bing',
+    ]);
+    foreach ($rss_like as $p) {
+        wp_update_post(['ID' => $p->ID, 'post_status' => 'draft']);
     }
 
     if (!term_exists('kejsy', 'category')) {
@@ -86,35 +219,42 @@ function mb2_ensure_real_projects() {
     $term = get_term_by('slug', 'kejsy', 'category');
     $cat_id = $term ? (int) $term->term_id : 0;
 
-    $slug = 'vitra-russia-masshtabirovanie-trafika';
-    $existing = get_posts([
-        'name'        => $slug,
-        'post_type'   => 'post',
-        'post_status' => 'any',
-        'numberposts' => 1,
-    ]);
+    mb2_upsert_project_post(
+        'vitra-russia-masshtabirovanie-trafika',
+        'VitrA Russia: масштабирование органического трафика',
+        'Семантика, техника, скорость, Local SEO и коммерческие факторы для имиджевого сайта производителя.',
+        mb2_vitra_project_html(),
+        $cat_id,
+        'client'
+    );
 
-    $content = mb2_vitra_project_html();
-    $postarr = [
-        'post_title'   => 'VitrA Russia: масштабирование органического трафика',
-        'post_name'    => $slug,
-        'post_content' => $content,
-        'post_status'  => 'publish',
-        'post_type'    => 'post',
-        'post_excerpt' => 'Семантика, техника, скорость, Local SEO и коммерческие факторы для имиджевого сайта производителя.',
-    ];
+    mb2_upsert_project_post(
+        'razbor-kchtz-tehnicheskij-audit',
+        'Разбор: технический SEO-аудит производственного сайта (KCHTZ)',
+        'Учебный разбор: дубли, мета, индексация, структура — метод аудита на примере WordPress-сайта завода.',
+        mb2_kchtz_razbor_html(),
+        $cat_id,
+        'edu'
+    );
 
-    if ($existing) {
-        $postarr['ID'] = $existing[0]->ID;
-        $id = wp_update_post($postarr);
-    } else {
-        $id = wp_insert_post($postarr);
-    }
-    if ($id && !is_wp_error($id) && $cat_id) {
-        wp_set_post_categories($id, [$cat_id]);
-    }
+    mb2_upsert_project_post(
+        'razbor-texturra-seo-struktura',
+        'Разбор: SEO-структура сервисного сайта (Texturra)',
+        'Учебный разбор: параметры URL, дубли, мета и точки роста рядом с CPC-трафиком.',
+        mb2_texturra_razbor_html(),
+        $cat_id,
+        'edu'
+    );
 
-    // Старая Elementor-страница /cases/ → редирект на /kejsy/
+    mb2_upsert_project_post(
+        'zhivoj-proekt-5mb2',
+        'Живой проект: запуск и SEO 5mb2.ru',
+        'Собственный сайт агентства: инфраструктура, кабинет, инструменты, отчёт — процесс на виду.',
+        mb2_own_site_case_html(),
+        $cat_id,
+        'own'
+    );
+
     $old = get_page_by_path('cases');
     if ($old) {
         update_post_meta($old->ID, '_mb2_redirect_to', home_url('/kejsy/'));
