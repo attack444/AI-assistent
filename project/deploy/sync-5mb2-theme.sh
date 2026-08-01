@@ -23,7 +23,7 @@ require '$SITE/wp-load.php';
 delete_option('mb2_structure_ver');
 if (function_exists('mb2_ensure_site_structure')) {
   mb2_ensure_site_structure();
-  update_option('mb2_structure_ver', defined('MB2_THEME_VER') ? MB2_THEME_VER : '1.4.0', false);
+  update_option('mb2_structure_ver', defined('MB2_THEME_VER') ? MB2_THEME_VER : '1.5.0', false);
   echo 'structure ok theme=' . get_stylesheet() . PHP_EOL;
   echo 'services=' . (get_page_by_path('services') ? 'yes' : 'no') . PHP_EOL;
 } else {
