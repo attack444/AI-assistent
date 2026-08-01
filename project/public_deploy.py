@@ -116,17 +116,12 @@ def _safe_member(name: str) -> bool:
     return ext in _ALLOWED_EXT
 
 
-def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
-    """Extract allowed static files only into root (replace contents)."""
-    if root.exists():
-        for child in root.iterdir():
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink(missing_ok=True)
-    else:
-        root.mkdir(parents=True, exist_ok=True)
+def _extract_zip_into(zip_path: Path, root: Path) -> Dict[str, Any]:
+    """Extract allowed static files into an empty/staging root. May raise on bad ZIP."""
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError("Нужен ZIP-архив (html/css/js…)")
 
+    root.mkdir(parents=True, exist_ok=True)
     kept = 0
     skipped = 0
     total_bytes = 0
@@ -187,6 +182,42 @@ def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
     return {"files_kept": kept, "files_skipped": skipped, "bytes": total_bytes}
 
 
+def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
+    """Extract allowed static files into root, replacing contents only after success.
+
+    Staging avoids wiping an existing live site when the ZIP is invalid or
+    exceeds limits (critical for redeploy).
+    """
+    root = root.resolve()
+    parent = root.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = parent / f".staging-{root.name}-{secrets.token_hex(8)}"
+    if staging.exists():
+        shutil.rmtree(staging)
+
+    try:
+        stats = _extract_zip_into(zip_path, staging)
+        # Swap staging into place only after a fully successful extract.
+        if root.exists():
+            backup = parent / f".backup-{root.name}-{secrets.token_hex(8)}"
+            root.rename(backup)
+            try:
+                staging.rename(root)
+            except Exception:
+                # Roll back so the previous site stays available.
+                if not root.exists() and backup.exists():
+                    backup.rename(root)
+                raise
+            shutil.rmtree(backup, ignore_errors=True)
+        else:
+            staging.rename(root)
+        return stats
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
 def create_deployment(
     zip_path: Path,
     ip: str = "",
@@ -240,6 +271,8 @@ def redeploy(name: str, token: str, zip_path: Path) -> Dict[str, Any]:
         raise PermissionError("Неверный token или срок истёк")
     if zip_path.stat().st_size > MAX_ZIP:
         raise ValueError(f"ZIP больше {MAX_ZIP // (1024*1024)} МБ")
+    if not zipfile.is_zipfile(zip_path):
+        raise ValueError("Нужен ZIP-архив (html/css/js…)")
     stats = extract_public_zip(zip_path, SITES_ROOT / name)
     meta = load_meta(name) or {}
     meta["updated_at"] = time.time()
