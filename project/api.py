@@ -592,8 +592,9 @@ class APIHandler(BaseHTTPRequestHandler):
         return settings, profile, memory, project_root
 
     def _authorized(self) -> bool:
+        # Fail-closed: без PANEL_PASSWORD панель недоступна (раньше был fail-open).
         if not _auth_enabled():
-            return True
+            return False
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             return False
@@ -604,8 +605,11 @@ class APIHandler(BaseHTTPRequestHandler):
     def _require_auth(self) -> bool:
         if self._authorized():
             return True
+        err = "Нужен вход"
+        if not _auth_enabled():
+            err = "PANEL_PASSWORD не задан — панель закрыта (fail-closed)"
         self._send(401, _json({
-            "error": "Нужен вход",
+            "error": err,
             "auth_required": True,
         }))
         return False
@@ -614,11 +618,10 @@ class APIHandler(BaseHTTPRequestHandler):
         body = self._read_body()
         password = str(body.get("password", ""))
         if not _auth_enabled():
-            self._send(200, _json({
-                "ok": True,
-                "auth_required": False,
-                "token": "",
-                "message": "Пароль панели не задан (PANEL_PASSWORD)",
+            self._send(503, _json({
+                "ok": False,
+                "auth_required": True,
+                "error": "PANEL_PASSWORD не задан — задай пароль в .env и перезапусти API",
             }))
             return
         if not password or not hmac.compare_digest(password, PANEL_PASSWORD):
@@ -679,7 +682,7 @@ class APIHandler(BaseHTTPRequestHandler):
             not in {"0", "false", "no", "off"},
         }
         # Paths / project names only for authenticated panel clients
-        if (not _auth_enabled()) or self._authorized():
+        if self._authorized():
             payload["projects"] = list(projects.keys())
             payload["allowed_roots"] = [str(r) for r in ALLOWED_ROOTS]
             payload["sites_root"] = str(SITES_ROOT)

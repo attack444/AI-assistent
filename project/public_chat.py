@@ -192,14 +192,38 @@ def stream_public_chat(
         yield {"type": "done", "content": ""}
 
 
+def _is_trusted_proxy(ip: str) -> bool:
+    """Trust proxy headers only from localhost / private peers (nginx→docker)."""
+    ip = (ip or "").strip().lower()
+    if ip in {"127.0.0.1", "::1", "localhost"}:
+        return True
+    if ip.startswith("10.") or ip.startswith("192.168."):
+        return True
+    if ip.startswith("172."):
+        try:
+            second = int(ip.split(".")[1])
+            return 16 <= second <= 31
+        except (ValueError, IndexError):
+            return False
+    return False
+
+
 def client_ip(handler) -> str:
-    # Prefer nginx X-Real-IP (set by trusted proxy). X-Forwarded-For is spoofable from clients.
-    xri = (handler.headers.get("X-Real-IP") or "").strip()
-    if xri:
-        return xri
-    xff = (handler.headers.get("X-Forwarded-For") or "").strip()
-    if xff:
-        # Last hop is usually the proxy-added value when clients cannot override chain end;
-        # still prefer first only as weak fallback behind simple reverse proxies.
-        return xff.split(",")[0].strip()
-    return handler.client_address[0] if handler.client_address else "unknown"
+    """
+    Client IP for rate limits.
+    X-Real-IP / X-Forwarded-For принимаем только если TCP-peer — доверенный прокси.
+    Прямой доступ к :8502 с публичного IP не может подделать заголовок.
+    """
+    peer = ""
+    try:
+        peer = (handler.client_address[0] if handler.client_address else "") or ""
+    except Exception:
+        peer = ""
+    if _is_trusted_proxy(peer):
+        xri = (handler.headers.get("X-Real-IP") or "").strip()
+        if xri:
+            return xri.split(",")[0].strip()
+        xff = (handler.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip()
+    return peer or "unknown"
