@@ -64,6 +64,9 @@ services:
     build:
       context: ../web
       dockerfile: Dockerfile
+      args:
+        # basePath нужен на этапе npm run build
+        PANEL_BASE_PATH: ${PANEL_BASE_PATH:-/console}
     container_name: ai-helper-web
     restart: unless-stopped
     ports:
@@ -72,7 +75,7 @@ services:
       - API_INTERNAL_URL=http://app:8502
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      # Пусто = панель на /. /console = HTTPS на https://neobrain.site/console без DNS subdomain
+      # Пусто = панель на /. /console = HTTPS на https://neobrain.site/console/ без DNS subdomain
       - PANEL_BASE_PATH=${PANEL_BASE_PATH:-/console}
     depends_on:
       - app

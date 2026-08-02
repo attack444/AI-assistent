@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import subprocess
 import urllib.error
 import urllib.request
@@ -63,6 +64,15 @@ def _save_state(patch: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
+def _ssl_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    # мониторинг не должен падать из‑за промежуточных CA на агенте
+    if os.environ.get("SEO_SSL_INSECURE", "1") == "1":
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def _http_get(url: str, timeout: float = 12.0) -> Tuple[int, str, Dict[str, str]]:
     req = urllib.request.Request(
         url,
@@ -70,7 +80,7 @@ def _http_get(url: str, timeout: float = 12.0) -> Tuple[int, str, Dict[str, str]
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
             body = resp.read(400_000).decode("utf-8", errors="replace")
             headers = {k.lower(): v for k, v in resp.headers.items()}
             return int(resp.status), body, headers
@@ -317,6 +327,87 @@ def workflow_checklist(settings: Optional[Dict[str, Any]] = None) -> List[Dict[s
     return items
 
 
+def _http_get_no_redirect(url: str, timeout: float = 12.0) -> Tuple[int, str, Dict[str, str]]:
+    class _NoRedir(urllib.request.HTTPErrorProcessor):
+        def http_response(self, request, response):  # type: ignore[no-untyped-def]
+            return response
+
+        https_response = http_response
+
+    opener = urllib.request.build_opener(_NoRedir, urllib.request.HTTPSHandler(context=_ssl_context()))
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "NeoBrain-SEO-Bot/1.0 (+https://neobrain.site/)"},
+        method="GET",
+    )
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            body = resp.read(200_000).decode("utf-8", errors="replace")
+            headers = {k.lower(): v for k, v in resp.headers.items()}
+            headers["x-final-url"] = getattr(resp, "url", url) or url
+            return int(resp.status), body, headers
+    except urllib.error.HTTPError as exc:
+        headers = {k.lower(): v for k, v in (exc.headers.items() if exc.headers else [])}
+        try:
+            body = exc.read(80_000).decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        return int(exc.code), body, headers
+    except Exception as exc:
+        return 0, "", {"error": str(exc)[:200]}
+
+
+def probe_panel_console(url: str = "https://neobrain.site/console/") -> Dict[str, Any]:
+    """Ловит редирект-петлю /console ↔ /console/ и 404 без basePath."""
+    from urllib.parse import urljoin
+
+    seen: List[str] = []
+    current = url
+    status = 0
+    body = ""
+    meta: Dict[str, str] = {}
+    for _ in range(8):
+        if current in seen:
+            return {
+                "ok": False,
+                "url": url,
+                "status": status,
+                "error": "redirect_loop",
+                "chain": seen + [current],
+                "detail": "Петля /console — на VPS: sudo bash fix-panel-console.sh",
+            }
+        seen.append(current)
+        status, body, meta = _http_get_no_redirect(current)
+        if status in (301, 302, 303, 307, 308):
+            loc = meta.get("location") or ""
+            if not loc:
+                break
+            current = urljoin(current, loc)
+            continue
+        if status == 200:
+            title = _title_of(body)
+            ok = bool(title) and (
+                "neobrain" in title.lower() or "панель" in title.lower()
+            )
+            return {
+                "ok": ok,
+                "url": current,
+                "status": status,
+                "title": title,
+                "detail": title or f"HTTP {status}",
+                "chain": seen,
+            }
+        break
+    return {
+        "ok": False,
+        "url": url,
+        "status": status,
+        "error": meta.get("error") or f"HTTP {status}",
+        "detail": (meta.get("error") or f"HTTP {status}") + " — нужен fix-panel-console.sh",
+        "chain": seen,
+    }
+
+
 def build_report() -> Dict[str, Any]:
     try:
         import owner_settings as osset
@@ -326,6 +417,7 @@ def build_report() -> Dict[str, Any]:
         settings = {}
 
     sites = [probe_site(s) for s in DEFAULT_SITES]
+    panel = probe_panel_console()
     checklist = workflow_checklist(settings)
 
     # auto-mark DNS / vhost from probes
@@ -342,15 +434,17 @@ def build_report() -> Dict[str, Any]:
             https = next((c for c in neo.get("checks") or [] if c["id"] == "https_home"), None)
             item["done"] = bool(https and https.get("ok") and title_ok and title_ok.get("ok"))
         if item["id"] == "panel_console":
-            neo_https = next((c for c in neo.get("checks") or [] if c["id"] == "https_home"), None)
-            item["done"] = bool(neo_https and neo_https.get("ok"))
+            item["done"] = bool(panel.get("ok"))
 
     open_items = [i for i in checklist if not i.get("done")]
     state = _load_state()
     return {
-        "ok": all(s.get("ok") for s in sites) and len([i for i in open_items if i["priority"] == 1]) == 0,
+        "ok": all(s.get("ok") for s in sites)
+        and bool(panel.get("ok"))
+        and len([i for i in open_items if i["priority"] == 1]) == 0,
         "at": _now(),
         "sites": sites,
+        "panel": panel,
         "checklist": checklist,
         "open_count": len(open_items),
         "state": {

@@ -141,6 +141,13 @@ export default function SeoPage() {
             </span>
           ) : null}
         </div>
+        {report?.panel ? (
+          <p className="muted" style={{ marginTop: 10, fontSize: "0.9rem" }}>
+            Панель /console/:{" "}
+            <Pill ok={!!report.panel.ok} label={report.panel.ok ? "OK" : "сломана"} />{" "}
+            {report.panel.detail}
+          </p>
+        ) : null}
       </div>
 
       <h2 style={{ fontSize: "1.1rem", margin: "0 0 10px" }}>Что сделать дальше (по порядку)</h2>

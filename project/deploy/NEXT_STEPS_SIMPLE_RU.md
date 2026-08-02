@@ -41,6 +41,8 @@ docker compose -f docker-compose.prod.yml build app web
 docker compose -f docker-compose.prod.yml up -d --force-recreate app web
 
 CERTBOT_EMAIL=твой@mail.ru sudo bash /opt/ai-helper/project/deploy/fix-neobrain-vhost.sh
+# обязательно: пересборка панели с /console (иначе петля редиректов)
+sudo bash /opt/ai-helper/project/deploy/fix-panel-console.sh
 sudo bash /opt/ai-helper/project/deploy/install-system-watchdog.sh
 sudo bash /opt/ai-helper/project/deploy/install-backup-cron.sh
 sudo bash /opt/ai-helper/project/deploy/install-seo-cron.sh
@@ -48,8 +50,11 @@ sudo bash /opt/ai-helper/project/deploy/install-seo-cron.sh
 
 ### Шаг 3 — Проверка глазами
 - `https://neobrain.site/` — сайт **NeoBrain**, не 5MB2  
-- `https://neobrain.site/console/` — твоя панель  
+- `https://neobrain.site/console/` — твоя панель (должна открыться, не «вечная загрузка»)  
 - `https://5mb2.ru/` — сайт агентства (после Шага 1)
+
+Если панель крутит редирект: на VPS только  
+`sudo bash /opt/ai-helper/project/deploy/fix-panel-console.sh`
 
 ### Шаг 4 — Панель → Настройки
 Впиши (что есть под рукой):

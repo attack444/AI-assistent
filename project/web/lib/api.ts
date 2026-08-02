@@ -304,6 +304,15 @@ export type SeoReport = {
   ok: boolean;
   at?: string;
   sites?: SeoSiteReport[];
+  panel?: {
+    ok?: boolean;
+    url?: string;
+    status?: number;
+    title?: string;
+    detail?: string;
+    error?: string;
+    chain?: string[];
+  };
   checklist?: SeoChecklistItem[];
   open_count?: number;
   state?: { last_news_run?: string; last_news_dry_run?: boolean };

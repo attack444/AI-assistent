@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Чинит ситуацию, когда https://neobrain.site отдаёт 5MB2 / чужой сертификат.
-# Пишет отдельные nginx vhost для NeoBrain (сайт ai) и выпускает SSL.
+# Чинит NeoBrain vhost: отдельный SSL + панель на /console/
 #
 #   sudo bash /opt/ai-helper/project/deploy/fix-neobrain-vhost.sh
+#   SKIP_CERTBOT=1 sudo bash ...   # только nginx
 set -euo pipefail
 
 DOMAIN="${NEOBRAIN_DOMAIN:-neobrain.site}"
@@ -13,22 +13,93 @@ WEBROOT="${SITES_DIR}/${SITE_NAME}"
 EMAIL="${CERTBOT_EMAIL:-admin@${DOMAIN}}"
 CONF="/etc/nginx/sites-available/neobrain-site.conf"
 PANEL_CONF="/etc/nginx/sites-available/neobrain-panel.conf"
+CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+SKIP_CERTBOT="${SKIP_CERTBOT:-0}"
+TMP_PANEL=$(mktemp)
+
+cleanup() { rm -f "$TMP_PANEL"; }
+trap cleanup EXIT
 
 [ "$(id -u)" -eq 0 ] || { echo "[ERR] Нужен root: sudo bash $0"; exit 1; }
 [ -d "$WEBROOT" ] || { echo "[ERR] Нет $WEBROOT — сначала: bash create-ai-site.sh"; exit 1; }
 
 echo "$DOMAIN" > "$WEBROOT/.ai-helper-domain"
-
-# Убрать старый catch-all конфликт: ai-helper-ai на чужом SSL не используем как default
 rm -f /etc/nginx/sites-enabled/ai-helper-ai.conf 2>/dev/null || true
 
-cat > "$CONF" <<EOF
-# NeoBrain public site → ${DOMAIN}
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
+PANEL_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:3000/console/ || true)
+ROOT_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:3000/overview || true)
+if [ "$PANEL_CODE" = "200" ]; then
+  PANEL_MODE="basepath"
+  echo "[OK] Next basePath=/console"
+elif [ "$ROOT_CODE" = "200" ]; then
+  PANEL_MODE="strip"
+  echo "[!!] Next без basePath — strip-режим (потом fix-panel-console.sh)"
+else
+  PANEL_MODE="basepath"
+  echo "[!!] Next молчит — пишем basepath nginx"
+fi
 
+HAS_CERT=0
+if [ -f "${CERT_DIR}/fullchain.pem" ] && [ -f "${CERT_DIR}/privkey.pem" ]; then
+  HAS_CERT=1
+fi
+
+if [ "$PANEL_MODE" = "basepath" ]; then
+  cat > "$TMP_PANEL" <<'LOC'
+    location = /console {
+        return 302 /console/;
+    }
+    location /console/ {
+        proxy_pass         http://127.0.0.1:3000/console/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_read_timeout 600s;
+    }
+LOC
+else
+  cat > "$TMP_PANEL" <<'LOC'
+    location = /console {
+        return 302 /console/;
+    }
+    location /console/ {
+        proxy_pass         http://127.0.0.1:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_read_timeout 600s;
+    }
+    location /_next/ {
+        proxy_pass         http://127.0.0.1:3000/_next/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_read_timeout 600s;
+    }
+    location ~ ^/(login|overview|settings|seo|health|feedback|sites|files|chat)(/|$) {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_read_timeout 600s;
+    }
+LOC
+fi
+
+emit_inner() {
+  cat <<EOF
+    server_name ${DOMAIN} www.${DOMAIN};
     root ${WEBROOT};
     index index.html index.htm;
     client_max_body_size 200M;
@@ -46,41 +117,59 @@ server {
         chunked_transfer_encoding on;
     }
 
-    # HTTPS панели БЕЗ отдельного DNS — путь на том же домене
-    location /console/ {
-        proxy_pass         http://127.0.0.1:3000/console/;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              \$host;
-        proxy_set_header   X-Real-IP         \$remote_addr;
-        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto \$scheme;
-        proxy_set_header   Upgrade           \$http_upgrade;
-        proxy_set_header   Connection        "upgrade";
-        proxy_read_timeout 600s;
-    }
-    location = /console {
-        return 302 /console/;
-    }
+EOF
+  cat "$TMP_PANEL"
+  cat <<EOF
 
     location / {
         try_files \$uri \$uri/ /index.html;
     }
+EOF
+}
+
+{
+  echo "# NeoBrain → ${DOMAIN} (panel mode=${PANEL_MODE})"
+  if [ "$HAS_CERT" -eq 1 ]; then
+    cat <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN};
+    return 301 https://\$host\$request_uri;
+}
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+EOF
+    emit_inner
+    cat <<EOF
+    ssl_certificate     ${CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${CERT_DIR}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 }
 EOF
+  else
+    cat <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+EOF
+    emit_inner
+    echo "}"
+  fi
+} > "$CONF"
+
 ln -sf "$CONF" /etc/nginx/sites-enabled/neobrain-site.conf
 
-# Опциональный поддомен panel.* — только если DNS есть
 PANEL_A=$(dig +short @8.8.8.8 "$PANEL_DOMAIN" A 2>/dev/null | head -1 || true)
 if [ -n "$PANEL_A" ]; then
-cat > "$PANEL_CONF" <<EOF
-# NeoBrain panel → ${PANEL_DOMAIN}
+  cat > "$PANEL_CONF" <<EOF
 server {
     listen 80;
     listen [::]:80;
     server_name ${PANEL_DOMAIN};
-
     client_max_body_size 200M;
-
     location /api/ {
         proxy_pass         http://127.0.0.1:8502/;
         proxy_http_version 1.1;
@@ -88,11 +177,9 @@ server {
         proxy_set_header   X-Real-IP         \$remote_addr;
         proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto \$scheme;
-        proxy_set_header   Connection        "";
         proxy_read_timeout 600s;
         proxy_buffering    off;
     }
-
     location / {
         proxy_pass         http://127.0.0.1:3000/;
         proxy_http_version 1.1;
@@ -106,42 +193,48 @@ server {
     }
 }
 EOF
-ln -sf "$PANEL_CONF" /etc/nginx/sites-enabled/neobrain-panel.conf
+  ln -sf "$PANEL_CONF" /etc/nginx/sites-enabled/neobrain-panel.conf
 else
-  echo "[INFO] Поддомен ${PANEL_DOMAIN} не нужен: панель на https://${DOMAIN}/console/"
+  echo "[INFO] panel.* DNS нет — панель на /console/"
   rm -f /etc/nginx/sites-enabled/neobrain-panel.conf 2>/dev/null || true
 fi
 
+for f in /etc/nginx/sites-enabled/*; do
+  [ -e "$f" ] || continue
+  base=$(basename "$f")
+  case "$base" in
+    neobrain-site.conf|neobrain-panel.conf) continue ;;
+  esac
+  if grep -qE "server_name[[:space:]]+.*${DOMAIN}" "$f" 2>/dev/null; then
+    echo "[!!] конфликт server_name ${DOMAIN} в $f — отключаю"
+    rm -f "$f"
+  fi
+done
+
 nginx -t
 systemctl reload nginx
-echo "[OK] HTTP: http://${DOMAIN}/  (должен быть NeoBrain, не 5MB2)"
+echo "[OK] nginx reload (cert=$HAS_CERT mode=$PANEL_MODE)"
 
-if ! command -v certbot &>/dev/null; then
-  apt-get update -q
-  apt-get install -y -q certbot python3-certbot-nginx
-fi
-
-echo "==> SSL ${DOMAIN}"
-certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos \
-  --email "$EMAIL" --redirect \
-  || certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --agree-tos --email "$EMAIL" --redirect
-
-if [ -n "${PANEL_A:-}" ]; then
-  echo "==> SSL ${PANEL_DOMAIN}"
-  certbot --nginx -d "$PANEL_DOMAIN" --non-interactive --agree-tos \
+if [ "$SKIP_CERTBOT" != "1" ] && [ "$HAS_CERT" -eq 0 ]; then
+  if ! command -v certbot &>/dev/null; then
+    apt-get update -q
+    apt-get install -y -q certbot python3-certbot-nginx
+  fi
+  echo "==> SSL ${DOMAIN}"
+  certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos \
     --email "$EMAIL" --redirect \
-    || certbot --nginx -d "$PANEL_DOMAIN" --agree-tos --email "$EMAIL" --redirect
+    || certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" -d "www.$DOMAIN" \
+         --non-interactive --agree-tos --email "$EMAIL"
+  SKIP_CERTBOT=1 bash "$0"
+  exit 0
 fi
-
-nginx -t
-systemctl reload nginx
 
 echo ""
 echo "============================================"
 echo "  Сайт:   https://${DOMAIN}/"
-echo "  Панель: https://${DOMAIN}/console/   ← без отдельного DNS"
-echo "  Сертификат должен быть CN=${DOMAIN} (не 5mb2.ru)"
+echo "  Панель: https://${DOMAIN}/console/   (${PANEL_MODE})"
 echo "============================================"
-echo "Проверка:"
-echo "  curl -sk https://${DOMAIN}/ | grep -o NeoBrain | head -1"
-echo "  echo | openssl s_client -connect ${DOMAIN}:443 -servername ${DOMAIN} 2>/dev/null | openssl x509 -noout -subject"
+if [ "$PANEL_MODE" = "strip" ]; then
+  echo "[NEXT] sudo bash $(dirname "$0")/fix-panel-console.sh"
+fi
+echo "  curl -skI https://${DOMAIN}/console/ | head -n 8"

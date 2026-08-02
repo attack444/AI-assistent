@@ -65,6 +65,25 @@ class SeoWorkflowTests(unittest.TestCase):
         self.assertIn("/system/seo", api)
         self.assertIn("/system/seo/news-drafts", api)
 
+    def test_probe_panel_detects_loop(self):
+        calls = {"n": 0}
+
+        def fake(url, timeout=12.0):
+            calls["n"] += 1
+            if url.rstrip("/").endswith("console"):
+                return 302, "", {"location": "/console/"}
+            return 308, "", {"location": "/console"}
+
+        with mock.patch.object(sw, "_http_get_no_redirect", side_effect=fake):
+            r = sw.probe_panel_console("https://neobrain.site/console/")
+        self.assertFalse(r["ok"])
+        self.assertEqual(r.get("error"), "redirect_loop")
+
+    def test_dockerfile_bakes_basepath(self):
+        df = (PROJECT / "web" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("ARG PANEL_BASE_PATH=/console", df)
+        self.assertIn("ENV PANEL_BASE_PATH=$PANEL_BASE_PATH", df)
+
 
 if __name__ == "__main__":
     unittest.main()

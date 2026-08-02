@@ -6,7 +6,13 @@ const basePath = (process.env.PANEL_BASE_PATH || "").trim().replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  ...(basePath ? { basePath } : {}),
+  // Совпадает с nginx: /console → /console/ (без редирект-петли)
+  ...(basePath
+    ? {
+        basePath,
+        trailingSlash: true,
+      }
+    : {}),
   async rewrites() {
     return [
       {
