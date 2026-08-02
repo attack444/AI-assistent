@@ -72,6 +72,8 @@ services:
       - API_INTERNAL_URL=http://app:8502
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      # Пусто = панель на /. /console = HTTPS на https://neobrain.site/console без DNS subdomain
+      - PANEL_BASE_PATH=${PANEL_BASE_PATH:-/console}
     depends_on:
       - app
     networks:

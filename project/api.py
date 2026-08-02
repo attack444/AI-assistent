@@ -101,6 +101,7 @@ _PUBLIC_PATHS = {
     "/public/pay/status",
     "/public/pay/create",
     "/public/pay/webhook",
+    "/public/config",
 }
 
 
@@ -677,12 +678,13 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.11.0",
+            "version": "2.12.0",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
                 "NEOBRAIN_PANEL_DOMAIN", "panel.neobrain.site"
             ),
+            "console_path": os.environ.get("PANEL_BASE_PATH", "/console") or "/console",
             "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -1625,11 +1627,30 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _post_public_pay_create(self):
         import payments_yookassa as pay
+        import spam_guard as sg
 
         try:
             body = self._read_body()
+            ip = self.client_address[0] if self.client_address else ""
+            ts = sg.verify_turnstile(
+                (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
+                ip=ip,
+            )
+            if not ts.get("ok"):
+                self._send(400, _json({"error": ts.get("error") or "антибот"}))
+                return
+            email = (body.get("email") or "").strip()
+            if not email:
+                # logged-in public user
+                try:
+                    import public_users as pu
+
+                    cookie = self.headers.get("Cookie", "")
+                    # fall through — email required in body for pay
+                except Exception:
+                    pass
             result = pay.create_payment(
-                email=(body.get("email") or "").strip(),
+                email=email,
                 plan_id=(body.get("plan") or body.get("plan_id") or "").strip(),
                 return_url=(body.get("return_url") or "").strip(),
             )
@@ -1882,8 +1903,29 @@ class APIHandler(BaseHTTPRequestHandler):
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
             self._send(code, _json({"error": str(exc)}))
 
+    def _get_public_config(self):
+        import owner_settings as osset
+
+        self._send(200, _json(osset.public_config()))
+
+    def _get_system_settings(self):
+        import owner_settings as osset
+
+        self._send(200, _json({"ok": True, "settings": osset.get_settings(mask_secrets=True)}))
+
+    def _post_system_settings(self):
+        import owner_settings as osset
+
+        try:
+            body = self._read_body()
+            settings = osset.update_settings(body.get("settings") or body)
+            self._send(200, _json({"ok": True, "settings": settings}))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
     def _post_public_feedback(self):
         import public_feedback as pf
+        import spam_guard as sg
 
         try:
             body = self._read_body()
@@ -1892,6 +1934,13 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._send(200, _json({"ok": True, "message": "Спасибо!"}))
                 return
             ip = self.client_address[0] if self.client_address else ""
+            ts = sg.verify_turnstile(
+                (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
+                ip=ip,
+            )
+            if not ts.get("ok"):
+                self._send(400, _json({"error": ts.get("error") or "антибот"}))
+                return
             result = pf.save_feedback(
                 kind=(body.get("type") or body.get("kind") or "idea"),
                 message=body.get("message") or "",
@@ -1966,7 +2015,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.11.0",
+                "version": "2.12.0",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
@@ -2329,7 +2378,13 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/public/pay/status":
             self._get_public_pay_status()
             return
+        if path == "/public/config":
+            self._get_public_config()
+            return
         if path not in _PUBLIC_PATHS and not self._require_auth():
+            return
+        if path == "/system/settings":
+            self._get_system_settings()
             return
         if path == "/project/files":
             self._get_project_files()
@@ -2422,6 +2477,9 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._post_system_watchdog()
             return
         if path not in _PUBLIC_PATHS and not self._require_auth():
+            return
+        if path == "/system/settings":
+            self._post_system_settings()
             return
         routes = {
             "/chat": self._post_chat,

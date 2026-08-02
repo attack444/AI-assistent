@@ -28,30 +28,49 @@ PAYMENTS_FILE = DATA_DIR / "yookassa_payments.jsonl"
 API_URL = "https://api.yookassa.ru/v3/payments"
 
 
+def _creds() -> tuple[str, str]:
+    shop = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
+    secret = os.environ.get("YOOKASSA_SECRET_KEY", "").strip()
+    try:
+        import owner_settings as osset
+
+        raw = osset.get_raw()
+        shop = (raw.get("yookassa_shop_id") or shop).strip()
+        secret = (raw.get("yookassa_secret_key") or secret).strip()
+    except Exception:
+        pass
+    return shop, secret
+
+
 def configured() -> bool:
-    return bool(
-        os.environ.get("YOOKASSA_SHOP_ID", "").strip()
-        and os.environ.get("YOOKASSA_SECRET_KEY", "").strip()
-    )
+    shop, secret = _creds()
+    return bool(shop and secret)
 
 
 def status() -> Dict[str, Any]:
+    shop, secret = _creds()
+    site = os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site").rstrip("/")
+    try:
+        import owner_settings as osset
+
+        site = (osset.get_raw().get("public_site_url") or site).rstrip("/")
+    except Exception:
+        pass
     return {
         "ok": True,
         "provider": "yookassa",
         "configured": configured(),
-        "shop_id_set": bool(os.environ.get("YOOKASSA_SHOP_ID", "").strip()),
-        "return_url": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site").rstrip("/")
-        + "/#pricing",
+        "shop_id_set": bool(shop),
+        "return_url": site + "/#start",
+        "self_serve": True,
         "hint": None
         if configured()
-        else "Добавь YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в project/.env и перезапусти app",
+        else "В панели → Настройки впиши shopId и секретный ключ ЮKassa (или .env)",
     }
 
 
 def _auth_header() -> str:
-    shop = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
-    secret = os.environ.get("YOOKASSA_SECRET_KEY", "").strip()
+    shop, secret = _creds()
     raw = f"{shop}:{secret}".encode("utf-8")
     return "Basic " + base64.b64encode(raw).decode("ascii")
 

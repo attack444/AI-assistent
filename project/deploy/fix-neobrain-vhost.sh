@@ -46,6 +46,22 @@ server {
         chunked_transfer_encoding on;
     }
 
+    # HTTPS панели БЕЗ отдельного DNS — путь на том же домене
+    location /console/ {
+        proxy_pass         http://127.0.0.1:3000/console/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_set_header   Upgrade           \$http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_read_timeout 600s;
+    }
+    location = /console {
+        return 302 /console/;
+    }
+
     location / {
         try_files \$uri \$uri/ /index.html;
     }
@@ -53,6 +69,9 @@ server {
 EOF
 ln -sf "$CONF" /etc/nginx/sites-enabled/neobrain-site.conf
 
+# Опциональный поддомен panel.* — только если DNS есть
+PANEL_A=$(dig +short @8.8.8.8 "$PANEL_DOMAIN" A 2>/dev/null | head -1 || true)
+if [ -n "$PANEL_A" ]; then
 cat > "$PANEL_CONF" <<EOF
 # NeoBrain panel → ${PANEL_DOMAIN}
 server {
@@ -75,7 +94,7 @@ server {
     }
 
     location / {
-        proxy_pass         http://127.0.0.1:3000;
+        proxy_pass         http://127.0.0.1:3000/;
         proxy_http_version 1.1;
         proxy_set_header   Host              \$host;
         proxy_set_header   X-Real-IP         \$remote_addr;
@@ -88,6 +107,10 @@ server {
 }
 EOF
 ln -sf "$PANEL_CONF" /etc/nginx/sites-enabled/neobrain-panel.conf
+else
+  echo "[INFO] Поддомен ${PANEL_DOMAIN} не нужен: панель на https://${DOMAIN}/console/"
+  rm -f /etc/nginx/sites-enabled/neobrain-panel.conf 2>/dev/null || true
+fi
 
 nginx -t
 systemctl reload nginx
@@ -103,21 +126,22 @@ certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos \
   --email "$EMAIL" --redirect \
   || certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --agree-tos --email "$EMAIL" --redirect
 
-PANEL_A=$(dig +short @8.8.8.8 "$PANEL_DOMAIN" A 2>/dev/null | head -1 || true)
-if [ -n "$PANEL_A" ]; then
+if [ -n "${PANEL_A:-}" ]; then
   echo "==> SSL ${PANEL_DOMAIN}"
   certbot --nginx -d "$PANEL_DOMAIN" --non-interactive --agree-tos \
     --email "$EMAIL" --redirect \
     || certbot --nginx -d "$PANEL_DOMAIN" --agree-tos --email "$EMAIL" --redirect
-else
-  echo "[SKIP] Нет DNS A у ${PANEL_DOMAIN} — добавь A panel → IP VPS, потом снова этот скрипт"
 fi
 
 nginx -t
 systemctl reload nginx
 
 echo ""
+echo "============================================"
+echo "  Сайт:   https://${DOMAIN}/"
+echo "  Панель: https://${DOMAIN}/console/   ← без отдельного DNS"
+echo "  Сертификат должен быть CN=${DOMAIN} (не 5mb2.ru)"
+echo "============================================"
 echo "Проверка:"
-echo "  curl -sI https://${DOMAIN}/ | head -3"
 echo "  curl -sk https://${DOMAIN}/ | grep -o NeoBrain | head -1"
 echo "  echo | openssl s_client -connect ${DOMAIN}:443 -servername ${DOMAIN} 2>/dev/null | openssl x509 -noout -subject"

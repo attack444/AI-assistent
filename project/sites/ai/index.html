@@ -1024,14 +1024,15 @@
 
   <section class="section" id="start">
     <h2>Тарифы</h2>
-    <p>Регистрация даёт Free. Starter и Pro — оплата ЮKassa или письмо владельцу для ручной активации.</p>
+    <p>Регистрация даёт Free. Starter и Pro — оплата картой через ЮKassa (сам включается после оплаты).</p>
     <div class="plans" id="plans-grid">
       <p class="hint">Загрузка тарифов…</p>
     </div>
+    <div id="pay-turnstile" style="margin-top:14px"></div>
     <p class="hint" id="plan-status" style="margin-top:18px"></p>
     <div class="cta-row" style="margin-top: 22px">
-      <a class="btn btn-primary" href="mailto:slavasundukov887@gmail.com?subject=AI%20Helper%20тариф">Запросить Starter / Pro</a>
       <button class="btn btn-ghost" type="button" id="btn-show-billing">Мой лимит</button>
+      <a class="btn btn-ghost" href="/console/" id="console-link">Панель владельца</a>
     </div>
   </section>
 
@@ -1157,7 +1158,7 @@
     });
 
     // —— Auth ——
-    const AUTH_KEY = "aihelper-user-token";
+    const AUTH_KEY = "neobrain-user-token";
     let userToken = localStorage.getItem(AUTH_KEY) || "";
     let currentUser = null;
     let authMode = "login";
@@ -1297,13 +1298,97 @@
 
     void refreshMe();
 
-    // —— Plans ——
+    // —— Public config (analytics + turnstile + pay) ——
+    let publicCfg = { yookassa_ready: false, turnstile_site_key: "" };
+    function injectAnalytics(cfg) {
+      if (cfg.gsc_verification) {
+        const m = document.createElement("meta");
+        m.name = "google-site-verification";
+        m.content = cfg.gsc_verification;
+        document.head.appendChild(m);
+      }
+      if (cfg.yandex_webmaster_verification) {
+        const m = document.createElement("meta");
+        m.name = "yandex-verification";
+        m.content = cfg.yandex_webmaster_verification;
+        document.head.appendChild(m);
+      }
+      if (cfg.metrika_id) {
+        (function (m, e, t, r, i, k, a) {
+          m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };
+          m[i].l = 1 * new Date();
+          for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) return; }
+          k = e.createElement(t); a = e.getElementsByTagName(t)[0]; k.async = 1; k.src = r; a.parentNode.insertBefore(k, a);
+        })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+        ym(Number(cfg.metrika_id), "init", { clickmap: true, trackLinks: true, accurateTrackBounce: true });
+      }
+      if (cfg.ga4_id) {
+        const s = document.createElement("script");
+        s.async = true;
+        s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(cfg.ga4_id);
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        window.gtag = gtag;
+        gtag("js", new Date());
+        gtag("config", cfg.ga4_id);
+      }
+      if (cfg.turnstile_site_key) {
+        const s = document.createElement("script");
+        s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+        s.async = true;
+        document.head.appendChild(s);
+      }
+      const cl = document.getElementById("console-link");
+      if (cl && cfg.console_path) cl.href = cfg.console_path.replace(/\/?$/, "/") ;
+    }
+    async function loadPublicConfig() {
+      try {
+        const res = await fetch("/api/public/config");
+        publicCfg = await res.json();
+        injectAnalytics(publicCfg);
+        const box = document.getElementById("pay-turnstile");
+        if (box && publicCfg.turnstile_site_key) {
+          box.innerHTML = '<div class="cf-turnstile" data-sitekey="' + publicCfg.turnstile_site_key + '"></div>';
+        }
+      } catch (_) {}
+    }
+    void loadPublicConfig();
+
+    // —— Plans + self-serve pay ——
+    async function startPay(planId) {
+      const status = document.getElementById("plan-status");
+      if (!userToken) { openAuth("login"); status.textContent = "Сначала войдите — оплата привяжется к аккаунту."; return; }
+      await refreshMe();
+      let email = (currentUser && currentUser.email) || "";
+      if (!email) { status.textContent = "Не вижу email аккаунта — перелогиньтесь."; return; }
+      const tInput = document.querySelector("[name='cf-turnstile-response']");
+      const turnstile = tInput ? tInput.value : "";
+      status.textContent = "Создаю счёт ЮKassa…";
+      try {
+        const res = await fetch("/api/public/pay/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + userToken },
+          body: JSON.stringify({ email, plan: planId, turnstile }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "pay");
+        if (data.confirmation_url) {
+          location.href = data.confirmation_url;
+          return;
+        }
+        status.textContent = data.message || "Заявка принята. Владелец активирует план, если ЮKassa ещё не подключена.";
+      } catch (err) {
+        status.textContent = err.message || "Ошибка оплаты";
+      }
+    }
     async function loadPlans() {
       const grid = document.getElementById("plans-grid");
       try {
         const res = await fetch("/api/public/plans");
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "plans");
+        const payReady = !!(data.payments && data.payments.configured) || publicCfg.yookassa_ready;
         grid.innerHTML = "";
         (data.plans || []).forEach((p) => {
           const el = document.createElement("div");
@@ -1311,15 +1396,27 @@
           const price = p.price_rub
             ? p.price_rub.toLocaleString("ru-RU") + " ₽<span>/мес</span>"
             : "0 ₽<span> старт</span>";
+          let cta = "";
+          if (p.price_rub > 0) {
+            cta = "<div class='cta-row' style='margin-top:14px'><button type='button' class='btn btn-primary btn-pay' data-plan='" + p.id + "'>" +
+              (payReady ? "Оплатить " + p.name : "Подключить " + p.name) + "</button></div>";
+          } else {
+            cta = "<div class='cta-row' style='margin-top:14px'><button type='button' class='btn btn-ghost' id='plan-free-cta'>Начать Free</button></div>";
+          }
           el.innerHTML =
             "<h3>" + p.name + "</h3>" +
             "<p class='price'>" + price + "</p>" +
             "<p class='hint' style='margin:0 0 10px'>" + (p.blurb || "") + "</p>" +
-            "<ul>" + (p.features || []).map((f) => "<li>" + f + "</li>").join("") + "</ul>";
+            "<ul>" + (p.features || []).map((f) => "<li>" + f + "</li>").join("") + "</ul>" + cta;
           grid.appendChild(el);
         });
+        grid.querySelectorAll(".btn-pay").forEach((btn) => {
+          btn.addEventListener("click", () => startPay(btn.getAttribute("data-plan")));
+        });
+        const freeBtn = document.getElementById("plan-free-cta");
+        if (freeBtn) freeBtn.addEventListener("click", () => openAuth("register"));
       } catch (_) {
-        grid.innerHTML = "<p class='hint'>Тарифы появятся после обновления API (bootstrap-update).</p>";
+        grid.innerHTML = "<p class='hint'>Тарифы появятся после обновления API.</p>";
       }
     }
     void loadPlans();

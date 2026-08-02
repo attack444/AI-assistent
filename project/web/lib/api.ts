@@ -276,6 +276,19 @@ export function getSystemDns(domain?: string) {
   );
 }
 
+export function getOwnerSettings() {
+  return request<{ ok: boolean; settings: Record<string, string | boolean> }>(
+    "/system/settings",
+  );
+}
+
+export function saveOwnerSettings(settings: Record<string, string>) {
+  return request<{ ok: boolean; settings: Record<string, string | boolean> }>(
+    "/system/settings",
+    { method: "POST", body: JSON.stringify({ settings }) },
+  );
+}
+
 export function listSites() {
   return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites");
 }

@@ -6,10 +6,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.6');
+define('MB2_THEME_VER', '1.9.7');
 
 $mb2_inc = get_template_directory() . '/inc';
-foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php'] as $mb2_file) {
+foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php', 'analytics.php'] as $mb2_file) {
     $mb2_path = $mb2_inc . '/' . $mb2_file;
     if (is_readable($mb2_path)) {
         require $mb2_path;
