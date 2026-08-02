@@ -20,26 +20,9 @@ if [ ! -f "$ENV_FILE" ]; then
   cp .env.example "$ENV_FILE"
 fi
 
-# PANEL_PASSWORD
-if ! grep -q '^PANEL_PASSWORD=.\+' "$ENV_FILE" 2>/dev/null; then
-  echo ""
-  echo "[!!] PANEL_PASSWORD не задан."
-  if [ -t 0 ]; then
-    read -r -p "Введи пароль панели (будет записан в .env): " PANEL_PW
-    if [ -n "$PANEL_PW" ]; then
-      if grep -q '^PANEL_PASSWORD=' "$ENV_FILE"; then
-        sed -i "s|^PANEL_PASSWORD=.*|PANEL_PASSWORD=${PANEL_PW}|" "$ENV_FILE"
-      else
-        echo "PANEL_PASSWORD=${PANEL_PW}" >> "$ENV_FILE"
-      fi
-      echo "[OK] Пароль записан в $ENV_FILE"
-    else
-      echo "[!!] Пропущено. Задай позже: nano $ENV_FILE"
-    fi
-  else
-    echo "[!!] Задай пароль: nano $ENV_FILE  →  PANEL_PASSWORD=..."
-  fi
-fi
+# Секреты: пустые / change_me_* → криптостойкие значения
+bash "$REPO_DIR/project/deploy/ensure-secrets.sh" "$ENV_FILE"
+ln -sfn "$ENV_FILE" "$REPO_DIR/project/deploy/.env"
 
 # Heal bare API keys: a lone "gsk_..." / "sk-..." line → bash "command not found"
 # (часто ключ вставили без GROQ_API_KEY= / OPENAI_API_KEY=)
@@ -73,9 +56,9 @@ mkdir -p /var/ai-helper/sites
 
 echo "[>>] Docker rebuild (app + web)..."
 # Force recreate so api.py / Next panel definitely pick up the new commit
-docker compose -f docker-compose.prod.yml build app web
-docker compose -f docker-compose.prod.yml up -d --force-recreate app web
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml build app web
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --force-recreate app web
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --build
 
 # Права: иначе nginx даёт 403 на /sites/...
 if [ -x "$REPO_DIR/project/deploy/fix-sites-403.sh" ]; then
