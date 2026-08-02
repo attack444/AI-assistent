@@ -192,14 +192,33 @@ def stream_public_chat(
         yield {"type": "done", "content": ""}
 
 
+_TRUSTED_PROXIES = {
+    x.strip()
+    for x in os.environ.get("TRUSTED_PROXIES", "127.0.0.1,::1").split(",")
+    if x.strip()
+}
+
+
+def _peer_ip(handler) -> str:
+    remote = handler.client_address[0] if handler.client_address else ""
+    if remote.startswith("::ffff:"):
+        remote = remote[7:]
+    return remote or "unknown"
+
+
 def client_ip(handler) -> str:
-    # Prefer nginx X-Real-IP (set by trusted proxy). X-Forwarded-For is spoofable from clients.
-    xri = (handler.headers.get("X-Real-IP") or "").strip()
-    if xri:
-        return xri
-    xff = (handler.headers.get("X-Forwarded-For") or "").strip()
-    if xff:
-        # Last hop is usually the proxy-added value when clients cannot override chain end;
-        # still prefer first only as weak fallback behind simple reverse proxies.
-        return xff.split(",")[0].strip()
-    return handler.client_address[0] if handler.client_address else "unknown"
+    """Client IP for rate limits.
+
+    Trust X-Real-IP / X-Forwarded-For only when the TCP peer is a configured
+    reverse proxy (default: loopback). Direct callers can no longer rotate
+    spoofed X-Real-IP to bypass limits.
+    """
+    peer = _peer_ip(handler)
+    if peer in _TRUSTED_PROXIES:
+        xri = (handler.headers.get("X-Real-IP") or "").strip()
+        if xri and len(xri) < 128 and "\n" not in xri and "\r" not in xri:
+            return xri.split(",")[0].strip() or peer
+        xff = (handler.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            return xff.split(",")[0].strip() or peer
+    return peer

@@ -64,9 +64,7 @@ info "Настраиваю файрвол..."
 ufw allow ssh
 ufw allow http
 ufw allow https
-ufw allow 8501   # Streamlit (legacy)
-ufw allow 8502   # AI Helper API
-ufw allow 3000   # Next.js panel (также через Nginx :80)
+# 8501/8502/3000/9000/3306 слушают только 127.0.0.1 (docker) — наружу не открываем
 ufw --force enable
 log "Файрвол настроен"
 
@@ -88,16 +86,55 @@ cd "$REPO_DIR/project"
 log "Репозиторий: $REPO_DIR"
 
 # ── .env файл ────────────────────────────────────────────────
-if [ ! -f "$REPO_DIR/project/.env" ]; then
+ENV_FILE="$REPO_DIR/project/.env"
+if [ ! -f "$ENV_FILE" ]; then
     info "Создаю .env из шаблона..."
-    cp "$REPO_DIR/project/deploy/.env.example" "$REPO_DIR/project/.env"
-    warn "Отредактируй $REPO_DIR/project/.env — добавь API ключи!"
+    cp "$REPO_DIR/project/deploy/.env.example" "$ENV_FILE"
 fi
+
+# Сгенерировать секреты, если остались плейсхолдеры / пустые значения
+_set_env() {
+    local key="$1" val="$2"
+    if grep -qE "^${key}=" "$ENV_FILE"; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+    else
+        echo "${key}=${val}" >> "$ENV_FILE"
+    fi
+}
+if ! grep -qE '^PANEL_PASSWORD=.+' "$ENV_FILE" \
+   || grep -qE '^PANEL_PASSWORD=(change_me_panel_password)?$' "$ENV_FILE"; then
+    PANEL_GEN="$(openssl rand -hex 16)"
+    _set_env PANEL_PASSWORD "$PANEL_GEN"
+    warn "Сгенерирован PANEL_PASSWORD (сохрани): $PANEL_GEN"
+fi
+if ! grep -qE '^SECRET_KEY=.+' "$ENV_FILE" \
+   || grep -qE '^SECRET_KEY=(change_me_to_random_string_min_32_chars|dev-insecure-change-me)?$' "$ENV_FILE"; then
+    _set_env SECRET_KEY "$(openssl rand -hex 32)"
+    log "Сгенерирован SECRET_KEY"
+fi
+if ! grep -qE '^MYSQL_ROOT_PASSWORD=.+' "$ENV_FILE" \
+   || grep -qE '^MYSQL_ROOT_PASSWORD=(root_change_me)?$' "$ENV_FILE"; then
+    _set_env MYSQL_ROOT_PASSWORD "$(openssl rand -hex 16)"
+    log "Сгенерирован MYSQL_ROOT_PASSWORD"
+fi
+if ! grep -qE '^MYSQL_PASSWORD=.+' "$ENV_FILE" \
+   || grep -qE '^MYSQL_PASSWORD=(wp_change_me)?$' "$ENV_FILE"; then
+    _set_env MYSQL_PASSWORD "$(openssl rand -hex 16)"
+    log "Сгенерирован MYSQL_PASSWORD"
+fi
+if ! grep -qE '^POSTGRES_PASSWORD=.+' "$ENV_FILE" \
+   || grep -qE '^POSTGRES_PASSWORD=(change_me_postgres_123|changeme123)?$' "$ENV_FILE"; then
+    _set_env POSTGRES_PASSWORD "$(openssl rand -hex 16)"
+    log "Сгенерирован POSTGRES_PASSWORD"
+fi
+
+# Compose host interpolation читает deploy/.env — симлинк на project/.env
+ln -sfn "$ENV_FILE" "$REPO_DIR/project/deploy/.env"
 
 # ── Docker Compose запуск ────────────────────────────────────
 info "Запускаю сервисы через Docker Compose..."
 cd "$REPO_DIR/project/deploy"
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --build
 log "Сервисы запущены"
 
 # ── Nginx ────────────────────────────────────────────────────
