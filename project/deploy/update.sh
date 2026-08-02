@@ -73,9 +73,10 @@ mkdir -p /var/ai-helper/sites
 
 echo "[>>] Docker rebuild (app + web)..."
 # Force recreate so api.py / Next panel definitely pick up the new commit
-docker compose -f docker-compose.prod.yml build app web
-docker compose -f docker-compose.prod.yml up -d --force-recreate app web
-docker compose -f docker-compose.prod.yml up -d --build
+# --env-file нужен для MYSQL_* / POSTGRES_* подстановки в compose
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml build app web
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --force-recreate app web
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --build
 
 # Права: иначе nginx даёт 403 на /sites/...
 if [ -x "$REPO_DIR/project/deploy/fix-sites-403.sh" ]; then

@@ -1,6 +1,6 @@
 services:
 
-  # ── AI Helper API + Streamlit (legacy chat) ─────────────────
+  # ── AI Helper API (+ optional Streamlit on localhost only) ─
   app:
     build:
       context: ..
@@ -8,8 +8,9 @@ services:
     container_name: ai-helper-app
     restart: unless-stopped
     ports:
-      - "8501:8501"   # Streamlit (legacy)
-      - "8502:8502"   # REST API
+      # Только localhost — снаружи доступ через nginx :80 → /api/
+      - "127.0.0.1:8502:8502"
+      - "127.0.0.1:8501:8501"
     volumes:
       - ai_helper_data:/root/.ai-helper
       - /var/ai-helper/sites:/opt/sites
@@ -28,8 +29,9 @@ services:
       - VPS_PUBLIC_IP=${VPS_PUBLIC_IP:-80.78.248.195}
       - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
       - MAX_UPLOAD_BYTES=2147483648
-      - PANEL_PASSWORD=${PANEL_PASSWORD:-}
-      - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
+      # Секреты (PANEL_PASSWORD, SECRET_KEY, MYSQL_*) — только из env_file ../.env,
+      # чтобы пустая подстановка ${VAR} не затирала значения.
+      - ENABLE_STREAMLIT=${ENABLE_STREAMLIT:-0}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
       - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
       - LLM_PREFER_FREE=${LLM_PREFER_FREE:-1}
@@ -38,10 +40,6 @@ services:
       - PUBLIC_AUTH_REQUIRED=${PUBLIC_AUTH_REQUIRED:-1}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}
-      - MYSQL_USER=${MYSQL_USER:-wp}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-wp_change_me}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_change_me}
     depends_on:
       - ollama
     networks:
@@ -53,7 +51,7 @@ services:
     container_name: ai-helper-ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     networks:
@@ -67,7 +65,7 @@ services:
     container_name: ai-helper-web
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - API_INTERNAL_URL=http://app:8502
       - PORT=3000
@@ -84,8 +82,9 @@ services:
       dockerfile: Dockerfile.php
     container_name: ai-helper-php
     restart: unless-stopped
+    # Только localhost для host-nginx fastcgi_pass 127.0.0.1:9000
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
     volumes:
       - /var/ai-helper/sites:/var/ai-helper/sites
     networks:
@@ -96,19 +95,18 @@ services:
     image: mysql:8.0
     container_name: ai-helper-mysql
     restart: unless-stopped
-    ports:
-      - "3306:3306"
+    # Без publish на хост — только docker-сеть ai-net
     volumes:
       - mysql_data:/var/lib/mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
       MYSQL_USER: ${MYSQL_USER:-wp}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wp_change_me}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     networks:
       - ai-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -123,7 +121,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aihelper}
       POSTGRES_USER: ${POSTGRES_USER:-aihelper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     networks:
       - ai-net
     healthcheck:

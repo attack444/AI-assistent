@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 from datetime import datetime
@@ -1030,9 +1031,36 @@ def git_run(command: str, repo_path: str = ".") -> Dict[str, Any]:
     """
     Выполняет git-команду в репозитории.
     Примеры: 'status', 'diff', 'log --oneline -10', 'add .', 'commit -m "fix"', 'branch'
+    Без shell=True — аргументы через argv, без инъекции `; && |`.
     """
     args = {"command": command, "repo_path": repo_path}
     try:
+        raw = (command or "").strip()
+        if not raw:
+            r = {"ok": False, "error": "Пустая git-команда", "output": ""}
+            _log("git_run", args, r)
+            return r
+        # Запрет явных shell-метасимволов до разбора (defense in depth)
+        if any(ch in raw for ch in ("\n", "\r", ";", "|", "&", "`", "$(", "${")):
+            r = {"ok": False, "error": "Недопустимые символы в git-команде", "output": ""}
+            _log("git_run", args, r)
+            return r
+        try:
+            git_argv = shlex.split(raw, posix=not _IS_WINDOWS)
+        except ValueError as exc:
+            r = {"ok": False, "error": f"Некорректная git-команда: {exc}", "output": ""}
+            _log("git_run", args, r)
+            return r
+        if not git_argv:
+            r = {"ok": False, "error": "Пустая git-команда", "output": ""}
+            _log("git_run", args, r)
+            return r
+        # Блокируем git -c / --exec-path и похожие override до subcommand
+        if git_argv[0] in {"-c", "-C", "--exec-path", "--git-dir", "--work-tree", "--namespace"}:
+            r = {"ok": False, "error": "git option override запрещён", "output": ""}
+            _log("git_run", args, r)
+            return r
+
         p = Path(repo_path).expanduser().resolve()
         git_dir = p / ".git"
         if not git_dir.exists():
@@ -1045,8 +1073,7 @@ def git_run(command: str, repo_path: str = ".") -> Dict[str, Any]:
                 if cur.parent == cur:
                     break
                 cur = cur.parent
-        full_cmd = f"git {command}"
-        code, out = _run(full_cmd, cwd=str(p), timeout=30)
+        code, out = _run(["git", *git_argv], cwd=str(p), timeout=30, shell=False)
         r: Dict[str, Any] = {
             "ok": code == 0,
             "output": out[:8000],

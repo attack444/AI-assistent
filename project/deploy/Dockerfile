@@ -15,8 +15,9 @@ ENV PYTHONIOENCODING=utf-8
 ENV AI_HELPER_API_HOST=0.0.0.0
 ENV AI_HELPER_API_PORT=8502
 ENV SITES_ROOT=/opt/sites
+ENV ENABLE_STREAMLIT=0
 
 EXPOSE 8501 8502
 
-# Streamlit (legacy) + API. Next.js panel runs in separate `web` service.
-CMD ["sh", "-c", "python api.py & python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"]
+# API always on. Streamlit (legacy) only if ENABLE_STREAMLIT=1 — still bind localhost via compose.
+CMD ["sh", "-c", "python api.py & if [ \"${ENABLE_STREAMLIT:-0}\" = \"1\" ]; then python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true; else wait; fi"]
