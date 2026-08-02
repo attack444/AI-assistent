@@ -62,27 +62,63 @@ const API_BASE = typeof window === "undefined"
   ? process.env.API_INTERNAL_URL || "http://127.0.0.1:8502"
   : "/api";
 
+/** basePath панели (/console) — иначе редирект на /login попадает на витрину NeoBrain. */
+export function panelBasePath(): string {
+  if (typeof window === "undefined") {
+    return (process.env.PANEL_BASE_PATH || process.env.NEXT_PUBLIC_PANEL_BASE_PATH || "")
+      .trim()
+      .replace(/\/$/, "");
+  }
+  const path = window.location.pathname || "";
+  if (path === "/console" || path.startsWith("/console/")) return "/console";
+  const env = (process.env.NEXT_PUBLIC_PANEL_BASE_PATH || "").trim().replace(/\/$/, "");
+  return env;
+}
+
+export function panelLoginPath(): string {
+  const base = panelBasePath();
+  return base ? `${base}/login/` : "/login/";
+}
+
+function isPanelLoginPage(): boolean {
+  if (typeof window === "undefined") return false;
+  const p = window.location.pathname || "";
+  return (
+    p === "/login" ||
+    p === "/login/" ||
+    p.endsWith("/login") ||
+    p.endsWith("/login/")
+  );
+}
+
+function redirectToLogin() {
+  if (typeof window === "undefined" || isPanelLoginPage()) return;
+  window.location.href = panelLoginPath();
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type RequestOpts = RequestInit & { skipAuthRedirect?: boolean };
+
+async function request<T>(path: string, init?: RequestOpts): Promise<T> {
+  const { skipAuthRedirect, ...fetchInit } = init || {};
   const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
+    ...fetchInit,
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
-      ...(init?.headers || {}),
+      ...(fetchInit.headers || {}),
     },
     cache: "no-store",
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
     clearToken();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-      window.location.href = "/login";
-    }
+    // Неверный пароль на /login тоже 401 — не уводим на витрину
+    if (!skipAuthRedirect) redirectToLogin();
     throw new Error((data as { error?: string }).error || "Нужен вход");
   }
   if (!res.ok) {
@@ -99,6 +135,7 @@ export function login(password: string) {
   return request<{ ok: boolean; token: string; auth_required: boolean }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ password }),
+    skipAuthRedirect: true,
   });
 }
 
@@ -713,7 +750,7 @@ async function uploadBinary<T>(path: string, file: File): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) {
     clearToken();
-    if (typeof window !== "undefined") window.location.href = "/login";
+    redirectToLogin();
     throw new Error("Нужен вход");
   }
   if (!res.ok) {
@@ -836,7 +873,7 @@ export async function streamChat(
   });
   if (res.status === 401) {
     clearToken();
-    if (typeof window !== "undefined") window.location.href = "/login";
+    redirectToLogin();
     throw new Error("Нужен вход");
   }
   if (!res.ok || !res.body) {

@@ -17,8 +17,9 @@ export default function LoginPage() {
     try {
       const res = await login(password);
       setToken(res.token || "open");
-      router.push("/files");
+      router.push("/overview/");
     } catch (err) {
+      // 401 «Неверный пароль» остаётся на этой странице (не редирект на витрину)
       setError((err as Error).message || "Ошибка входа");
     } finally {
       setBusy(false);
