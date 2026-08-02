@@ -64,11 +64,9 @@ info "Настраиваю файрвол..."
 ufw allow ssh
 ufw allow http
 ufw allow https
-ufw allow 8501   # Streamlit (legacy)
-ufw allow 8502   # AI Helper API
-ufw allow 3000   # Next.js panel (также через Nginx :80)
+# API/panel/php/mysql слушают только 127.0.0.1 — снаружи только 80/443 через nginx
 ufw --force enable
-log "Файрвол настроен"
+log "Файрвол настроен (только ssh/http/https)"
 
 # ── Папка сайтов ─────────────────────────────────────────────
 mkdir -p /var/ai-helper/sites
@@ -88,16 +86,43 @@ cd "$REPO_DIR/project"
 log "Репозиторий: $REPO_DIR"
 
 # ── .env файл ────────────────────────────────────────────────
-if [ ! -f "$REPO_DIR/project/.env" ]; then
-    info "Создаю .env из шаблона..."
-    cp "$REPO_DIR/project/deploy/.env.example" "$REPO_DIR/project/.env"
-    warn "Отредактируй $REPO_DIR/project/.env — добавь API ключи!"
+ENV_FILE="$REPO_DIR/project/.env"
+if [ ! -f "$ENV_FILE" ]; then
+    info "Создаю .env из шаблона со случайными секретами..."
+    cp "$REPO_DIR/project/deploy/.env.example" "$ENV_FILE"
+    PANEL_PW="$(openssl rand -hex 16)"
+    SECRET="$(openssl rand -hex 32)"
+    MYSQL_ROOT_PW="$(openssl rand -hex 16)"
+    MYSQL_PW="$(openssl rand -hex 16)"
+    POSTGRES_PW="$(openssl rand -hex 16)"
+    # Заменяем шаблонные секреты (без оставления change_me_*)
+    sed -i \
+        -e "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET}/" \
+        -e "s/^PANEL_PASSWORD=.*/PANEL_PASSWORD=${PANEL_PW}/" \
+        -e "s/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PW}/" \
+        -e "s/^MYSQL_PASSWORD=.*/MYSQL_PASSWORD=${MYSQL_PW}/" \
+        -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PW}/" \
+        -e "s/^ENABLE_STREAMLIT=.*/ENABLE_STREAMLIT=0/" \
+        "$ENV_FILE" 2>/dev/null || true
+    # Если ENABLE_STREAMLIT ещё нет в шаблоне
+    grep -q '^ENABLE_STREAMLIT=' "$ENV_FILE" || echo "ENABLE_STREAMLIT=0" >> "$ENV_FILE"
+    warn "PANEL_PASSWORD сгенерирован — сохрани из $ENV_FILE"
+    warn "Добавь DEEPSEEK_API_KEY в $ENV_FILE при необходимости"
+else
+    # Отказ продолжать на заведомо дырявых дефолтах
+    if grep -qE '^PANEL_PASSWORD=(change_me_panel_password)?$' "$ENV_FILE"; then
+        err "PANEL_PASSWORD пустой или шаблонный в $ENV_FILE — задай сильный пароль"
+    fi
+    if grep -qE '^SECRET_KEY=(change_me_to_random_string_min_32_chars|dev-insecure-change-me)?$' "$ENV_FILE"; then
+        err "SECRET_KEY шаблонный в $ENV_FILE — задай openssl rand -hex 32"
+    fi
 fi
 
 # ── Docker Compose запуск ────────────────────────────────────
 info "Запускаю сервисы через Docker Compose..."
 cd "$REPO_DIR/project/deploy"
-docker compose -f docker-compose.prod.yml up -d --build
+# --env-file ../.env нужен для подстановки ${PANEL_PASSWORD} и др. в compose
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --build
 log "Сервисы запущены"
 
 # ── Nginx ────────────────────────────────────────────────────
@@ -122,11 +147,11 @@ echo -e "║  Файлы:   http://${SERVER_IP}/files           "
 echo -e "║  Сайты:   http://${SERVER_IP}/sites           "
 echo -e "║  Чат:     http://${SERVER_IP}/chat            "
 echo -e "║  API:     http://${SERVER_IP}/api/status      "
-echo -e "║  Legacy:  http://${SERVER_IP}/legacy/         "
 echo -e "╠══════════════════════════════════════════════╣"
 echo -e "║  Это и есть интерфейс сервера: http://IP/    ║"
 echo -e "║  См. deploy/ACCESS.md                        ║"
-echo -e "║  1. PANEL_PASSWORD в .env                    ║"
+echo -e "║  1. PANEL_PASSWORD в .env (уже сгенерирован) ║"
 echo -e "║  2. bash deploy/update.sh                    ║"
 echo -e "║  3. Перенеси сайт: MIGRATE_SITE.md           ║"
+echo -e "║  Порты 8501/8502/3000/9000/3306 не снаружи  ║"
 echo -e "╚══════════════════════════════════════════════╝${NC}"
