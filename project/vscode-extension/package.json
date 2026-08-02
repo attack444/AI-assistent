@@ -61,7 +61,8 @@
           "type": "string",
           "default": "",
           "order": 1,
-          "description": "Пароль панели на VPS (PANEL_PASSWORD). Нужен для записи на сайт."
+          "scope": "application",
+          "description": "Пароль панели на VPS (PANEL_PASSWORD). Нужен для записи на сайт. Только user settings — workspace игнорируется."
         },
         "aiHelper.site": {
           "type": "string",
@@ -77,21 +78,24 @@
         },
         "aiHelper.apiUrl": {
           "type": "string",
-          "default": "http://80.78.248.195/api",
+          "default": "http://127.0.0.1/api",
           "order": 4,
-          "description": "URL API панели (обычно http://IP/api)"
+          "scope": "application",
+          "description": "URL API панели (обычно http://IP/api). Только user settings — workspace игнорируется."
         },
         "aiHelper.chatUrl": {
           "type": "string",
-          "default": "http://80.78.248.195",
+          "default": "http://127.0.0.1",
           "order": 5,
-          "description": "URL веб-панели в браузере"
+          "scope": "application",
+          "description": "URL веб-панели в браузере. Только user settings — workspace игнорируется."
         },
         "aiHelper.token": {
           "type": "string",
           "default": "",
           "order": 6,
-          "description": "Bearer-токен (необязательно, если задан Password)"
+          "scope": "application",
+          "description": "Bearer-токен (необязательно, если задан Password). Только user settings — workspace игнорируется."
         },
         "aiHelper.localRoot": {
           "type": "string",

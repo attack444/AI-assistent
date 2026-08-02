@@ -18,14 +18,55 @@ const path = require('path');
 function cfg() {
     return vscode.workspace.getConfiguration('aiHelper');
 }
+
+/**
+ * Read sensitive / endpoint settings from Global (user) scope only.
+ * Workspace .vscode/settings.json must not redirect apiUrl or steal tokens.
+ */
+function cfgTrusted(key, defaultValue) {
+    const inspect = cfg().inspect(key);
+    if (!inspect) return defaultValue;
+    if (inspect.globalValue !== undefined && inspect.globalValue !== null) {
+        return inspect.globalValue;
+    }
+    if (inspect.globalLanguageValue !== undefined && inspect.globalLanguageValue !== null) {
+        return inspect.globalLanguageValue;
+    }
+    // Fall back to package default — never workspaceValue / workspaceFolderValue.
+    if (inspect.defaultValue !== undefined && inspect.defaultValue !== null) {
+        return inspect.defaultValue;
+    }
+    return defaultValue;
+}
+
+function warnWorkspaceOverride(key) {
+    const inspect = cfg().inspect(key);
+    if (!inspect) return;
+    const ws = inspect.workspaceValue ?? inspect.workspaceFolderValue;
+    if (ws === undefined || ws === null) return;
+    const trusted = cfgTrusted(key, inspect.defaultValue);
+    if (String(ws) !== String(trusted)) {
+        console.warn(
+            `AI Helper: игнорирую workspace ${key}=${JSON.stringify(ws)} — использую user/global`,
+        );
+    }
+}
+
 function apiBase() {
-    return String(cfg().get('apiUrl', 'http://127.0.0.1:8502')).replace(/\/$/, '');
+    warnWorkspaceOverride('apiUrl');
+    return String(cfgTrusted('apiUrl', 'http://127.0.0.1:8502')).replace(/\/$/, '');
 }
 function chatBase() {
-    return String(cfg().get('chatUrl', 'http://127.0.0.1')).replace(/\/$/, '');
+    warnWorkspaceOverride('chatUrl');
+    return String(cfgTrusted('chatUrl', 'http://127.0.0.1')).replace(/\/$/, '');
 }
 function getToken() {
-    return String(cfg().get('token', '') || '').trim();
+    warnWorkspaceOverride('token');
+    return String(cfgTrusted('token', '') || '').trim();
+}
+function getPassword() {
+    warnWorkspaceOverride('password');
+    return String(cfgTrusted('password', '') || '').trim();
 }
 function getSite() {
     return String(cfg().get('site', '') || '').trim();
@@ -220,7 +261,7 @@ function httpStream(apiPath, body, { onText, onTool, onToolResult, onDone, onErr
 
 async function ensureToken() {
     if (getToken()) return getToken();
-    const password = String(cfg().get('password', '') || '').trim();
+    const password = getPassword();
     if (!password) return '';
     const r = await httpPost('/auth/login', { password });
     if (r.ok && r.token) {
@@ -924,7 +965,7 @@ async function runSetupWizard() {
     const password = await vscode.window.showInputBox({
         prompt: 'Пароль панели (PANEL_PASSWORD)',
         password: true,
-        value: String(cfg().get('password', '') || ''),
+        value: getPassword(),
         ignoreFocusOut: true,
     });
     if (password === undefined) return;
@@ -990,7 +1031,7 @@ function activate(context) {
 
     // First run: offer setup if password/site missing (old extension only had apiUrl)
     setTimeout(() => {
-        if (!getToken() && !String(cfg().get('password', '') || '').trim()) {
+        if (!getToken() && !getPassword()) {
             vscode.window
                 .showInformationMessage(
                     'AI Helper: нужны Password и Site. Сейчас только Api Url / Chat Url — значит стоит старая версия или не настроено.',
