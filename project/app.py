@@ -46,8 +46,10 @@ from self_update import (
 
 ensure_dirs()
 
+_PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
+
 # ---------------------------------------------------------------------------
-# Page config
+# Page config (must be first Streamlit call)
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="AI Helper",
@@ -55,6 +57,26 @@ st.set_page_config(
     page_icon="🤖",
     initial_sidebar_state="collapsed",
 )
+
+# Auth gate — legacy Streamlit must not be anonymous on a public host
+if "legacy_auth_ok" not in st.session_state:
+    st.session_state["legacy_auth_ok"] = False
+
+if not _PANEL_PASSWORD:
+    st.error("PANEL_PASSWORD не задан — legacy Streamlit закрыт (fail-closed).")
+    st.stop()
+
+if not st.session_state.get("legacy_auth_ok"):
+    st.title("AI Helper — вход")
+    st.caption("Legacy Streamlit. Предпочтительнее панель на `/`.")
+    _pw = st.text_input("Пароль панели", type="password", key="legacy_pw")
+    if st.button("Войти", type="primary"):
+        import hmac as _hmac
+        if _pw and _hmac.compare_digest(_pw, _PANEL_PASSWORD):
+            st.session_state["legacy_auth_ok"] = True
+            st.rerun()
+        st.error("Неверный пароль")
+    st.stop()
 
 st.markdown(
     """
