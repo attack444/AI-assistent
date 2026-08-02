@@ -234,33 +234,61 @@ def flatten_site_layout(path: str = ".") -> Dict[str, Any]:
         if not root.is_dir():
             return {"ok": False, "error": f"Не директория: {root}"}
         before = [p.name for p in root.iterdir()][:40]
-        _local_flatten(root)
+        edited = _local_flatten(root)
         after = [p.name for p in root.iterdir()][:40]
         return {
             "ok": True,
             "path": str(root),
             "before": before,
             "after": after,
-            "edited": before != after,
+            "edited": edited or before != after,
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
-def _local_flatten(root: Path) -> None:
+def _merge_move(src: Path, dest: Path) -> None:
+    """
+    Move src → dest without destroying existing live content.
+    Directories are merged; on file collision the destination (root) wins.
+    """
+    if not dest.exists():
+        shutil.move(str(src), str(dest))
+        return
+    if src.is_dir() and dest.is_dir():
+        for child in list(src.iterdir()):
+            _merge_move(child, dest / child.name)
+        shutil.rmtree(src, ignore_errors=True)
+        return
+    # Collision: keep the live root file/dir, drop the nested duplicate.
+    if src.is_dir():
+        shutil.rmtree(src, ignore_errors=True)
+    else:
+        try:
+            src.unlink()
+        except OSError:
+            pass
+
+
+def _local_flatten(root: Path) -> bool:
+    """
+    Unwrap public_html/www/... into site root.
+    Returns True if a nested webroot folder was processed.
+
+    Critical: never shutil.rmtree/unlink existing root destinations on name
+    collision — that used to wipe live wp-content when a leftover public_html
+    was flattened by site_health_check(auto_fix=True). Colliding paths are
+    merged (dirs) or kept at root (files); only the nested duplicate is dropped.
+    """
     for folder_name in ("public_html", "www", "htdocs", "httpdocs", "public", "wordpress"):
         nested = root / folder_name
-        if nested.is_dir():
-            for item in list(nested.iterdir()):
-                dest = root / item.name
-                if dest.exists():
-                    if dest.is_dir():
-                        shutil.rmtree(dest)
-                    else:
-                        dest.unlink()
-                shutil.move(str(item), str(dest))
-            shutil.rmtree(nested, ignore_errors=True)
-            return
+        if not nested.is_dir():
+            continue
+        for item in list(nested.iterdir()):
+            _merge_move(item, root / item.name)
+        shutil.rmtree(nested, ignore_errors=True)
+        return True
+    return False
 
 
 def _find_main_html(root: Path) -> Optional[Path]:
