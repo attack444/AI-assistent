@@ -51,11 +51,11 @@ bash /opt/ai-helper/project/deploy/update.sh
 | Что | Адрес |
 |---|---|
 | API статус | `http://IP/api/status` |
-| Панель напрямую (без Nginx) | `http://IP:3000` |
-| Старый Streamlit | `http://IP/legacy/` или `http://IP:8501` |
-| API напрямую | `http://IP:8502/status` |
+| API локально (не снаружи) | `http://127.0.0.1:8502/status` |
+| Панель локально (не снаружи) | `http://127.0.0.1:3000` |
 | Здоровье (панель) | `http://IP/health` |
 | Watchdog | `bash project/deploy/system-watchdog.sh` (см. `SYSTEM_HEALTH_RU.md`) |
 
-Публичные файлы сайтов (`/sites/имя/`) открыты всем.  
-Панель (файлы/чат/управление) — по паролю `PANEL_PASSWORD` из `.env`.
+Публичные превью `/sites/p…/` отдают CSP `sandbox` (без `allow-same-origin`), чтобы JS деплоя не читал токен панели.  
+Панель (файлы/чат/управление) — по паролю `PANEL_PASSWORD` из `.env` (пустой пароль = закрыто).  
+Порты `8501` / `8502` / `3000` / `9000` / `3306` слушают только `127.0.0.1`. Legacy Streamlit по умолчанию выключен (`ENABLE_STREAMLIT=0`); `/legacy/` отдаёт 404.
