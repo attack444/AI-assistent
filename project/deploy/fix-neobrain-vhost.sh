@@ -185,8 +185,11 @@ server {
         proxy_read_timeout 600s;
         proxy_buffering    off;
     }
-    location / {
-        proxy_pass         http://127.0.0.1:3000/;
+    location = / {
+        return 302 /console/;
+    }
+    location /console/ {
+        proxy_pass         http://127.0.0.1:3000/console/;
         proxy_http_version 1.1;
         proxy_set_header   Host              \$host;
         proxy_set_header   X-Real-IP         \$remote_addr;
@@ -195,6 +198,16 @@ server {
         proxy_set_header   Upgrade           \$http_upgrade;
         proxy_set_header   Connection        "upgrade";
         proxy_read_timeout 600s;
+    }
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8502/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 600s;
+        proxy_buffering    off;
     }
 }
 EOF

@@ -746,7 +746,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.14.0",
+            "version": "2.15.0",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -2036,13 +2036,19 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
 
     def _local_watchdog_ok(self) -> bool:
-        """Cron на VPS может дергать watchdog без Bearer с localhost."""
+        """Cron на VPS: localhost или Docker bridge + X-Watchdog-Token."""
         ip = ""
         try:
             ip = (self.client_address[0] if self.client_address else "") or ""
         except Exception:
             ip = ""
-        return ip in {"127.0.0.1", "::1", "localhost"}
+        if ip in {"127.0.0.1", "::1", "localhost"}:
+            return True
+        expected = (os.environ.get("WATCHDOG_TOKEN") or "").strip()
+        got = (self.headers.get("X-Watchdog-Token") or "").strip()
+        if expected and got and _passwords_equal(got, expected):
+            return True
+        return False
 
     def _get_system_health(self):
         import system_health as sh
@@ -2083,7 +2089,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.14.0",
+                "version": "2.15.0",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),

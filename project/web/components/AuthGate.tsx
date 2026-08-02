@@ -7,6 +7,7 @@ import { checkAuth, clearToken, getStatus, getToken } from "@/lib/api";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [apiDown, setApiDown] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -19,18 +20,25 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         }
         const token = getToken();
         if (!token) {
-          router.replace("/login");
+          router.replace("/login/");
           return;
         }
         const check = await checkAuth();
         if (!check.ok) {
           clearToken();
-          router.replace("/login");
+          router.replace("/login/");
           return;
         }
-        if (!cancelled) setReady(true);
-      } catch {
-        router.replace("/login");
+        if (!cancelled) {
+          setApiDown("");
+          setReady(true);
+        }
+      } catch (e) {
+        // Сеть/500 ≠ «не авторизован» — не выкидываем на login
+        if (!cancelled) {
+          setApiDown((e as Error).message || "API недоступен");
+          setReady(true);
+        }
       }
     })();
     return () => {
@@ -40,6 +48,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return <div className="empty">Проверяю доступ…</div>;
+  }
+  if (apiDown) {
+    return (
+      <div className="empty" style={{ color: "#c44" }}>
+        API недоступен: {apiDown}. Обнови страницу или проверь контейнер app.
+      </div>
+    );
   }
   return <>{children}</>;
 }

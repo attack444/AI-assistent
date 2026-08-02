@@ -71,11 +71,31 @@ class SecurityHardeningTests(unittest.TestCase):
         yml = (PROJECT / "deploy" / "docker-compose.prod.yml").read_text(encoding="utf-8")
         self.assertIn("127.0.0.1:8502:8502", yml)
         self.assertIn("127.0.0.1:3000:3000", yml)
+        self.assertIn("127.0.0.1:3306:3306", yml)
         self.assertIn('profiles: ["extra"]', yml)
+        # не затирать PANEL_PASSWORD пустым default
+        self.assertNotIn("PANEL_PASSWORD=${PANEL_PASSWORD", yml)
+        # mysql читает env_file
+        self.assertGreaterEqual(yml.count("env_file:"), 2)
 
     def test_dockerfile_streamlit_optional(self):
         df = (PROJECT / "deploy" / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("ENABLE_STREAMLIT", df)
+
+    def test_next_api_rewrite_basepath_false(self):
+        cfg = (PROJECT / "web" / "next.config.ts").read_text(encoding="utf-8")
+        self.assertIn("basePath: false", cfg)
+
+    def test_watchdog_token_supported(self):
+        api = (PROJECT / "api.py").read_text(encoding="utf-8")
+        self.assertIn("X-Watchdog-Token", api)
+        self.assertIn("WATCHDOG_TOKEN", api)
+        sh = (PROJECT / "deploy" / "system-watchdog.sh").read_text(encoding="utf-8")
+        self.assertIn("X-Watchdog-Token", sh)
+
+    def test_home_skips_auth_redirect(self):
+        page = (PROJECT / "web" / "app" / "page.tsx").read_text(encoding="utf-8")
+        self.assertIn("skipAuthRedirect: true", page)
 
 
 if __name__ == "__main__":

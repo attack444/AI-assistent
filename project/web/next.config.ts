@@ -14,10 +14,12 @@ const nextConfig: NextConfig = {
       }
     : {}),
   async rewrites() {
+    // basePath: false — иначе rewrite станет /console/api/*, а клиент бьёт в /api/
     return [
       {
         source: "/api/:path*",
         destination: `${apiUrl}/:path*`,
+        basePath: false,
       },
     ];
   },

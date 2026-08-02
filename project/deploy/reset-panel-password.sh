@@ -31,7 +31,7 @@ fi
 docker exec ai-helper-app rm -f /root/.ai-helper/generated_panel_password.txt 2>/dev/null || true
 
 cd "$SCRIPT_DIR"
-docker compose -f "$COMPOSE" up -d --force-recreate app
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE" up -d --force-recreate app
 
 echo ""
 echo "============================================"

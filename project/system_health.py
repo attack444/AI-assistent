@@ -91,7 +91,9 @@ def check_targets(
     base = (base_url or DEFAULT_BASE).rstrip("/")
     host = host or DEFAULT_HOST
     api_base = os.environ.get("WATCHDOG_API_URL", f"http://127.0.0.1:{API_PORT}").rstrip("/")
-    panel_url = os.environ.get("WATCHDOG_PANEL_URL", f"http://127.0.0.1:{PANEL_PORT}/").rstrip("/") + "/"
+    panel_url = os.environ.get(
+        "WATCHDOG_PANEL_URL", f"http://127.0.0.1:{PANEL_PORT}/console/"
+    ).rstrip("/") + "/"
 
     checks: List[Dict[str, Any]] = []
 

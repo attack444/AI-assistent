@@ -42,7 +42,7 @@ export function Sidebar() {
         style={{ alignSelf: "flex-start" }}
         onClick={() => {
           clearToken();
-          router.push("/login");
+          router.push("/login/");
         }}
       >
         Выйти

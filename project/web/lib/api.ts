@@ -422,8 +422,10 @@ export function saveOwnerSettings(settings: Record<string, string>) {
   );
 }
 
-export function listSites() {
-  return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites");
+export function listSites(opts?: { skipAuthRedirect?: boolean }) {
+  return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites", {
+    skipAuthRedirect: opts?.skipAuthRedirect,
+  });
 }
 
 export function createSite(name: string, domain = "") {
@@ -633,6 +635,7 @@ export async function chunkedUploadFile(opts: {
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) {
           clearToken();
+          redirectToLogin();
           throw new Error("Нужен вход");
         }
         if (!res.ok) {
@@ -714,6 +717,7 @@ async function chunkedMigrate(opts: {
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) {
           clearToken();
+          redirectToLogin();
           throw new Error("Нужен вход");
         }
         if (!res.ok) {

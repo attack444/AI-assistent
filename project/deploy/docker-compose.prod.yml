@@ -1,13 +1,13 @@
+# Секреты и пароли — из project/.env через env_file.
+# Запуск: docker compose --env-file ../.env -f docker-compose.prod.yml up -d
 services:
 
-  # ── NeoBrain API (+ опционально Streamlit legacy) ───────────
   app:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: ai-helper-app
     restart: unless-stopped
-    # Только localhost — снаружи только nginx :80/:443
     ports:
       - "127.0.0.1:8502:8502"
       - "127.0.0.1:8501:8501"
@@ -16,32 +16,22 @@ services:
       - /var/ai-helper/sites:/opt/sites
       - /var/ai-helper/sites:/var/ai-helper/sites
       - /opt/ai-helper:/opt/ai-helper
-    # Пароли/секреты — ТОЛЬКО из ../.env (project/.env).
-    # Нельзя писать PANEL_PASSWORD=${PANEL_PASSWORD:-} в environment:
-    # подстановка идёт из deploy/.env (часто пусто) и ЗАТИРАЕТ пароль из env_file →
-    # контейнер генерирует другой пароль, а в .env лежит «правильный», который не подходит.
     env_file:
       - ../.env
     environment:
+      # Только инфраструктура (не секреты — их даёт env_file)
       - PYTHONUNBUFFERED=1
       - AI_HELPER_API_HOST=0.0.0.0
       - AI_HELPER_API_PORT=8502
       - SITES_ROOT=/opt/sites
       - HOST_SITES_PATH=/var/ai-helper/sites
       - AI_HELPER_PROJECT=/opt/ai-helper/project
-      - VPS_PUBLIC_IP=${VPS_PUBLIC_IP:-80.78.248.195}
       - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
       - MAX_UPLOAD_BYTES=2147483648
-      - ALLOW_OPEN_PANEL=${ALLOW_OPEN_PANEL:-0}
-      - ENABLE_STREAMLIT=${ENABLE_STREAMLIT:-0}
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
-      - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
-      - LLM_PREFER_FREE=${LLM_PREFER_FREE:-1}
-      - FAST_LLM_MODEL=${FAST_LLM_MODEL:-qwen2.5:1.5b}
-      - PUBLIC_WIDGET_GUEST=${PUBLIC_WIDGET_GUEST:-1}
-      - PUBLIC_AUTH_REQUIRED=${PUBLIC_AUTH_REQUIRED:-1}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
+      - OLLAMA_HOST=http://ollama:11434
+      - ENABLE_STREAMLIT=0
     depends_on:
       - ollama
     networks:
@@ -84,7 +74,6 @@ services:
       dockerfile: Dockerfile.php
     container_name: ai-helper-php
     restart: unless-stopped
-    # Host nginx → 127.0.0.1:9000 (не публиковать 0.0.0.0)
     ports:
       - "127.0.0.1:9000:9000"
     volumes:
@@ -100,20 +89,22 @@ services:
       - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    env_file:
+      - ../.env
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+      # Имена переменных MySQL image; значения из env_file (не ${:-default} из deploy/)
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
       MYSQL_USER: ${MYSQL_USER:-wp}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wp_change_me}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     networks:
       - ai-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # Не используются API — выключены по умолчанию (profile extra)
   db:
     profiles: ["extra"]
     image: postgres:16-alpine
@@ -121,10 +112,8 @@ services:
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-aihelper}
-      POSTGRES_USER: ${POSTGRES_USER:-aihelper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+    env_file:
+      - ../.env
     networks:
       - ai-net
 

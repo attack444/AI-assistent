@@ -1,61 +1,72 @@
 #!/usr/bin/env bash
-# Закрывает лишние порты UFW, поднимает compose только на 127.0.0.1,
-# напоминает про PANEL_PASSWORD.
+# Закрывает порты, поднимает compose на 127.0.0.1, пароль панели + WATCHDOG_TOKEN.
 #
 #   sudo bash /opt/ai-helper/project/deploy/harden-vps.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/../.env"
+COMPOSE=(docker compose --env-file "$ENV_FILE" -f "${SCRIPT_DIR}/docker-compose.prod.yml")
 
 [ "$(id -u)" -eq 0 ] || { echo "[ERR] sudo bash $0"; exit 1; }
 
 touch "$ENV_FILE"
+set_kv() {
+  local k="$1" v="$2"
+  if grep -q "^${k}=" "$ENV_FILE" 2>/dev/null; then
+    TMP=$(mktemp)
+    grep -v "^${k}=" "$ENV_FILE" >"$TMP" || true
+    echo "${k}=${v}" >>"$TMP"
+    mv "$TMP" "$ENV_FILE"
+  else
+    echo "${k}=${v}" >>"$ENV_FILE"
+  fi
+}
+
 if ! grep -q '^PANEL_PASSWORD=.\+' "$ENV_FILE" 2>/dev/null; then
   PW=$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)
-  if grep -q '^PANEL_PASSWORD=' "$ENV_FILE"; then
-    sed -i "s|^PANEL_PASSWORD=.*|PANEL_PASSWORD=${PW}|" "$ENV_FILE"
-  else
-    echo "PANEL_PASSWORD=${PW}" >> "$ENV_FILE"
-  fi
-  echo "[SECURITY] Записан PANEL_PASSWORD в .env"
-  echo "           Пароль панели: ${PW}"
-  echo "           Сохрани его — вход: https://neobrain.site/console/login/"
+  set_kv PANEL_PASSWORD "$PW"
+  echo "[SECURITY] PANEL_PASSWORD=${PW}"
+  echo "           https://neobrain.site/console/login/"
 fi
 
 if ! grep -q '^SECRET_KEY=.\+' "$ENV_FILE" || grep -q 'dev-insecure-change-me' "$ENV_FILE"; then
-  SK=$(openssl rand -hex 32)
-  if grep -q '^SECRET_KEY=' "$ENV_FILE"; then
-    sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${SK}|" "$ENV_FILE"
-  else
-    echo "SECRET_KEY=${SK}" >> "$ENV_FILE"
-  fi
-  echo "[SECURITY] Обновлён SECRET_KEY"
+  set_kv SECRET_KEY "$(openssl rand -hex 32)"
+  echo "[SECURITY] SECRET_KEY обновлён"
+fi
+
+if ! grep -q '^WATCHDOG_TOKEN=.\+' "$ENV_FILE" 2>/dev/null; then
+  set_kv WATCHDOG_TOKEN "$(openssl rand -hex 24)"
+  echo "[SECURITY] WATCHDOG_TOKEN задан (для cron)"
 fi
 
 grep -q '^PANEL_BASE_PATH=' "$ENV_FILE" || echo 'PANEL_BASE_PATH=/console' >> "$ENV_FILE"
 grep -q '^ENABLE_STREAMLIT=' "$ENV_FILE" || echo 'ENABLE_STREAMLIT=0' >> "$ENV_FILE"
 grep -q '^ALLOW_OPEN_PANEL=' "$ENV_FILE" || echo 'ALLOW_OPEN_PANEL=0' >> "$ENV_FILE"
+grep -q '^MYSQL_ROOT_PASSWORD=.\+' "$ENV_FILE" || set_kv MYSQL_ROOT_PASSWORD "root_change_me"
+grep -q '^MYSQL_PASSWORD=.\+' "$ENV_FILE" || set_kv MYSQL_PASSWORD "wp_change_me"
+grep -q '^MYSQL_DATABASE=' "$ENV_FILE" || echo 'MYSQL_DATABASE=wordpress' >> "$ENV_FILE"
+grep -q '^MYSQL_USER=' "$ENV_FILE" || echo 'MYSQL_USER=wp' >> "$ENV_FILE"
 
 if command -v ufw >/dev/null 2>&1; then
   ufw allow OpenSSH || ufw allow 22/tcp || true
   ufw allow 80/tcp || true
   ufw allow 443/tcp || true
-  # закрыть прямые docker-порты если когда-то открывали
   for p in 3000 8501 8502 3306 9000 11434; do
     ufw delete allow ${p}/tcp 2>/dev/null || true
+    ufw deny ${p}/tcp 2>/dev/null || true
   done
   ufw --force enable || true
-  echo "[OK] UFW: 22/80/443"
-  ufw status || true
+  echo "[OK] UFW: allow 22/80/443, deny docker ports"
 fi
 
 cd "$SCRIPT_DIR"
-docker compose -f docker-compose.prod.yml up -d --force-recreate app web php mysql ollama 2>/dev/null \
-  || docker compose -f docker-compose.prod.yml up -d --force-recreate
+"${COMPOSE[@]}" up -d --force-recreate app web php mysql ollama
 
 echo ""
-echo "Проверка: порты не должны слушать 0.0.0.0:8502/3000/3306"
-ss -lntp | grep -E ':(3000|8501|8502|3306|9000|11434)\s' || echo "(ss пусто или ок)"
-echo "API через nginx: curl -sk https://neobrain.site/api/status | head -c 120"
+echo "=== Проверка bind (должно быть 127.0.0.1, не 0.0.0.0) ==="
+ss -lntp | grep -E ':(3000|8501|8502|3306|9000|11434)\s' || echo "(нет слушателей — странно)"
+echo ""
+echo "Снаружи эти порты должны быть ЗАКРЫТЫ. Если ss показывает 0.0.0.0 — compose не тот."
 echo "Панель: https://neobrain.site/console/login/"
+echo "Пароль: grep PANEL_PASSWORD $ENV_FILE"

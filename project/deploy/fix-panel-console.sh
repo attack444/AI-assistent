@@ -24,10 +24,11 @@ fi
 
 echo "==> Rebuild web with PANEL_BASE_PATH=/console (build-arg)"
 cd "$SCRIPT_DIR"
-docker compose -f "$COMPOSE" build \
+ENV_FILE="${SCRIPT_DIR}/../.env"
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE" build \
   --build-arg PANEL_BASE_PATH=/console \
   web
-docker compose -f "$COMPOSE" up -d --force-recreate web
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE" up -d --force-recreate web
 
 echo "==> Wait Next"
 for i in $(seq 1 30); do

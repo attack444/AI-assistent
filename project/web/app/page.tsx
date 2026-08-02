@@ -22,7 +22,8 @@ export default function HomePage() {
       })
       .catch(() => setStatus("API пока недоступен — запусти backend"));
 
-    listSites()
+    // Без skipAuthRedirect 401 уводит на login до клика «Вход»
+    listSites({ skipAuthRedirect: true })
       .then((d) => setSites(d.sites || []))
       .catch(() => setSites([]));
   }, []);
