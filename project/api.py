@@ -72,6 +72,10 @@ SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
+# Fail closed when PANEL_PASSWORD is empty unless explicitly opted in for local/dev.
+ALLOW_INSECURE_NO_AUTH = os.environ.get("ALLOW_INSECURE_NO_AUTH", "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
 # Chunked uploads support up to 2 GB by default (WordPress backups)
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_JSON_BODY = int(os.environ.get("MAX_JSON_BODY", str(20 * 1024 * 1024)))
@@ -110,7 +114,15 @@ def _token_for(password: str) -> str:
 
 
 def _auth_enabled() -> bool:
-    return bool(PANEL_PASSWORD)
+    """Whether privileged routes require a panel bearer token.
+
+    Empty PANEL_PASSWORD used to disable auth (fail-open). That is now only
+    allowed when ALLOW_INSECURE_NO_AUTH=1. Otherwise auth stays required and
+    requests are rejected until a password is configured.
+    """
+    if not PANEL_PASSWORD and ALLOW_INSECURE_NO_AUTH:
+        return False
+    return True
 
 
 def _default_roots() -> List[Path]:
@@ -594,6 +606,8 @@ class APIHandler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         if not _auth_enabled():
             return True
+        if not PANEL_PASSWORD:
+            return False
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             return False
@@ -604,6 +618,13 @@ class APIHandler(BaseHTTPRequestHandler):
     def _require_auth(self) -> bool:
         if self._authorized():
             return True
+        if _auth_enabled() and not PANEL_PASSWORD:
+            self._send(503, _json({
+                "error": "PANEL_PASSWORD не задан — панель заблокирована",
+                "auth_required": True,
+                "misconfigured": True,
+            }))
+            return False
         self._send(401, _json({
             "error": "Нужен вход",
             "auth_required": True,
@@ -618,7 +639,14 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "auth_required": False,
                 "token": "",
-                "message": "Пароль панели не задан (PANEL_PASSWORD)",
+                "message": "Пароль панели не задан (ALLOW_INSECURE_NO_AUTH)",
+            }))
+            return
+        if not PANEL_PASSWORD:
+            self._send(503, _json({
+                "ok": False,
+                "error": "PANEL_PASSWORD не задан на сервере",
+                "misconfigured": True,
             }))
             return
         if not password or not hmac.compare_digest(password, PANEL_PASSWORD):

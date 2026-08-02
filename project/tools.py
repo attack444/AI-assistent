@@ -1028,9 +1028,11 @@ def save_memory(content: str, type: str = "fact", project: str = "") -> Dict[str
 
 def git_run(command: str, repo_path: str = ".") -> Dict[str, Any]:
     """
-    Выполняет git-команду в репозитории.
+    Выполняет git-команду в репозитории без shell=True.
     Примеры: 'status', 'diff', 'log --oneline -10', 'add .', 'commit -m "fix"', 'branch'
     """
+    import shlex
+
     args = {"command": command, "repo_path": repo_path}
     try:
         p = Path(repo_path).expanduser().resolve()
@@ -1045,8 +1047,27 @@ def git_run(command: str, repo_path: str = ".") -> Dict[str, Any]:
                 if cur.parent == cur:
                     break
                 cur = cur.parent
-        full_cmd = f"git {command}"
-        code, out = _run(full_cmd, cwd=str(p), timeout=30)
+        if isinstance(command, (list, tuple)):
+            git_args = [str(a) for a in command]
+        else:
+            raw = str(command or "").strip()
+            if not raw:
+                return {"ok": False, "error": "Пустая git-команда", "output": ""}
+            # Newlines would have enabled smuggling under shell=True; keep blocked.
+            if any(ch in raw for ch in ("\n", "\r", "\x00")):
+                return {
+                    "ok": False,
+                    "error": "Отклонены небезопасные символы в git-команде",
+                    "output": "",
+                }
+            try:
+                git_args = shlex.split(raw)
+            except ValueError as exc:
+                return {"ok": False, "error": f"Некорректные аргументы git: {exc}", "output": ""}
+        if not git_args:
+            return {"ok": False, "error": "Пустая git-команда", "output": ""}
+        # argv list + shell=False — `;`/`|`/… in args are literal, not shell operators.
+        code, out = _run(["git", *git_args], cwd=str(p), timeout=30, shell=False)
         r: Dict[str, Any] = {
             "ok": code == 0,
             "output": out[:8000],
