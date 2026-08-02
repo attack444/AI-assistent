@@ -25,6 +25,11 @@ if [ -n "$SRC" ]; then
   if [ -f "${DIR_SRC}/widget.js" ]; then
     cp "${DIR_SRC}/widget.js" "$ROOT/widget.js"
   fi
+  for f in robots.txt sitemap.xml; do
+    if [ -f "${DIR_SRC}/${f}" ]; then
+      cp "${DIR_SRC}/${f}" "$ROOT/${f}"
+    fi
+  done
   echo "[OK] Скопировал витрину из $SRC"
 else
   # fallback: скачать с GitHub (ветка по умолчанию main; при необходимости подставь свою)

@@ -1,18 +1,20 @@
 # NeoBrain / 5MB2 — порядок, деньги, сервер, что не забыть
 
-## 1. DNS сейчас (проверка)
+## 1. DNS сейчас (проверка 2026-08-02)
 
-Одинаковые NS (`ns1.reg.ru` / `ns2.reg.ru`) — ок. Но **записи A разные**:
+NS у обоих доменов одинаковые: `ns1.reg.ru` / `ns2.reg.ru` — ок.
 
 | Имя | 5mb2.ru | neobrain.site |
 |---|---|---|
-| `@` (корень) | ❌ пусто у Google/Cloudflare и у ns1.reg.ru | ✅ 80.78.248.195 |
-| `www` | ✅ 80.78.248.195 | ✅ 80.78.248.195 |
+| `@` (корень) | ❌ **пусто** у 8.8.8.8 / 1.1.1.1 / ns1.reg.ru → HTTPS на apex падает | ✅ 80.78.248.195 |
+| `www` | ✅ 80.78.248.195 (сертификат CN=5mb2.ru) | ✅ 80.78.248.195 |
+| SSL/vhost | www работает; apex без A | ⚠️ пока отдаёт **контент/сертификат 5mb2** — нужен `fix-neobrain-vhost.sh` на VPS |
 
-Это **не «ещё не обновилось»** для `5mb2.ru` `@`: у самого ns1.reg.ru ответа A нет.  
-В панели reg.ru для **5mb2.ru** добавь: тип **A**, имя **@** (или пусто), значение **80.78.248.195**.
+Это **не TTL**: у authoritative ns1.reg.ru для `5mb2.ru` `@` A-записи нет.  
+В reg.ru → **5mb2.ru** → добавить: тип **A**, хост **@**, значение **80.78.248.195**.  
+Пока `@` пустой, `www` редиректит на `https://5mb2.ru/` — корень сайта для людей/поисковиков ломается.
 
-Поддомен `panel` **не обязателен**. Панель HTTPS: `https://neobrain.site/console/`.
+Поддомен `panel` **не обязателен**. Панель HTTPS: `https://neobrain.site/console/` (после fix vhost).
 
 ---
 
@@ -103,10 +105,10 @@ Let's Encrypt **не выдаёт сертификат на голый IP**. В�
 
 | # | Аспект | Статус |
 |---|---|---|
-| 1 | DNS A `@` для обоих доменов | neobrain ✅ / 5mb2 ❌ |
-| 2 | Отдельный SSL на каждый домен | чинить vhost NeoBrain |
-| 3 | HTTPS панели | `/console` |
-| 4 | Бэкапы (сайты+БД) по cron | сделать |
+| 1 | DNS A `@` для обоих доменов | neobrain ✅ / 5mb2 ❌ (добавь в reg.ru) |
+| 2 | Отдельный SSL на каждый домен | чинить vhost NeoBrain на VPS |
+| 3 | HTTPS панели | `/console` (код готов) |
+| 4 | Бэкапы (сайты+БД) по cron | `install-backup-cron.sh` |
 | 5 | Мониторинг uptime | watchdog ✅ |
 | 6 | Оферта + политика + cookies | нужно для оплаты |
 | 7 | SMTP писем | настройки в панели |
@@ -138,6 +140,9 @@ docker compose -f docker-compose.prod.yml build app web
 docker compose -f docker-compose.prod.yml up -d --force-recreate app web
 
 CERTBOT_EMAIL=you@mail.ru sudo bash /opt/ai-helper/project/deploy/fix-neobrain-vhost.sh
+sudo bash /opt/ai-helper/project/deploy/install-system-watchdog.sh
+sudo bash /opt/ai-helper/project/deploy/install-backup-cron.sh
 ```
 
-Потом: https://neobrain.site/ → витрина, https://neobrain.site/console/ → панель → **Настройки**.
+Потом: https://neobrain.site/ → витрина NeoBrain (не 5MB2), сертификат CN=neobrain.site,  
+https://neobrain.site/console/ → панель → **Настройки** (ЮKassa, Метрика, GA, GSC, Turnstile).

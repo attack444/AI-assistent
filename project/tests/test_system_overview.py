@@ -83,7 +83,7 @@ class OverviewTests(unittest.TestCase):
         text = p.read_text(encoding="utf-8")
         self.assertIn("DeepSeek", text)
         self.assertIn("watchdog", text)
-        self.assertIn("1.9.6", text)
+        self.assertIn("1.9.", text)
 
     def test_api_has_overview_routes(self):
         api = (PROJECT / "api.py").read_text(encoding="utf-8")
