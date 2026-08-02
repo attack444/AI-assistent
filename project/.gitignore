@@ -19,6 +19,8 @@ build/
 *.egg-info/
 
 # Secrets / local deploy
+.env
+deploy/.env
 project/.env
 project/deploy/site.env
 project/deploy/*.local.sh

@@ -64,11 +64,9 @@ info "Настраиваю файрвол..."
 ufw allow ssh
 ufw allow http
 ufw allow https
-ufw allow 8501   # Streamlit (legacy)
-ufw allow 8502   # AI Helper API
-ufw allow 3000   # Next.js panel (также через Nginx :80)
+# API/panel/php-fpm слушают только 127.0.0.1 (см. docker-compose) — наружу только :80/:443
 ufw --force enable
-log "Файрвол настроен"
+log "Файрвол настроен (только SSH/HTTP/HTTPS)"
 
 # ── Папка сайтов ─────────────────────────────────────────────
 mkdir -p /var/ai-helper/sites
@@ -88,16 +86,21 @@ cd "$REPO_DIR/project"
 log "Репозиторий: $REPO_DIR"
 
 # ── .env файл ────────────────────────────────────────────────
-if [ ! -f "$REPO_DIR/project/.env" ]; then
+ENV_FILE="$REPO_DIR/project/.env"
+if [ ! -f "$ENV_FILE" ]; then
     info "Создаю .env из шаблона..."
-    cp "$REPO_DIR/project/deploy/.env.example" "$REPO_DIR/project/.env"
-    warn "Отредактируй $REPO_DIR/project/.env — добавь API ключи!"
+    cp "$REPO_DIR/project/deploy/.env.example" "$ENV_FILE"
 fi
+info "Генерирую секреты (PANEL_PASSWORD / MySQL / SECRET_KEY)…"
+bash "$REPO_DIR/project/deploy/ensure-secrets.sh" "$ENV_FILE"
+warn "Добавь DEEPSEEK_API_KEY в $ENV_FILE при необходимости"
 
 # ── Docker Compose запуск ────────────────────────────────────
 info "Запускаю сервисы через Docker Compose..."
 cd "$REPO_DIR/project/deploy"
-docker compose -f docker-compose.prod.yml up -d --build
+# Compose читает секреты из project/.env
+ln -sfn "$ENV_FILE" "$REPO_DIR/project/deploy/.env"
+docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml up -d --build
 log "Сервисы запущены"
 
 # ── Nginx ────────────────────────────────────────────────────
@@ -126,7 +129,6 @@ echo -e "║  Legacy:  http://${SERVER_IP}/legacy/         "
 echo -e "╠══════════════════════════════════════════════╣"
 echo -e "║  Это и есть интерфейс сервера: http://IP/    ║"
 echo -e "║  См. deploy/ACCESS.md                        ║"
-echo -e "║  1. PANEL_PASSWORD в .env                    ║"
-echo -e "║  2. bash deploy/update.sh                    ║"
-echo -e "║  3. Перенеси сайт: MIGRATE_SITE.md           ║"
+echo -e "║  PANEL_PASSWORD уже сгенерирован (см. выше)  ║"
+echo -e "║  bash deploy/update.sh  |  MIGRATE_SITE.md   ║"
 echo -e "╚══════════════════════════════════════════════╝${NC}"

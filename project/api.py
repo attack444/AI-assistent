@@ -72,6 +72,11 @@ SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
+# Opt-in only: allow unauthenticated panel when PANEL_PASSWORD is unset (local/dev).
+# Production must leave this off — empty password is fail-closed by default.
+ALLOW_OPEN_PANEL = os.environ.get("ALLOW_OPEN_PANEL", "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
 # Chunked uploads support up to 2 GB by default (WordPress backups)
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_JSON_BODY = int(os.environ.get("MAX_JSON_BODY", str(20 * 1024 * 1024)))
@@ -79,6 +84,21 @@ HOST_SITES_PATH = os.environ.get("HOST_SITES_PATH", "/var/ai-helper/sites")
 CHUNK_SIZE = int(os.environ.get("UPLOAD_CHUNK_SIZE", str(4 * 1024 * 1024)))  # 4 MB
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
+_SAFE_DOMAIN = re.compile(
+    r"^(?=.{1,253}$)(?!-)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.(?!-)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+)
+# Known template / placeholder passwords — treat as "not configured"
+_INSECURE_PANEL_PASSWORDS = frozenset({
+    "change_me_panel_password",
+    "panel_password",
+    "password",
+    "admin",
+    "changeme",
+    "secret",
+    "123456",
+    "12345678",
+})
 _PUBLIC_PATHS = {
     "/status",
     "/auth/login",
@@ -109,8 +129,19 @@ def _token_for(password: str) -> str:
     ).hexdigest()
 
 
+def _panel_password_configured() -> bool:
+    """True only when PANEL_PASSWORD is set and not a known insecure placeholder."""
+    if not PANEL_PASSWORD or len(PANEL_PASSWORD) < 8:
+        return False
+    if PANEL_PASSWORD.lower() in _INSECURE_PANEL_PASSWORDS:
+        return False
+    if PANEL_PASSWORD.lower().startswith("change_me"):
+        return False
+    return True
+
+
 def _auth_enabled() -> bool:
-    return bool(PANEL_PASSWORD)
+    return _panel_password_configured()
 
 
 def _default_roots() -> List[Path]:
@@ -313,6 +344,11 @@ def _write_nginx_vhost(name: str, domain: str = "") -> Optional[str]:
         return None
     domain = domain.strip().lower()
     domain = domain.replace("https://", "").replace("http://", "").split("/")[0]
+    domain = domain.split(":")[0].strip().rstrip(".")
+    if not _SAFE_DOMAIN.match(domain):
+        raise ValueError(
+            "Некорректный domain: только DNS-имя (латиница, цифры, точки, дефис)"
+        )
     # Prefer host path when sites are bind-mounted
     host_root = Path(HOST_SITES_PATH) / name
     root_path = host_root if host_root.parent.exists() else (SITES_ROOT / name)
@@ -592,8 +628,10 @@ class APIHandler(BaseHTTPRequestHandler):
         return settings, profile, memory, project_root
 
     def _authorized(self) -> bool:
+        # Fail-closed: without a real PANEL_PASSWORD, panel routes stay locked
+        # unless ALLOW_OPEN_PANEL=1 (explicit local/dev opt-in).
         if not _auth_enabled():
-            return True
+            return ALLOW_OPEN_PANEL
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             return False
@@ -604,6 +642,16 @@ class APIHandler(BaseHTTPRequestHandler):
     def _require_auth(self) -> bool:
         if self._authorized():
             return True
+        if not _auth_enabled() and not ALLOW_OPEN_PANEL:
+            self._send(503, _json({
+                "error": (
+                    "PANEL_PASSWORD не задан или использует значение из шаблона. "
+                    "Задай пароль в .env (bash deploy/ensure-secrets.sh) и перезапусти app."
+                ),
+                "auth_required": True,
+                "panel_locked": True,
+            }))
+            return False
         self._send(401, _json({
             "error": "Нужен вход",
             "auth_required": True,
@@ -614,11 +662,24 @@ class APIHandler(BaseHTTPRequestHandler):
         body = self._read_body()
         password = str(body.get("password", ""))
         if not _auth_enabled():
-            self._send(200, _json({
-                "ok": True,
-                "auth_required": False,
-                "token": "",
-                "message": "Пароль панели не задан (PANEL_PASSWORD)",
+            if ALLOW_OPEN_PANEL:
+                self._send(200, _json({
+                    "ok": True,
+                    "auth_required": False,
+                    "token": "",
+                    "message": "Пароль панели не задан (ALLOW_OPEN_PANEL=1)",
+                }))
+                return
+            self._send(503, _json({
+                "ok": False,
+                "auth_required": True,
+                "panel_locked": True,
+                "error": (
+                    "PANEL_PASSWORD не задан или небезопасен (шаблон change_me_*). "
+                    "На VPS: bash /opt/ai-helper/project/deploy/ensure-secrets.sh "
+                    "/opt/ai-helper/project/.env && docker compose -f "
+                    "/opt/ai-helper/project/deploy/docker-compose.prod.yml up -d --force-recreate app"
+                ),
             }))
             return
         if not password or not hmac.compare_digest(password, PANEL_PASSWORD):
@@ -633,7 +694,8 @@ class APIHandler(BaseHTTPRequestHandler):
     def _get_auth_check(self):
         self._send(200, _json({
             "ok": self._authorized(),
-            "auth_required": _auth_enabled(),
+            "auth_required": _auth_enabled() or not ALLOW_OPEN_PANEL,
+            "panel_locked": (not _auth_enabled()) and (not ALLOW_OPEN_PANEL),
         }))
 
     # ── GET /status ──────────────────────────────────────────────
@@ -916,7 +978,11 @@ class APIHandler(BaseHTTPRequestHandler):
 """,
             encoding="utf-8",
         )
-        nginx_path = _write_nginx_vhost(name, domain)
+        try:
+            nginx_path = _write_nginx_vhost(name, domain)
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+            return
         _fix_site_perms(root)
         info = _site_info(name)
         if nginx_path:
@@ -1259,7 +1325,11 @@ class APIHandler(BaseHTTPRequestHandler):
         if not root.is_dir():
             self._send(404, _json({"error": "Сайт не найден"}))
             return
-        nginx_path = _write_nginx_vhost(name, domain)
+        try:
+            nginx_path = _write_nginx_vhost(name, domain)
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+            return
         info = _site_info(name)
         info["nginx_conf"] = nginx_path
         info["domain"] = domain.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
