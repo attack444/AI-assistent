@@ -13,7 +13,9 @@ class PanelLoginPathTests(unittest.TestCase):
         text = (WEB / "lib" / "api.ts").read_text(encoding="utf-8")
         self.assertIn("panelLoginPath", text)
         self.assertIn("skipAuthRedirect", text)
-        self.assertIn("/console/login/", text)
+        self.assertIn("panelBasePath", text)
+        self.assertIn('startsWith("/console/")', text)
+        self.assertIn("${base}/login/", text)
         # старый баг: голый /login при basePath
         self.assertNotIn('window.location.href = "/login"', text)
 
