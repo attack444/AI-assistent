@@ -282,6 +282,51 @@ export function getOwnerSettings() {
   );
 }
 
+export type SeoCheck = { id: string; ok: boolean; detail?: string };
+export type SeoChecklistItem = {
+  id: string;
+  title: string;
+  where?: string;
+  done?: boolean | null;
+  priority?: number;
+};
+export type SeoSiteReport = {
+  id: string;
+  name: string;
+  url: string;
+  ok?: boolean;
+  title?: string;
+  checks?: SeoCheck[];
+  links?: Record<string, string>;
+  error?: string;
+};
+export type SeoReport = {
+  ok: boolean;
+  at?: string;
+  sites?: SeoSiteReport[];
+  checklist?: SeoChecklistItem[];
+  open_count?: number;
+  state?: { last_news_run?: string; last_news_dry_run?: boolean };
+  next_human?: string[];
+};
+
+export function getSeoReport() {
+  return request<SeoReport>("/system/seo");
+}
+
+export function runSeoNewsDrafts(opts?: { dry_run?: boolean; max_new?: number }) {
+  return request<{ ok: boolean; output?: string; error?: string; dry_run?: boolean; command?: string }>(
+    "/system/seo/news-drafts",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        dry_run: opts?.dry_run ?? false,
+        max_new: opts?.max_new ?? 3,
+      }),
+    },
+  );
+}
+
 export function saveOwnerSettings(settings: Record<string, string>) {
   return request<{ ok: boolean; settings: Record<string, string | boolean> }>(
     "/system/settings",

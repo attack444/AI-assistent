@@ -28,6 +28,8 @@ Endpoints:
   GET    /system/health
   GET    /system/incidents
   POST   /system/watchdog
+  GET    /system/seo
+  POST   /system/seo/news-drafts
 """
 from __future__ import annotations
 
@@ -678,7 +680,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.12.0",
+            "version": "2.13.0",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -2015,7 +2017,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.12.0",
+                "version": "2.13.0",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
@@ -2027,6 +2029,27 @@ class APIHandler(BaseHTTPRequestHandler):
             sites_root=_ensure_sites_root(),
         )
         self._send(200, _json(overview))
+
+    def _get_system_seo(self):
+        import seo_workflows as sw
+
+        self._send(200, _json(sw.build_report()))
+
+    def _post_system_seo_news_drafts(self):
+        import seo_workflows as sw
+
+        try:
+            body = self._read_body()
+        except Exception:
+            body = {}
+        dry = bool(body.get("dry_run") or body.get("dry"))
+        try:
+            max_new = int(body.get("max_new") or 3)
+        except (TypeError, ValueError):
+            max_new = 3
+        result = sw.run_news_drafts(dry_run=dry, max_new=max_new)
+        code = 200 if result.get("ok") else 500
+        self._send(code, _json(result))
 
     def _get_system_dns(self):
         import dns_tools as dt
@@ -2416,6 +2439,8 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_system_overview()
         elif path == "/system/dns":
             self._get_system_dns()
+        elif path == "/system/seo":
+            self._get_system_seo()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
@@ -2480,6 +2505,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/system/settings":
             self._post_system_settings()
+            return
+        if path == "/system/seo/news-drafts":
+            self._post_system_seo_news_drafts()
             return
         routes = {
             "/chat": self._post_chat,
