@@ -119,7 +119,19 @@ async function request<T>(path: string, init?: RequestOpts): Promise<T> {
     clearToken();
     // Неверный пароль на /login тоже 401 — не уводим на витрину
     if (!skipAuthRedirect) redirectToLogin();
-    throw new Error((data as { error?: string }).error || "Нужен вход");
+    const err = data as {
+      error?: string;
+      hint?: string;
+      got_len?: number;
+      need_len?: number;
+    };
+    let msg = err.error || "Нужен вход";
+    if (err.got_len != null && err.need_len != null && err.got_len !== err.need_len) {
+      msg += ` (длина: ввели ${err.got_len}, на сервере ${err.need_len})`;
+    } else if (err.hint) {
+      msg += ` — ${err.hint}`;
+    }
+    throw new Error(msg);
   }
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
@@ -132,9 +144,16 @@ export function getStatus() {
 }
 
 export function login(password: string) {
-  return request<{ ok: boolean; token: string; auth_required: boolean }>("/auth/login", {
+  return request<{
+    ok: boolean;
+    token: string;
+    auth_required: boolean;
+    hint?: string;
+    got_len?: number;
+    need_len?: number;
+  }>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ password: password.trim() }),
     skipAuthRedirect: true,
   });
 }

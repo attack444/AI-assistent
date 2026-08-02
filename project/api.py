@@ -73,10 +73,22 @@ BIND_HOST = os.environ.get("AI_HELPER_API_HOST", "0.0.0.0")
 
 SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
+def _normalize_secret(raw: str) -> str:
+    """Убирает пробелы/кавычки из .env (PANEL_PASSWORD=\"x\" → x)."""
+    val = (raw or "").strip().lstrip("\ufeff")
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in {'"', "'"}:
+        val = val[1:-1].strip()
+    return val
+
+
 def _resolve_panel_password() -> str:
     """Пустой PANEL_PASSWORD = открытая панель через HTTPS. Генерируем и сохраняем."""
-    env = os.environ.get("PANEL_PASSWORD", "").strip()
+    env = _normalize_secret(os.environ.get("PANEL_PASSWORD", ""))
     if env:
+        print(
+            f"[SECURITY] PANEL_PASSWORD из окружения (длина {len(env)})",
+            flush=True,
+        )
         return env
     if os.environ.get("ALLOW_OPEN_PANEL", "").strip() == "1":
         print("[SECURITY] ALLOW_OPEN_PANEL=1 — панель без пароля (только для отладки)", flush=True)
@@ -88,9 +100,9 @@ def _resolve_panel_password() -> str:
     data.mkdir(parents=True, exist_ok=True)
     pw_file = data / "generated_panel_password.txt"
     if pw_file.is_file():
-        val = pw_file.read_text(encoding="utf-8").strip()
+        val = _normalize_secret(pw_file.read_text(encoding="utf-8"))
         if val:
-            print(f"[SECURITY] PANEL_PASSWORD из {pw_file}", flush=True)
+            print(f"[SECURITY] PANEL_PASSWORD из {pw_file} (длина {len(val)})", flush=True)
             return val
     val = secrets.token_urlsafe(18)
     pw_file.write_text(val + "\n", encoding="utf-8")
@@ -101,14 +113,23 @@ def _resolve_panel_password() -> str:
     print(
         f"[SECURITY] PANEL_PASSWORD был пуст — сгенерирован. "
         f"Пароль панели: {val}  (файл {pw_file}). "
-        f"Задай PANEL_PASSWORD в .env и перезапусти.",
+        f"Задай PANEL_PASSWORD в project/.env и перезапусти app.",
         flush=True,
     )
     return val
 
 
+def _passwords_equal(a: str, b: str) -> bool:
+    """compare_digest без ValueError при разной длине."""
+    a_b = (a or "").encode("utf-8")
+    b_b = (b or "").encode("utf-8")
+    if len(a_b) != len(b_b):
+        return False
+    return hmac.compare_digest(a_b, b_b)
+
+
 PANEL_PASSWORD = _resolve_panel_password()
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
+SECRET_KEY = _normalize_secret(os.environ.get("SECRET_KEY", "dev-insecure-change-me")) or "dev-insecure-change-me"
 # Chunked uploads support up to 2 GB by default (WordPress backups)
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
 MAX_JSON_BODY = int(os.environ.get("MAX_JSON_BODY", str(20 * 1024 * 1024)))
@@ -653,7 +674,7 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _post_auth_login(self):
         body = self._read_body()
-        password = str(body.get("password", ""))
+        password = _normalize_secret(str(body.get("password", "")))
         if not _auth_enabled():
             self._send(200, _json({
                 "ok": True,
@@ -662,8 +683,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 "message": "Пароль панели не задан (PANEL_PASSWORD)",
             }))
             return
-        if not password or not hmac.compare_digest(password, PANEL_PASSWORD):
-            self._send(401, _json({"ok": False, "error": "Неверный пароль"}))
+        if not password or not _passwords_equal(password, PANEL_PASSWORD):
+            self._send(401, _json({
+                "ok": False,
+                "error": "Неверный пароль",
+                "hint": (
+                    "Бери пароль из /opt/ai-helper/project/.env → PANEL_PASSWORD "
+                    "или: docker logs ai-helper-app 2>&1 | grep PANEL_PASSWORD | tail -3. "
+                    "Сброс: sudo bash project/deploy/reset-panel-password.sh"
+                ),
+                "got_len": len(password),
+                "need_len": len(PANEL_PASSWORD),
+            }))
             return
         self._send(200, _json({
             "ok": True,

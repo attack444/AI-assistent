@@ -34,7 +34,16 @@ export default function LoginPage() {
           <span>вход в панель</span>
         </div>
         <h1>Пароль сервера</h1>
-        <p>Тот же, что в `PANEL_PASSWORD` в файле `.env` на VPS.</p>
+        <p>
+          Только из{" "}
+          <span className="mono">/opt/ai-helper/project/.env</span> →{" "}
+          <span className="mono">PANEL_PASSWORD</span>. Не пароль WordPress / SSH /
+          reg.ru.
+        </p>
+        <p className="muted" style={{ fontSize: "0.85rem" }}>
+          Сброс на VPS:{" "}
+          <span className="mono">sudo bash project/deploy/reset-panel-password.sh</span>
+        </p>
         {error ? <div className="error-banner">{error}</div> : null}
         <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
           <input

@@ -16,6 +16,10 @@ services:
       - /var/ai-helper/sites:/opt/sites
       - /var/ai-helper/sites:/var/ai-helper/sites
       - /opt/ai-helper:/opt/ai-helper
+    # Пароли/секреты — ТОЛЬКО из ../.env (project/.env).
+    # Нельзя писать PANEL_PASSWORD=${PANEL_PASSWORD:-} в environment:
+    # подстановка идёт из deploy/.env (часто пусто) и ЗАТИРАЕТ пароль из env_file →
+    # контейнер генерирует другой пароль, а в .env лежит «правильный», который не подходит.
     env_file:
       - ../.env
     environment:
@@ -28,10 +32,8 @@ services:
       - VPS_PUBLIC_IP=${VPS_PUBLIC_IP:-80.78.248.195}
       - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
       - MAX_UPLOAD_BYTES=2147483648
-      - PANEL_PASSWORD=${PANEL_PASSWORD:-}
       - ALLOW_OPEN_PANEL=${ALLOW_OPEN_PANEL:-0}
       - ENABLE_STREAMLIT=${ENABLE_STREAMLIT:-0}
-      - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
       - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
       - LLM_PREFER_FREE=${LLM_PREFER_FREE:-1}
@@ -40,10 +42,6 @@ services:
       - PUBLIC_AUTH_REQUIRED=${PUBLIC_AUTH_REQUIRED:-1}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}
-      - MYSQL_USER=${MYSQL_USER:-wp}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-wp_change_me}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_change_me}
     depends_on:
       - ollama
     networks:
