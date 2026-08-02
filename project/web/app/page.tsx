@@ -31,13 +31,13 @@ export default function HomePage() {
     <main className="hero-home">
       <div className="panel hero-card">
         <div className="brand">
-          AI Helper
-          <span>хостинг + ассистент</span>
+          NeoBrain
+          <span>хостинг + AI</span>
         </div>
         <h1>Один сервер — сайты, редактор и AI</h1>
         <p>
-          Панель на этом VPS: сайт <strong>5mb2</strong> уже на хостинге,
-          сайт <strong>ai</strong> — витрина и среда для правок. HTTPS позже.
+          Панель NeoBrain: <strong>5mb2.ru</strong> и публичная платформа{" "}
+          <strong>neobrain.site</strong>. HTTPS — через enable-neobrain.sh.
         </p>
         <div className="hero-actions">
           <Link className="btn" href="/overview">

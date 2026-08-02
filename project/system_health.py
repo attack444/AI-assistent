@@ -1,5 +1,5 @@
 """
-system_health.py — проверка панели, API/DeepSeek, 5mb2 и AI Helper.
+system_health.py — проверка панели, API/DeepSeek, 5mb2 и NeoBrain.
 
 Приоритет: панель + API + DeepSeek должны жить всегда; сайты — следом.
 Безопасные авто-фиксы: restart docker app/web/php. Код сайтов сам не правит —
@@ -153,12 +153,31 @@ def check_targets(
     cab["label"] = "Кабинет 5mb2"
     checks.append(cab)
 
-    # 5) AI Helper static
-    ai = _http(f"{base}/sites/ai/", host=host, timeout=12)
-    ai["id"] = "ai"
-    ai["priority"] = 2
-    ai["label"] = "Сайт AI Helper"
-    checks.append(ai)
+    # 5) NeoBrain public (domain first, fallback /sites/ai/)
+    neo_domain = os.environ.get("NEOBRAIN_DOMAIN", "neobrain.site").strip() or "neobrain.site"
+    neo = _http(f"https://{neo_domain}/", timeout=12)
+    if not neo.get("ok"):
+        neo = _http(f"{base}/sites/ai/", host=host, timeout=12)
+        neo["warn"] = neo.get("warn") or f"https://{neo_domain}/ недоступен — проверен /sites/ai/"
+    neo["id"] = "neobrain"
+    neo["priority"] = 2
+    neo["label"] = "Сайт NeoBrain"
+    checks.append(neo)
+
+    panel_dom = os.environ.get(
+        "NEOBRAIN_PANEL_DOMAIN", f"panel.{neo_domain}"
+    ).strip()
+    if panel_dom:
+        pp = _http(f"https://{panel_dom}/", timeout=10)
+        pp["id"] = "panel_domain"
+        pp["priority"] = 1
+        pp["label"] = f"Панель {panel_dom}"
+        if not pp.get("ok"):
+            # optional until DNS for panel.* exists
+            pp["warn"] = pp.get("error") or "нет DNS/SSL — добавь A panel → VPS"
+            pp["ok"] = True
+            pp["optional"] = True
+        checks.append(pp)
 
     failed = [c for c in checks if not c.get("ok")]
     priority_failed = [c for c in failed if int(c.get("priority") or 9) <= 1]
@@ -463,7 +482,7 @@ def run_watchdog(
 if __name__ == "__main__":
     import argparse
 
-    p = argparse.ArgumentParser(description="AI Helper system watchdog")
+    p = argparse.ArgumentParser(description="NeoBrain system watchdog")
     p.add_argument("--remediate", action="store_true", help="docker restart on fail")
     p.add_argument("--ask-deepseek", action="store_true", help="ask DeepSeek to repair")
     p.add_argument("--base", default="", help="public base URL")

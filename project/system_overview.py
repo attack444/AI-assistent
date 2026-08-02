@@ -108,7 +108,17 @@ def _docker_ps() -> List[Dict[str, str]]:
 def _collect_domains(sites_root: Path) -> List[Dict[str, Any]]:
     domains: List[Dict[str, Any]] = []
     # known production domain
-    known = [("5mb2.ru", "5mb2")]
+    known = [
+        ("5mb2.ru", "5mb2"),
+        ("neobrain.site", "ai"),
+        ("panel.neobrain.site", "panel"),
+    ]
+    env_dom = os.environ.get("NEOBRAIN_DOMAIN", "").strip()
+    if env_dom:
+        known.append((env_dom, "ai"))
+    env_panel = os.environ.get("NEOBRAIN_PANEL_DOMAIN", "").strip()
+    if env_panel:
+        known.append((env_panel, "panel"))
     if sites_root.is_dir():
         for child in sorted(sites_root.iterdir()):
             if not child.is_dir() or child.name.startswith("."):

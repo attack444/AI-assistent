@@ -82,7 +82,7 @@ class SystemHealthTests(unittest.TestCase):
         self.assertIn("panel", ids)
         self.assertIn("deepseek", ids)
         self.assertIn("5mb2", ids)
-        self.assertIn("ai", ids)
+        self.assertIn("neobrain", ids)
 
     def test_safe_remediate_restarts_priority(self):
         report = {"failed": ["api", "panel", "5mb2"]}

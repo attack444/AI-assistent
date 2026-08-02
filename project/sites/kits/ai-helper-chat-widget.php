@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: AI Helper Chat Widget
- * Description: Всплывающий чат AI Helper на сайте (гость, без логина).
+ * Plugin Name: NeoBrain Chat Widget
+ * Description: Всплывающий чат NeoBrain на сайте (гость, без логина).
  * Version: 1.1.0
- * Author: AI Helper
+ * Author: NeoBrain
  *
  * Кладётся в wp-content/mu-plugins/ вместе с ai-helper-widget.js
  */

@@ -13,7 +13,7 @@ PLANS: Dict[str, Dict[str, Any]] = {
         "id": "free",
         "name": "Free",
         "price_rub": 0,
-        "blurb": "Попробовать платформу",
+        "blurb": "Попробовать NeoBrain",
         "max_sites": 1,
         "chat_per_day": 30,
         "deploy_per_day": 5,

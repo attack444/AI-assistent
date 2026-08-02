@@ -59,7 +59,7 @@ export default function HealthPage() {
         <h1>Здоровье системы</h1>
         <p>
           Мониторинг <strong>панели</strong>, <strong>API/DeepSeek</strong>,{" "}
-          <strong>5mb2</strong> и <strong>AI Helper</strong>. При сбое —
+          <strong>5mb2</strong> и <strong>NeoBrain</strong>. При сбое —
           безопасный restart контейнеров и запись в inbox; DeepSeek — для
           разбора и правок (в приоритете над бесплатной моделью).
         </p>

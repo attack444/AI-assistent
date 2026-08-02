@@ -20,7 +20,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <Link href="/" className="brand">
-        AI Helper
+        NeoBrain
         <span>панель сервера</span>
       </Link>
       <nav className="nav">
@@ -46,7 +46,7 @@ export function Sidebar() {
         Выйти
       </button>
       <p className="muted" style={{ marginTop: "auto", fontSize: "0.85rem" }}>
-        5mb2 + ai на одном VPS. Редактор и чат — без FTP.
+        NeoBrain + 5mb2 на одном VPS. Редактор и чат — без FTP.
       </p>
     </aside>
   );

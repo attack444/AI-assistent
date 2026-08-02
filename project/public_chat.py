@@ -1,4 +1,4 @@
-"""Public AI Helper chat — free Ollama first, DeepSeek fallback. No server tools."""
+"""Public NeoBrain chat — free Ollama first, DeepSeek fallback. No server tools."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ from agent import DEEPSEEK_API_URL, DEEPSEEK_DEFAULT_MODEL, _groq_stream
 from core import load_settings
 import free_llm
 
-SYSTEM_PROMPT = """Ты ассистент публичной платформы AI Helper (витрина на /sites/ai/).
+SYSTEM_PROMPT = """Ты ассистент публичной платформы NeoBrain (витрина на /sites/ai/).
 Отвечай по-русски, коротко и по делу. Помогаешь посетителям с деплоем, кабинетом и тарифами.
 
 Что умеет платформа:
@@ -72,7 +72,7 @@ def _sanitize_history(history: Any) -> List[Dict[str, str]]:
     return out
 
 
-WIDGET_SYSTEM = """Ты вежливый помощник на сайте клиента (виджет AI Helper).
+WIDGET_SYSTEM = """Ты вежливый помощник на сайте клиента (виджет NeoBrain).
 Отвечай по-русски, коротко, по делу. Помогаешь посетителям: услуги, цены в общих чертах, контакты, как оставить заявку.
 Не выдумывай гарантии и чужие кейсы. Если точных цен нет в подсказке — предложи форму заявки.
 У тебя НЕТ доступа к админке, файлам и базе — не притворяйся.

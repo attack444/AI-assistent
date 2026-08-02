@@ -3,24 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#e9f1ef" />
-  <meta name="description" content="AI Helper — деплой статики (ZIP, tar.gz, HTML), чат с AI и виджет для сайтов. Бесплатная локальная модель + DeepSeek для сложных задач." />
+  <meta name="theme-color" content="#eef2f6" />
+  <meta name="description" content="NeoBrain — AI-платформа для сайтов: деплой, чат с DeepSeek, виджет и панель на своём VPS." />
   <meta name="robots" content="index,follow" />
-  <link rel="canonical" href="/sites/ai/" />
+  <link rel="canonical" href="https://neobrain.site/" />
   <meta property="og:locale" content="ru_RU" />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="AI Helper — деплой и AI для сайтов" />
+  <meta property="og:title" content="NeoBrain — AI-платформа для сайтов" />
   <meta property="og:description" content="Задеплойте статику за минуту, подключите виджет чата и работайте с AI. Бесплатный слой Ollama на сервере." />
-  <meta property="og:url" content="/sites/ai/" />
-  <meta property="og:site_name" content="AI Helper" />
+  <meta property="og:url" content="https://neobrain.site/" />
+  <meta property="og:site_name" content="NeoBrain" />
   <meta name="twitter:card" content="summary_large_image" />
-  <title>AI Helper — деплой статики и AI-чат для сайтов</title>
+  <title>NeoBrain — AI для сайтов: деплой, чат, панель</title>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    "name": "AI Helper",
-    "url": "/sites/ai/",
+    "name": "NeoBrain",
+    "url": "https://neobrain.site/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Web",
     "description": "Публичная платформа: деплой статики, AI-чат и виджет для сайтов.",
@@ -30,20 +30,20 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #e9f1ef;
-      --bg-deep: #d5e4df;
-      --ink: #0c1a16;
-      --muted: #3d534c;
-      --line: rgba(12, 26, 22, 0.12);
-      --accent: #0b7f6e;
-      --accent-ink: #04352e;
-      --glow: rgba(11, 127, 110, 0.28);
-      --panel: rgba(255, 255, 255, 0.55);
-      --font-display: "Unbounded", sans-serif;
-      --font-body: "Manrope", sans-serif;
+      --bg: #eef2f6;
+      --bg-deep: #dce3ec;
+      --ink: #0b1220;
+      --muted: #4a5a70;
+      --line: rgba(11, 18, 32, 0.12);
+      --accent: #1a6cff;
+      --accent-ink: #08318a;
+      --glow: rgba(26, 108, 255, 0.26);
+      --panel: rgba(255, 255, 255, 0.62);
+      --font-display: "Sora", sans-serif;
+      --font-body: "DM Sans", sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -75,8 +75,8 @@
       z-index: -1;
       background:
         radial-gradient(ellipse 90% 70% at 70% 20%, var(--glow), transparent 55%),
-        radial-gradient(ellipse 60% 50% at 10% 90%, rgba(196, 120, 40, 0.14), transparent 50%),
-        linear-gradient(160deg, #f4faf8 0%, var(--bg) 42%, var(--bg-deep) 100%);
+        radial-gradient(ellipse 60% 50% at 10% 90%, rgba(26, 108, 255, 0.12), transparent 50%),
+        linear-gradient(160deg, #f7f9fc 0%, var(--bg) 42%, var(--bg-deep) 100%);
       animation: atmosphere 18s ease-in-out infinite alternate;
     }
 
@@ -85,7 +85,7 @@
       position: absolute;
       inset: 8% -5% -10% 35%;
       background:
-        linear-gradient(135deg, rgba(12, 26, 22, 0.92) 0%, #134e45 48%, #0b7f6e 100%);
+        linear-gradient(135deg, rgba(11, 18, 32, 0.94) 0%, #152a4a 48%, #1a6cff 100%);
       border-radius: 28px 0 0 120px;
       box-shadow: -40px 40px 80px rgba(12, 26, 22, 0.18);
       transform: skewY(-2deg);
@@ -259,7 +259,7 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--accent-ink);
-      background: rgba(11, 127, 110, 0.14);
+      background: rgba(26, 108, 255, 0.14);
       padding: 8px 12px;
       border-radius: 999px;
     }
@@ -838,7 +838,7 @@
 </head>
 <body>
   <div class="topbar">
-    <a href="#" class="brand-mini">AI Helper</a>
+    <a href="#" class="brand-mini">NeoBrain</a>
     <div class="topbar-actions">
       <span id="auth-user" class="auth-user" hidden></span>
       <button type="button" class="btn btn-ghost top-btn" id="btn-login">Войти</button>
@@ -867,9 +867,9 @@
   <header class="hero">
     <div class="hero-visual" aria-hidden="true"></div>
     <div class="hero-inner">
-      <p class="brand"><span>platform</span>AI Helper</p>
-      <h1>Деплой сайта и AI-чат на своём сервере</h1>
-      <p class="hero-lead">Аккаунт → ZIP → превью → вопросы модели. Для правок на живых сайтах — панель владельца и DeepSeek.</p>
+      <p class="brand"><span>AI platform</span>NeoBrain</p>
+      <h1>Сайты, деплой и AI на одном сервере</h1>
+      <p class="hero-lead">NeoBrain: аккаунт → ZIP → превью → чат с DeepSeek. Панель владельца — файлы, мониторинг и правки без FTP.</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="#deploy">Задеплоить сайт</a>
         <a class="btn btn-ghost" href="#models">Чат с AI</a>
@@ -936,8 +936,8 @@
       <button type="button" data-q="Можно ли залить PHP или WordPress через этот деплой?">PHP / WordPress?</button>
       <button type="button" data-q="Как встроить чат на свой сайт виджетом?">Виджет на сайт</button>
     </div>
-    <div class="chat-preview" role="group" aria-label="Чат AI Helper">
-      <div class="chat-preview-head">AI Helper · Ollama / DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
+    <div class="chat-preview" role="group" aria-label="Чат NeoBrain">
+      <div class="chat-preview-head">NeoBrain · Ollama / DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
       <div class="chat-preview-body" id="demo-chat">
         <div class="bubble bot">Привет! Сначала бесплатная Ollama, при необходимости — DeepSeek. Спроси про деплой, тарифы или виджет.</div>
       </div>
@@ -952,7 +952,7 @@
   <section class="section" id="widget">
     <h2>Фишка: чат-виджет для своего сайта</h2>
     <p>Для площадок вроде лендинга или магазина — тот же публичный чат во всплывающем окне. Не открывает панель и не правит файлы.</p>
-    <div class="embed-box" id="embed-snippet">&lt;script src="/sites/ai/widget.js" defer&gt;&lt;/script&gt;
+    <div class="embed-box" id="embed-snippet">&lt;script src="https://neobrain.site/widget.js" defer&gt;&lt;/script&gt;
 &lt;script&gt;
   document.addEventListener("DOMContentLoaded", function () {
     AIHelperChat.mount({ title: "Помощник", placeholder: "Спросите про заказ…" });
@@ -973,7 +973,7 @@
     </details>
     <details>
       <summary>Что с тарифами?</summary>
-      <p>Free после регистрации. Starter/Pro — вручную после оплаты (письмо владельцу). Лимиты — в блоке «Мой лимит».</p>
+      <p>Free после регистрации. Starter/Pro — через ЮKassa (когда ключи в .env) или вручную владельцем. Лимиты — в «Мой лимит».</p>
     </details>
     <details>
       <summary>Какие форматы деплоя?</summary>
@@ -1024,7 +1024,7 @@
 
   <section class="section" id="start">
     <h2>Тарифы</h2>
-    <p>Регистрация даёт Free. Starter и Pro включаем вручную после оплаты — напиши на почту, владелец активирует план.</p>
+    <p>Регистрация даёт Free. Starter и Pro — оплата ЮKassa или письмо владельцу для ручной активации.</p>
     <div class="plans" id="plans-grid">
       <p class="hint">Загрузка тарифов…</p>
     </div>
@@ -1053,7 +1053,7 @@
 
   <section class="section" id="feedback">
     <h2>Идея или ошибка?</h2>
-    <p>Помогите улучшить AI Helper. Баг на витрине, идея по деплою/чату или «мне нужно…» — форма ниже. Сообщения попадают в панель владельца → «Обратная связь».</p>
+    <p>Помогите улучшить NeoBrain. Баг на витрине, идея по деплою/чату или «мне нужно…» — форма ниже. Сообщения попадают в панель владельца → «Обратная связь».</p>
     <div class="fb-section-grid">
       <ul class="fb-points">
         <li><strong>Ошибка</strong> — деплой, чат, виджет, мобильная вёрстка</li>
@@ -1084,7 +1084,7 @@
   </section>
 
   <footer>
-    <div>© AI Helper · витрина среды</div>
+    <div>© NeoBrain · платформа AI для сайтов</div>
     <div>Панель управления сервером — только для владельца · <a href="#feedback">Идея / ошибка</a></div>
   </footer>
 
@@ -1113,7 +1113,7 @@
           email: fd.get("email") || "",
           page: fd.get("page") || location.href,
           website: fd.get("website") || "",
-          source: "ai-helper",
+          source: "neobrain",
         };
         try {
           const res = await fetch("/api/public/feedback", {

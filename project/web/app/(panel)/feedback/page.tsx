@@ -26,7 +26,7 @@ export default function FeedbackPage() {
       <div className="page-head">
         <h1>Обратная связь</h1>
         <p>
-          Идеи и ошибки с витрины <strong>AI Helper</strong> и (если прокси работает) с{" "}
+          Идеи и ошибки с витрины <strong>NeoBrain</strong> и (если прокси работает) с{" "}
           <strong>5mb2</strong>. Дублируется в файл{" "}
           <span className="mono">~/.ai-helper/public_feedback.jsonl</span> на сервере.
           В WordPress те же сообщения — в «Заявки 5MB2 → Обратная связь».

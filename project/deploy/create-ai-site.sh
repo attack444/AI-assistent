@@ -1,5 +1,5 @@
 #!/bin/bash
-# Публичная витрина второго сайта (AI Helper platform).
+# Публичная витрина второго сайта (NeoBrain platform).
 #   curl -fsSL https://raw.githubusercontent.com/attack444/AI-assistent/main/project/deploy/create-ai-site.sh | bash
 set -euo pipefail
 
@@ -40,6 +40,6 @@ chown -R www-data:www-data "$ROOT" 2>/dev/null || true
 
 IP=$(curl -s --max-time 3 ifconfig.me 2>/dev/null || echo "IP")
 echo "============================================"
-echo "  Витрина: http://${IP}/sites/${NAME}/"
-echo "  Домен подключим позже"
+echo "  Витрина (IP): http://${IP}/sites/${NAME}/"
+echo "  Домен: neobrain.site (enable-neobrain.sh)"
 echo "============================================"

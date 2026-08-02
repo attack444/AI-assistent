@@ -29,7 +29,7 @@ export default function LoginPage() {
     <main className="hero-home">
       <div className="panel hero-card" style={{ maxWidth: 420 }}>
         <div className="brand">
-          AI Helper
+          NeoBrain
           <span>вход в панель</span>
         </div>
         <h1>Пароль сервера</h1>

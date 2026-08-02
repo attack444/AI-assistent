@@ -98,6 +98,9 @@ _PUBLIC_PATHS = {
     "/public/plans",
     "/public/admin/set-plan",
     "/public/feedback",
+    "/public/pay/status",
+    "/public/pay/create",
+    "/public/pay/webhook",
 }
 
 
@@ -674,7 +677,12 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.10.0",
+            "version": "2.11.0",
+            "brand": "NeoBrain",
+            "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
+            "panel_domain": os.environ.get(
+                "NEOBRAIN_PANEL_DOMAIN", "panel.neobrain.site"
+            ),
             "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
             not in {"0", "false", "no", "off"},
         }
@@ -1601,7 +1609,45 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _get_public_plans(self):
         import public_plans as pp
-        self._send(200, _json({"ok": True, "plans": pp.list_public_plans()}))
+        import payments_yookassa as pay
+
+        self._send(200, _json({
+            "ok": True,
+            "plans": pp.list_public_plans(),
+            "payments": pay.status(),
+            "brand": "NeoBrain",
+        }))
+
+    def _get_public_pay_status(self):
+        import payments_yookassa as pay
+
+        self._send(200, _json(pay.status()))
+
+    def _post_public_pay_create(self):
+        import payments_yookassa as pay
+
+        try:
+            body = self._read_body()
+            result = pay.create_payment(
+                email=(body.get("email") or "").strip(),
+                plan_id=(body.get("plan") or body.get("plan_id") or "").strip(),
+                return_url=(body.get("return_url") or "").strip(),
+            )
+            self._send(200, _json(result))
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(500, _json({"error": str(exc)}))
+
+    def _post_public_pay_webhook(self):
+        import payments_yookassa as pay
+
+        try:
+            body = self._read_body()
+            result = pay.handle_webhook(body if isinstance(body, dict) else {})
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
 
     def _post_public_admin_set_plan(self):
         """Owner/panel: set user plan. Requires panel Bearer token."""
@@ -1920,7 +1966,8 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.10.0",
+                "version": "2.11.0",
+                "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
             }
@@ -2279,6 +2326,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/public/plans":
             self._get_public_plans()
             return
+        if path == "/public/pay/status":
+            self._get_public_pay_status()
+            return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
         if path == "/project/files":
@@ -2360,6 +2410,12 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/feedback":
             self._post_public_feedback()
+            return
+        if path == "/public/pay/create":
+            self._post_public_pay_create()
+            return
+        if path == "/public/pay/webhook":
+            self._post_public_pay_webhook()
             return
         if path == "/system/watchdog":
             if self._local_watchdog_ok() or self._require_auth():
