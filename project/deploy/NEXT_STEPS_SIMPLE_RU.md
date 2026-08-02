@@ -43,10 +43,17 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate app web
 CERTBOT_EMAIL=твой@mail.ru sudo bash /opt/ai-helper/project/deploy/fix-neobrain-vhost.sh
 # обязательно: пересборка панели с /console (иначе петля редиректов)
 sudo bash /opt/ai-helper/project/deploy/fix-panel-console.sh
+sudo bash /opt/ai-helper/project/deploy/harden-vps.sh
+cd /opt/ai-helper/project/deploy
+docker compose -f docker-compose.prod.yml build app web
+docker compose -f docker-compose.prod.yml up -d --force-recreate app web php
 sudo bash /opt/ai-helper/project/deploy/install-system-watchdog.sh
 sudo bash /opt/ai-helper/project/deploy/install-backup-cron.sh
 sudo bash /opt/ai-helper/project/deploy/install-seo-cron.sh
 ```
+
+**Важно:** после `harden-vps.sh` панель только по паролю (`PANEL_PASSWORD` в `.env`).  
+Аудит и трафик: `FINAL_AUDIT_RU.md`, `GROWTH_TRAFFIC_RU.md`.
 
 ### Шаг 3 — Проверка глазами
 - `https://neobrain.site/` — сайт **NeoBrain**, не 5MB2  

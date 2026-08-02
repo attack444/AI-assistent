@@ -78,11 +78,29 @@ def init_upload(
     }
 
 
+def _safe_upload_id(upload_id: str) -> str:
+    uid = (upload_id or "").strip()
+    if (
+        not uid
+        or len(uid) > 64
+        or "/" in uid
+        or "\\" in uid
+        or ".." in uid
+        or not all(c in "0123456789abcdef" for c in uid.lower())
+    ):
+        raise ValueError("Некорректный upload_id")
+    return uid.lower()
+
+
 def load_meta(sites_root: Path, upload_id: str) -> Tuple[Path, Dict[str, Any]]:
-    upload_dir = uploads_root(sites_root) / upload_id
+    uid = _safe_upload_id(upload_id)
+    root = uploads_root(sites_root).resolve()
+    upload_dir = (root / uid).resolve()
+    if not str(upload_dir).startswith(str(root) + os.sep) and upload_dir != root:
+        raise ValueError("Некорректный upload_id")
     meta_file = _meta_path(upload_dir)
     if not meta_file.is_file():
-        raise FileNotFoundError(f"Загрузка не найдена: {upload_id}")
+        raise FileNotFoundError(f"Загрузка не найдена: {uid}")
     meta = json.loads(meta_file.read_text(encoding="utf-8"))
     return upload_dir, meta
 

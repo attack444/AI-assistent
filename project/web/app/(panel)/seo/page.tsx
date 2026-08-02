@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  GrowthPack,
   SeoCheck,
   SeoChecklistItem,
   SeoReport,
   SeoSiteReport,
+  getGrowthPack,
   getSeoReport,
   runSeoNewsDrafts,
 } from "@/lib/api";
@@ -69,6 +71,7 @@ function SiteCard({ site }: { site: SeoSiteReport }) {
 
 export default function SeoPage() {
   const [report, setReport] = useState<SeoReport | null>(null);
+  const [growth, setGrowth] = useState<GrowthPack | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -77,8 +80,11 @@ export default function SeoPage() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    getSeoReport()
-      .then(setReport)
+    Promise.all([getSeoReport(), getGrowthPack()])
+      .then(([seo, g]) => {
+        setReport(seo);
+        setGrowth(g);
+      })
       .catch((e: Error) => setError(e.message || "Ошибка"))
       .finally(() => setLoading(false));
   }, []);
@@ -202,7 +208,7 @@ export default function SeoPage() {
         </div>
       ) : null}
 
-      <div className="panel" style={{ padding: 16 }}>
+      <div className="panel" style={{ padding: 16, marginBottom: 20 }}>
         <strong>Автоматизация на сервере</strong>
         <p className="muted" style={{ marginTop: 8, fontSize: "0.9rem" }}>
           Один раз на VPS:{" "}
@@ -214,6 +220,50 @@ export default function SeoPage() {
             <li key={line} style={{ marginBottom: 4 }}>{line}</li>
           ))}
         </ol>
+      </div>
+
+      <h2 style={{ fontSize: "1.1rem", margin: "0 0 10px" }}>Трафик и размещение</h2>
+      <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: 12 }}>
+          Готовые формулировки + каналы. Авто-спам по каталогам не делаем — вред SEO.
+          Ритм: {growth?.weekly_rhythm?.[0] || "см. план ниже"}.
+        </p>
+        {(growth?.channels || []).map((ch) => (
+          <div
+            key={ch.id}
+            style={{
+              padding: "10px 0",
+              borderBottom: "1px solid rgba(0,0,0,0.06)",
+              fontSize: "0.9rem",
+            }}
+          >
+            <div style={{ fontWeight: 600 }}>
+              {ch.title}{" "}
+              <span className="muted" style={{ fontWeight: 400 }}>
+                {ch.auto === true ? "· авто" : ch.auto === "semi" ? "· полуавто" : "· руками"}
+              </span>
+            </div>
+            <div className="muted">{ch.action}</div>
+            {ch.pitch ? <div className="mono" style={{ marginTop: 4 }}>{ch.pitch}</div> : null}
+            {ch.urls?.length ? (
+              <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {ch.urls.map((u) => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer">{u.replace(/^https?:\/\//, "").slice(0, 40)}</a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+        {growth?.dont?.length ? (
+          <div style={{ marginTop: 14 }}>
+            <strong>Не делать</strong>
+            <ul className="muted" style={{ marginTop: 6, paddingLeft: 18, fontSize: "0.85rem" }}>
+              {growth.dont.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </>
   );

@@ -29,6 +29,7 @@ Endpoints:
   GET    /system/incidents
   POST   /system/watchdog
   GET    /system/seo
+  GET    /system/growth
   POST   /system/seo/news-drafts
 """
 from __future__ import annotations
@@ -72,7 +73,41 @@ BIND_HOST = os.environ.get("AI_HELPER_API_HOST", "0.0.0.0")
 
 SITES_ROOT = Path(os.environ.get("SITES_ROOT", "/opt/sites")).resolve()
 NGINX_SITES_DIR = Path(os.environ.get("NGINX_SITES_DIR", "/etc/nginx/sites-available"))
-PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
+def _resolve_panel_password() -> str:
+    """Пустой PANEL_PASSWORD = открытая панель через HTTPS. Генерируем и сохраняем."""
+    env = os.environ.get("PANEL_PASSWORD", "").strip()
+    if env:
+        return env
+    if os.environ.get("ALLOW_OPEN_PANEL", "").strip() == "1":
+        print("[SECURITY] ALLOW_OPEN_PANEL=1 — панель без пароля (только для отладки)", flush=True)
+        return ""
+    import secrets
+    from pathlib import Path as _P
+
+    data = _P(os.environ.get("AI_HELPER_DATA", str(_P.home() / ".ai-helper")))
+    data.mkdir(parents=True, exist_ok=True)
+    pw_file = data / "generated_panel_password.txt"
+    if pw_file.is_file():
+        val = pw_file.read_text(encoding="utf-8").strip()
+        if val:
+            print(f"[SECURITY] PANEL_PASSWORD из {pw_file}", flush=True)
+            return val
+    val = secrets.token_urlsafe(18)
+    pw_file.write_text(val + "\n", encoding="utf-8")
+    try:
+        pw_file.chmod(0o600)
+    except Exception:
+        pass
+    print(
+        f"[SECURITY] PANEL_PASSWORD был пуст — сгенерирован. "
+        f"Пароль панели: {val}  (файл {pw_file}). "
+        f"Задай PANEL_PASSWORD в .env и перезапусти.",
+        flush=True,
+    )
+    return val
+
+
+PANEL_PASSWORD = _resolve_panel_password()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
 # Chunked uploads support up to 2 GB by default (WordPress backups)
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
@@ -680,7 +715,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.13.0",
+            "version": "2.14.0",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -1369,7 +1404,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "db_name": os.environ.get("MYSQL_DATABASE", "wordpress"),
             "db_user": os.environ.get("MYSQL_USER", "wp"),
             "db_host": os.environ.get("MYSQL_HOST", "mysql"),
-            "db_password": os.environ.get("MYSQL_PASSWORD", ""),
+            "db_password": ("***" if os.environ.get("MYSQL_PASSWORD") else ""),
             "suggested_site_url": (
                 f"https://{domain}" if domain else f"http://SERVER_IP/sites/{name}"
             ),
@@ -2017,7 +2052,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.13.0",
+                "version": "2.14.0",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
@@ -2034,6 +2069,11 @@ class APIHandler(BaseHTTPRequestHandler):
         import seo_workflows as sw
 
         self._send(200, _json(sw.build_report()))
+
+    def _get_system_growth(self):
+        import growth_pack as gp
+
+        self._send(200, _json(gp.build_pack()))
 
     def _post_system_seo_news_drafts(self):
         import seo_workflows as sw
@@ -2441,6 +2481,8 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_system_dns()
         elif path == "/system/seo":
             self._get_system_seo()
+        elif path == "/system/growth":
+            self._get_system_growth()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 

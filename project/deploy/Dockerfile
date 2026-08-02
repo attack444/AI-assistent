@@ -16,7 +16,7 @@ ENV AI_HELPER_API_HOST=0.0.0.0
 ENV AI_HELPER_API_PORT=8502
 ENV SITES_ROOT=/opt/sites
 
-EXPOSE 8501 8502
+EXPOSE 8502
 
-# Streamlit (legacy) + API. Next.js panel runs in separate `web` service.
-CMD ["sh", "-c", "python api.py & python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"]
+# API всегда. Streamlit legacy — только ENABLE_STREAMLIT=1 (панель = Next /console).
+CMD ["sh", "-c", "if [ \"${ENABLE_STREAMLIT:-0}\" = \"1\" ]; then python api.py & exec python -m streamlit run app.py --server.port=8501 --server.address=127.0.0.1 --server.headless=true; else exec python api.py; fi"]

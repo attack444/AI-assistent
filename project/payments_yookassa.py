@@ -182,13 +182,39 @@ def apply_paid_plan(email: str, plan_id: str) -> Dict[str, Any]:
     return set_plan(email, plan_id)
 
 
+def fetch_payment(payment_id: str) -> Dict[str, Any]:
+    """Подтверждение платежа у ЮKassa (не доверяем сырому webhook-телу)."""
+    pid = (payment_id or "").strip()
+    if not pid:
+        raise ValueError("payment_id пуст")
+    if not configured():
+        raise RuntimeError("ЮKassa не настроена")
+    req = urllib.request.Request(
+        f"{API_URL}/{pid}",
+        method="GET",
+        headers={"Authorization": _auth_header(), "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Обработка notification от ЮKassa (event payment.succeeded)."""
     event = (payload.get("event") or "").strip()
     obj = payload.get("object") or {}
     if event != "payment.succeeded":
         return {"ok": True, "ignored": True, "event": event}
-    meta = obj.get("metadata") or {}
+    payment_id = (obj.get("id") or "").strip()
+    if not payment_id:
+        return {"ok": False, "error": "payment id missing"}
+    # Верификация: повторный GET у ЮKassa — нельзя активировать по поддельному POST
+    try:
+        verified = fetch_payment(payment_id)
+    except Exception as exc:
+        return {"ok": False, "error": f"verify failed: {exc}"}
+    if (verified.get("status") or "").lower() != "succeeded":
+        return {"ok": False, "error": f"status={verified.get('status')}"}
+    meta = verified.get("metadata") or obj.get("metadata") or {}
     email = (meta.get("email") or "").strip().lower()
     plan = (meta.get("plan") or "").strip().lower()
     if not email or plan not in {"starter", "pro"}:
@@ -197,8 +223,9 @@ def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     _append({
         "at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": "activated",
-        "payment_id": obj.get("id"),
+        "payment_id": payment_id,
         "email": email,
         "plan": plan,
+        "verified": True,
     })
-    return {"ok": True, "activated": result}
+    return {"ok": True, "activated": result, "verified": True}

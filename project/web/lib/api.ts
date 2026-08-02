@@ -323,6 +323,29 @@ export function getSeoReport() {
   return request<SeoReport>("/system/seo");
 }
 
+export type GrowthPack = {
+  ok: boolean;
+  brand?: { name?: string; url?: string; tagline?: string; short?: string };
+  agency?: { name?: string; url?: string; tagline?: string };
+  channels?: {
+    id: string;
+    title: string;
+    auto?: boolean | string;
+    action?: string;
+    template?: string;
+    pitch?: string;
+    urls?: string[];
+    list?: string[];
+    note?: string;
+  }[];
+  weekly_rhythm?: string[];
+  dont?: string[];
+};
+
+export function getGrowthPack() {
+  return request<GrowthPack>("/system/growth");
+}
+
 export function runSeoNewsDrafts(opts?: { dry_run?: boolean; max_new?: number }) {
   return request<{ ok: boolean; output?: string; error?: string; dry_run?: boolean; command?: string }>(
     "/system/seo/news-drafts",

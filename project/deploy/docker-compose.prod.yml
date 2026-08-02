@@ -1,20 +1,20 @@
 services:
 
-  # ── AI Helper API + Streamlit (legacy chat) ─────────────────
+  # ── NeoBrain API (+ опционально Streamlit legacy) ───────────
   app:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: ai-helper-app
     restart: unless-stopped
+    # Только localhost — снаружи только nginx :80/:443
     ports:
-      - "8501:8501"   # Streamlit (legacy)
-      - "8502:8502"   # REST API
+      - "127.0.0.1:8502:8502"
+      - "127.0.0.1:8501:8501"
     volumes:
       - ai_helper_data:/root/.ai-helper
       - /var/ai-helper/sites:/opt/sites
       - /var/ai-helper/sites:/var/ai-helper/sites
-      # Исходники панели/API — чтобы DeepSeek (чат site=server) правил бэкенд
       - /opt/ai-helper:/opt/ai-helper
     env_file:
       - ../.env
@@ -29,6 +29,8 @@ services:
       - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
       - MAX_UPLOAD_BYTES=2147483648
       - PANEL_PASSWORD=${PANEL_PASSWORD:-}
+      - ALLOW_OPEN_PANEL=${ALLOW_OPEN_PANEL:-0}
+      - ENABLE_STREAMLIT=${ENABLE_STREAMLIT:-0}
       - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
       - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
@@ -47,62 +49,57 @@ services:
     networks:
       - ai-net
 
-  # ── Ollama: бесплатная локальная модель ─────────────────────
   ollama:
     image: ollama/ollama:latest
     container_name: ai-helper-ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     networks:
       - ai-net
 
-  # ── Next.js control panel (файлы / сайты / чат) ─────────────
   web:
     build:
       context: ../web
       dockerfile: Dockerfile
       args:
-        # basePath нужен на этапе npm run build
         PANEL_BASE_PATH: ${PANEL_BASE_PATH:-/console}
     container_name: ai-helper-web
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - API_INTERNAL_URL=http://app:8502
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      # Пусто = панель на /. /console = HTTPS на https://neobrain.site/console/ без DNS subdomain
       - PANEL_BASE_PATH=${PANEL_BASE_PATH:-/console}
     depends_on:
       - app
     networks:
       - ai-net
 
-  # ── PHP-FPM (WordPress / обычный хостинг) ───────────────────
   php:
     build:
       context: .
       dockerfile: Dockerfile.php
     container_name: ai-helper-php
     restart: unless-stopped
+    # Host nginx → 127.0.0.1:9000 (не публиковать 0.0.0.0)
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
     volumes:
       - /var/ai-helper/sites:/var/ai-helper/sites
     networks:
       - ai-net
 
-  # ── MySQL для WordPress ─────────────────────────────────────
   mysql:
     image: mysql:8.0
     container_name: ai-helper-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     environment:
@@ -118,8 +115,9 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── PostgreSQL ────────────────────────────────────────────────
+  # Не используются API — выключены по умолчанию (profile extra)
   db:
+    profiles: ["extra"]
     image: postgres:16-alpine
     container_name: ai-helper-db
     restart: unless-stopped
@@ -131,14 +129,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
     networks:
       - ai-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aihelper}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # ── Redis ─────────────────────────────────────────────────────
   redis:
+    profiles: ["extra"]
     image: redis:7-alpine
     container_name: ai-helper-redis
     restart: unless-stopped
