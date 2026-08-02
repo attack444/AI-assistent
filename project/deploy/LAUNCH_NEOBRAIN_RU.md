@@ -11,21 +11,24 @@
 
 Проверка: `dig +short neobrain.site A` → IP VPS.
 
-## Одна команда на VPS
+## Команды на VPS (если `No such file` — сначала checkout ветки)
 
 ```bash
 cd /opt/ai-helper
+git fetch origin
+git checkout cursor/neobrain-launch-17f9
 git pull origin cursor/neobrain-launch-17f9
 
-# ребрендинг + код
 bash project/deploy/create-ai-site.sh
 cd project/deploy
 docker compose -f docker-compose.prod.yml build app web
 docker compose -f docker-compose.prod.yml up -d --force-recreate app web
 
-# домен сайта + SSL + nginx панели
-CERTBOT_EMAIL=ТВОЙ@EMAIL.ru sudo bash project/deploy/enable-neobrain.sh
+# SSL NeoBrain (чинит случай, когда neobrain отдаёт 5MB2)
+CERTBOT_EMAIL=ТВОЙ@EMAIL.ru sudo bash /opt/ai-helper/project/deploy/fix-neobrain-vhost.sh
 ```
+
+См. также `VSCODE_FIX_RU.md`.
 
 Итог:
 - **https://neobrain.site/** — витрина NeoBrain  
