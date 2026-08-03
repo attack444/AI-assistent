@@ -16,31 +16,54 @@ const FIELDS: { key: string; label: string; hint?: string; secret?: boolean }[] 
     secret: true,
     hint: "После сохранения пользователи сами оплачивают Starter/Pro",
   },
-  { key: "metrika_id", label: "Яндекс.Метрика ID" },
-  { key: "ga4_id", label: "Google Analytics 4 ID", hint: "G-XXXXXXXX" },
-  { key: "gtm_id", label: "Google Tag Manager", hint: "GTM-XXXX" },
-  { key: "gsc_verification", label: "Google Search Console meta content" },
-  { key: "yandex_webmaster_verification", label: "Яндекс.Вебмастер meta content" },
+  {
+    key: "metrika_id",
+    label: "Яндекс.Метрика ID",
+    hint: "На витрине уже вшит 111275874 — поле для смены/дубля в панели",
+  },
+  { key: "ga4_id", label: "Google Analytics 4 ID", hint: "G-XXXXXXXX (опционально, если не через GTM)" },
+  {
+    key: "gtm_id",
+    label: "Google Tag Manager",
+    hint: "На витрине уже GTM-5GWQ97XF",
+  },
+  {
+    key: "gsc_verification",
+    label: "Google Search Console",
+    hint: "Только content из meta (можно с префиксом google-site-verification=)",
+  },
+  {
+    key: "yandex_webmaster_verification",
+    label: "Яндекс.Вебмастер",
+    hint: "На витрине уже 1e58779d59cc0fce",
+  },
   {
     key: "turnstile_site_key",
     label: "Cloudflare Turnstile site key",
     hint: "Антибот на формах",
   },
   { key: "turnstile_secret_key", label: "Turnstile secret", secret: true },
-  { key: "smtp_host", label: "SMTP host" },
-  { key: "smtp_port", label: "SMTP port" },
-  { key: "smtp_user", label: "SMTP user" },
-  { key: "smtp_password", label: "SMTP password", secret: true },
+  {
+    key: "smtp_user",
+    label: "Почта для писем (Яндекс 360)",
+    hint: "Полный email. Host/port подставятся сами (smtp.yandex.ru:465)",
+  },
+  {
+    key: "smtp_password",
+    label: "Пароль приложения почты",
+    secret: true,
+    hint: "Яндекс 360 → Пароли приложений — не обычный пароль входа",
+  },
   {
     key: "google_client_id",
     label: "Google OAuth Client ID",
-    hint: "Консоль Google Cloud → OAuth 2.0. Redirect: https://neobrain.site/api/public/auth/oauth/google/callback",
+    hint: "Redirect: https://neobrain.site/api/public/auth/oauth/google/callback",
   },
   { key: "google_client_secret", label: "Google OAuth Client Secret", secret: true },
   {
     key: "github_client_id",
     label: "GitHub OAuth Client ID",
-    hint: "GitHub → Settings → Developer settings → OAuth Apps. Callback: https://neobrain.site/api/public/auth/oauth/github/callback",
+    hint: "Callback: https://neobrain.site/api/public/auth/oauth/github/callback",
   },
   { key: "github_client_secret", label: "GitHub OAuth Client Secret", secret: true },
 ];
@@ -73,9 +96,17 @@ export default function SettingsPage() {
         const v = s[f.key];
         if (typeof v === "string") payload[f.key] = v;
       }
+      // Яндекс 360: host/port сами
+      if (payload.smtp_user && !String(s.smtp_host || "").trim()) {
+        const u = payload.smtp_user.toLowerCase();
+        if (u.includes("yandex") || u.endsWith("@ya.ru")) {
+          payload.smtp_host = "smtp.yandex.ru";
+          payload.smtp_port = "465";
+        }
+      }
       const res = await saveOwnerSettings(payload);
       setS((res.settings || {}) as Settings);
-      setOk("Сохранено. ЮKassa/Turnstile подхватятся сразу; аналитика — на следующем открытии сайта.");
+      setOk("Сохранено. ЮKassa/Turnstile сразу; счётчики на витрине уже в HTML + подхватятся из панели.");
     } catch (err) {
       setError((err as Error).message || "Не сохранилось");
     } finally {
@@ -88,10 +119,8 @@ export default function SettingsPage() {
       <div className="page-head">
         <h1>Настройки</h1>
         <p>
-          Ключи ЮKassa, аналитика, антибот, SMTP — без правки `.env` руками. Секреты в UI
-          маскируются. HTTPS панели без отдельного DNS:{" "}
-          <span className="mono">https://neobrain.site/console</span> (после
-          fix-neobrain-vhost + PANEL_BASE_PATH).
+          Ключи ЮKassa, аналитика, антибот, почта — без правки `.env`. Секреты маскируются.
+          Панель: <span className="mono">https://neobrain.site/console</span>
         </p>
       </div>
 

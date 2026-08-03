@@ -49,11 +49,13 @@ DEFAULTS: Dict[str, Any] = {
     "public_site_url": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
     "yookassa_shop_id": os.environ.get("YOOKASSA_SHOP_ID", ""),
     "yookassa_secret_key": os.environ.get("YOOKASSA_SECRET_KEY", ""),
-    "metrika_id": os.environ.get("METRIKA_ID", ""),
+    "metrika_id": os.environ.get("METRIKA_ID", "111275874"),
     "ga4_id": os.environ.get("GA4_ID", ""),
-    "gtm_id": os.environ.get("GTM_ID", ""),
+    "gtm_id": os.environ.get("GTM_ID", "GTM-5GWQ97XF"),
     "gsc_verification": os.environ.get("GSC_VERIFICATION", ""),
-    "yandex_webmaster_verification": os.environ.get("YANDEX_WEBMASTER_VERIFICATION", ""),
+    "yandex_webmaster_verification": os.environ.get(
+        "YANDEX_WEBMASTER_VERIFICATION", "1e58779d59cc0fce"
+    ),
     "turnstile_site_key": os.environ.get("TURNSTILE_SITE_KEY", ""),
     "turnstile_secret_key": os.environ.get("TURNSTILE_SECRET_KEY", ""),
     "smtp_host": "",
@@ -117,9 +119,8 @@ def get_settings(*, mask_secrets: bool = True) -> Dict[str, Any]:
     out["turnstile_configured"] = bool(
         data.get("turnstile_site_key") and data.get("turnstile_secret_key")
     )
-    out["smtp_configured"] = bool(
-        data.get("smtp_host") and data.get("smtp_user") and data.get("smtp_password")
-    )
+    # host можно не задавать — mailer угадает для Яндекс 360
+    out["smtp_configured"] = bool(data.get("smtp_user") and data.get("smtp_password"))
     out["oauth_google_configured"] = bool(
         data.get("google_client_id") and data.get("google_client_secret")
     )
@@ -164,15 +165,16 @@ def public_config() -> Dict[str, Any]:
         "ok": True,
         "brand": s.get("brand_name") or "NeoBrain",
         "public_site_url": s.get("public_site_url") or "https://neobrain.site",
-        "metrika_id": s.get("metrika_id") or "",
+        "metrika_id": s.get("metrika_id") or "111275874",
         "ga4_id": s.get("ga4_id") or "",
-        "gtm_id": s.get("gtm_id") or "",
+        "gtm_id": s.get("gtm_id") or "GTM-5GWQ97XF",
         "gsc_verification": s.get("gsc_verification") or "",
-        "yandex_webmaster_verification": s.get("yandex_webmaster_verification") or "",
+        "yandex_webmaster_verification": s.get("yandex_webmaster_verification")
+        or "1e58779d59cc0fce",
         "turnstile_site_key": s.get("turnstile_site_key") or "",
         "yookassa_ready": bool(s.get("yookassa_shop_id") and s.get("yookassa_secret_key")),
         "console_path": os.environ.get("PANEL_BASE_PATH", "/console") or "/console",
         "oauth_google": bool(s.get("google_client_id") and s.get("google_client_secret")),
         "oauth_github": bool(s.get("github_client_id") and s.get("github_client_secret")),
-        "smtp_ready": bool(s.get("smtp_host") and s.get("smtp_user") and s.get("smtp_password")),
+        "smtp_ready": bool(s.get("smtp_user") and s.get("smtp_password")),
     }

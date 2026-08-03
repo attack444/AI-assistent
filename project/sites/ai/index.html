@@ -7,6 +7,7 @@
   <meta name="description" content="NeoBrain — AI-платформа для сайтов: деплой, чат с DeepSeek, виджет и панель на своём VPS." />
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href="https://neobrain.site/" />
+  <meta name="yandex-verification" content="1e58779d59cc0fce" />
   <meta property="og:locale" content="ru_RU" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="NeoBrain — AI-платформа для сайтов" />
@@ -15,6 +16,24 @@
   <meta property="og:site_name" content="NeoBrain" />
   <meta name="twitter:card" content="summary_large_image" />
   <title>NeoBrain — AI для сайтов: деплой, чат, панель</title>
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-5GWQ97XF');</script>
+  <!-- End Google Tag Manager -->
+  <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=111275874', 'ym');
+    ym(111275874, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+  </script>
+  <!-- /Yandex.Metrika counter -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -605,51 +624,79 @@
         padding-left: env(safe-area-inset-left);
         padding-right: env(safe-area-inset-right);
       }
+      /* Одна строка шапки — без переноса кнопок на всю ширину */
       .topbar {
         padding: 10px 14px;
         padding-top: calc(10px + env(safe-area-inset-top));
-        gap: 8px;
-        flex-wrap: wrap;
+        gap: 10px;
+        flex-wrap: nowrap;
+      }
+      .brand-mini {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 1rem;
       }
       .topbar-actions {
-        width: 100%;
+        width: auto;
+        flex: 0 0 auto;
         justify-content: flex-end;
+        flex-wrap: nowrap;
+        gap: 6px;
       }
       .top-btn {
         min-height: 40px;
         padding: 8px 12px;
-        font-size: 0.85rem;
+        font-size: 0.82rem;
+        white-space: nowrap;
       }
       .auth-user {
-        width: 100%;
-        order: -1;
-        font-size: 0.82rem;
+        display: none; /* email не ломает шапку; план виден в #plan-status */
       }
 
+      /* Hero как на ПК: текст сверху на светлом, акцент снизу — без наложений */
       .hero {
-        min-height: 100svh;
-        min-height: 100dvh;
-        padding: calc(72px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+        align-items: start;
+        min-height: calc(100svh - 56px);
+        min-height: calc(100dvh - 56px);
+        padding: 28px 18px calc(36px + env(safe-area-inset-bottom));
       }
       .hero-visual::before {
-        inset: 42% 0 -5% 0;
-        border-radius: 40px 40px 0 0;
+        inset: auto 0 0 0;
+        height: min(34%, 220px);
+        border-radius: 36px 36px 0 0;
         transform: none;
+        opacity: 0.95;
       }
       .hero-visual::after {
-        right: 8%;
-        left: 8%;
-        width: auto;
-        top: 48%;
-        height: 28vh;
+        display: none; /* фейковый «редактор» мешает на узком экране */
       }
-      .hero-inner { max-width: 100%; }
-      .brand { max-width: none; font-size: clamp(2.1rem, 11vw, 3.2rem); }
-      .hero h1 { max-width: none; font-size: clamp(1.2rem, 5.5vw, 1.55rem); }
-      .hero-lead { max-width: none; font-size: 1rem; }
+      .hero-inner {
+        max-width: 100%;
+        padding-bottom: 12px;
+        position: relative;
+        z-index: 1;
+      }
+      .brand {
+        max-width: none;
+        font-size: clamp(2.35rem, 12vw, 3.4rem);
+        margin-bottom: 14px;
+      }
+      .hero h1 {
+        max-width: 22ch;
+        font-size: clamp(1.25rem, 5.2vw, 1.65rem);
+      }
+      .hero-lead {
+        max-width: 36ch;
+        font-size: 1.02rem;
+        margin-bottom: 22px;
+      }
       .cta-row {
         flex-direction: column;
         align-items: stretch;
+        max-width: 360px;
       }
       .cta-row .btn {
         width: 100%;
@@ -661,12 +708,30 @@
         width: min(960px, calc(100% - 28px));
         padding: clamp(48px, 12vw, 80px) 0;
       }
+      .section h2 {
+        font-size: clamp(1.35rem, 6vw, 1.75rem);
+        word-break: break-word;
+      }
       .feature-list li {
         grid-template-columns: 1fr;
         gap: 6px;
       }
       .plans {
         grid-template-columns: 1fr;
+      }
+      .chip-row {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 8px;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+      }
+      .chip-row::-webkit-scrollbar { display: none; }
+      .chip-row button {
+        flex: 0 0 auto;
+        white-space: nowrap;
       }
       .matrix {
         display: block;
@@ -699,6 +764,8 @@
       }
       .auth-modal {
         align-items: flex-end;
+        place-items: end center;
+        padding: 12px;
         padding-bottom: env(safe-area-inset-bottom);
       }
       footer {
@@ -837,6 +904,11 @@
   </style>
 </head>
 <body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5GWQ97XF"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+  <noscript><div><img src="https://mc.yandex.ru/watch/111275874" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
   <div class="topbar">
     <a href="#" class="brand-mini">NeoBrain</a>
     <div class="topbar-actions">
@@ -1396,28 +1468,40 @@
     // —— Public config (analytics + turnstile + pay) ——
     let publicCfg = { yookassa_ready: false, turnstile_site_key: "" };
     function injectAnalytics(cfg) {
-      if (cfg.gsc_verification) {
+      // Счётчики уже вшиты в HTML (Метрика 111275874, GTM-5GWQ97XF, yandex-verification).
+      // Здесь — доп. ключи из панели, без дублей.
+      function metaContent(raw, prefix) {
+        let v = String(raw || "").trim();
+        if (prefix && v.toLowerCase().startsWith(prefix.toLowerCase())) {
+          v = v.slice(prefix.length).replace(/^[=\s]+/, "");
+        }
+        return v;
+      }
+      if (cfg.gsc_verification && !document.querySelector('meta[name="google-site-verification"]')) {
         const m = document.createElement("meta");
         m.name = "google-site-verification";
-        m.content = cfg.gsc_verification;
+        m.content = metaContent(cfg.gsc_verification, "google-site-verification");
         document.head.appendChild(m);
       }
-      if (cfg.yandex_webmaster_verification) {
-        const m = document.createElement("meta");
-        m.name = "yandex-verification";
-        m.content = cfg.yandex_webmaster_verification;
-        document.head.appendChild(m);
+      const yv = metaContent(cfg.yandex_webmaster_verification, "yandex-verification");
+      if (yv && yv !== "1e58779d59cc0fce") {
+        let m = document.querySelector('meta[name="yandex-verification"]');
+        if (!m) {
+          m = document.createElement("meta");
+          m.name = "yandex-verification";
+          document.head.appendChild(m);
+        }
+        m.content = yv;
       }
-      if (cfg.metrika_id) {
-        (function (m, e, t, r, i, k, a) {
-          m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };
-          m[i].l = 1 * new Date();
-          for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) return; }
-          k = e.createElement(t); a = e.getElementsByTagName(t)[0]; k.async = 1; k.src = r; a.parentNode.insertBefore(k, a);
-        })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
-        ym(Number(cfg.metrika_id), "init", { clickmap: true, trackLinks: true, accurateTrackBounce: true });
+      // GTM из панели — только если другой ID (основной уже в head)
+      if (cfg.gtm_id && cfg.gtm_id !== "GTM-5GWQ97XF" && !document.querySelector("script[data-neobrain-gtm]")) {
+        const id = cfg.gtm_id;
+        const s = document.createElement("script");
+        s.setAttribute("data-neobrain-gtm", id);
+        s.text = "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','" + id.replace(/[^A-Z0-9-]/gi, "") + "');";
+        document.head.appendChild(s);
       }
-      if (cfg.ga4_id) {
+      if (cfg.ga4_id && !window.gtag) {
         const s = document.createElement("script");
         s.async = true;
         s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(cfg.ga4_id);
@@ -1428,7 +1512,7 @@
         gtag("js", new Date());
         gtag("config", cfg.ga4_id);
       }
-      if (cfg.turnstile_site_key) {
+      if (cfg.turnstile_site_key && !document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
         const s = document.createElement("script");
         s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
         s.async = true;
