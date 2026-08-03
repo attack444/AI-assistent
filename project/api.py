@@ -752,7 +752,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.16.1",
+            "version": "2.17.0",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -1824,6 +1824,10 @@ class APIHandler(BaseHTTPRequestHandler):
                 plan_id=(body.get("plan") or body.get("plan_id") or "").strip(),
                 return_url=(body.get("return_url") or "").strip(),
             )
+            # не_configured → 503, чтобы UI показал понятный текст
+            if result.get("ok") is False and result.get("mode") == "not_configured":
+                self._send(503, _json(result))
+                return
             self._send(200, _json(result))
         except ValueError as exc:
             self._send(400, _json({"error": str(exc)}))
@@ -2191,7 +2195,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.16.1",
+                "version": "2.17.0",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),

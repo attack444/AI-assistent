@@ -8,41 +8,61 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 # plan_id -> limits (-1 = unlimited)
+# Фиксированные цены SaaS (оплата картой ЮKassa). Не «счёт на услугу».
 PLANS: Dict[str, Dict[str, Any]] = {
     "free": {
         "id": "free",
         "name": "Free",
         "price_rub": 0,
-        "blurb": "Попробовать NeoBrain",
+        "period": "month",
+        "blurb": "Попробовать NeoBrain бесплатно",
         "max_sites": 1,
         "chat_per_day": 30,
         "deploy_per_day": 5,
-        "features": ["1 сайт", "30 сообщений / день", "5 деплоев / день", "DeepSeek"],
+        "features": [
+            "1 сайт-превью",
+            "30 сообщений / день",
+            "5 деплоев / день",
+            "Ollama + DeepSeek",
+        ],
     },
     "starter": {
         "id": "starter",
         "name": "Starter",
         "price_rub": 990,
-        "blurb": "Для личных проектов",
+        "period": "month",
+        "blurb": "Фикс 990 ₽/мес — личные проекты",
         "max_sites": 5,
         "chat_per_day": 300,
         "deploy_per_day": 30,
-        "features": ["5 сайтов", "300 сообщений / день", "30 деплоев / день", "Приоритет поддержки"],
+        "features": [
+            "5 сайтов",
+            "300 сообщений / день",
+            "30 деплоев / день",
+            "Оплата картой онлайн",
+        ],
     },
     "pro": {
         "id": "pro",
         "name": "Pro",
         "price_rub": 2990,
-        "blurb": "Для студий и клиентов",
+        "period": "month",
+        "blurb": "Фикс 2 990 ₽/мес — студии и клиенты",
         "max_sites": 25,
         "chat_per_day": 2000,
         "deploy_per_day": 100,
-        "features": ["25 сайтов", "2000 сообщений / день", "100 деплоев / день", "Несколько моделей позже"],
+        "features": [
+            "25 сайтов",
+            "2000 сообщений / день",
+            "100 деплоев / день",
+            "Приоритет поддержки",
+        ],
     },
     "owner": {
         "id": "owner",
         "name": "Owner",
         "price_rub": 0,
+        "period": "month",
         "blurb": "Владелец сервера",
         "max_sites": -1,
         "chat_per_day": -1,
@@ -64,11 +84,18 @@ def list_public_plans() -> list:
             "id": p["id"],
             "name": p["name"],
             "price_rub": p["price_rub"],
+            "period": p.get("period") or "month",
+            "billing": "fixed",
             "blurb": p["blurb"],
             "features": p["features"],
             "max_sites": p["max_sites"],
             "chat_per_day": p["chat_per_day"],
             "deploy_per_day": p["deploy_per_day"],
+            "pay_label": (
+                f"Оплатить {int(p['price_rub']):,} ₽".replace(",", " ")
+                if int(p.get("price_rub") or 0) > 0
+                else "Начать Free"
+            ),
         }
         for p in PLANS.values()
         if not p.get("hidden")

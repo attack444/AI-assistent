@@ -1,18 +1,12 @@
 """
-ЮKassa (YooKassa) — каркас оплаты тарифов NeoBrain.
+ЮKassa — фиксированные тарифы NeoBrain (Starter/Pro), оплата картой.
 
-Полный боевой режим только после:
-  YOOKASSA_SHOP_ID=...
-  YOOKASSA_SECRET_KEY=...
-  PUBLIC_SITE_URL=https://neobrain.site
-
-Пока ключей нет — create_payment возвращает инструкции, webhook не списывает.
+Ключи: панель → Настройки (shopId + secret) или .env
+Webhook: https://neobrain.site/api/public/pay/webhook
 """
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
 import os
 import time
@@ -26,6 +20,18 @@ DATA_DIR = Path(os.environ.get("AI_HELPER_DATA", str(Path.home() / ".ai-helper")
 PAYMENTS_FILE = DATA_DIR / "yookassa_payments.jsonl"
 
 API_URL = "https://api.yookassa.ru/v3/payments"
+WEBHOOK_PATH = "/api/public/pay/webhook"
+
+
+def _site() -> str:
+    site = os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site").rstrip("/")
+    try:
+        import owner_settings as osset
+
+        site = (osset.get_raw().get("public_site_url") or site).rstrip("/")
+    except Exception:
+        pass
+    return site
 
 
 def _creds() -> tuple[str, str]:
@@ -49,23 +55,22 @@ def configured() -> bool:
 
 def status() -> Dict[str, Any]:
     shop, secret = _creds()
-    site = os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site").rstrip("/")
-    try:
-        import owner_settings as osset
-
-        site = (osset.get_raw().get("public_site_url") or site).rstrip("/")
-    except Exception:
-        pass
+    site = _site()
     return {
         "ok": True,
         "provider": "yookassa",
+        "mode": "fixed_price",
         "configured": configured(),
         "shop_id_set": bool(shop),
-        "return_url": site + "/#start",
+        "return_url": site + "/?paid=1#start",
+        "webhook_url": site + WEBHOOK_PATH,
         "self_serve": True,
+        "currency": "RUB",
         "hint": None
         if configured()
-        else "В панели → Настройки впиши shopId и секретный ключ ЮKassa (или .env)",
+        else "Панель → Настройки: shopId и секретный ключ. Webhook: "
+        + site
+        + WEBHOOK_PATH,
     }
 
 
@@ -75,7 +80,7 @@ def _auth_header() -> str:
     return "Basic " + base64.b64encode(raw).decode("ascii")
 
 
-def _plan_amount(plan_id: str) -> Optional[int]:
+def _plan_info(plan_id: str) -> Optional[Dict[str, Any]]:
     try:
         from public_plans import PLANS
 
@@ -83,7 +88,14 @@ def _plan_amount(plan_id: str) -> Optional[int]:
         if not p or p.get("hidden"):
             return None
         price = int(p.get("price_rub") or 0)
-        return price if price > 0 else None
+        if price <= 0:
+            return None
+        return {
+            "id": p["id"],
+            "name": p.get("name") or plan_id,
+            "price_rub": price,
+            "period": p.get("period") or "month",
+        }
     except Exception:
         return None
 
@@ -94,50 +106,84 @@ def _append(record: Dict[str, Any]) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def _send_receipt() -> bool:
+    # Чек 54-ФЗ (НПД без НДС). Отключить: YOOKASSA_SEND_RECEIPT=0
+    return os.environ.get("YOOKASSA_SEND_RECEIPT", "1").strip() not in {"0", "false", "no"}
+
+
 def create_payment(
     *,
     email: str,
     plan_id: str,
     return_url: str = "",
 ) -> Dict[str, Any]:
+    """Создать платёж на фиксированную сумму тарифа → redirect на ЮKassa."""
     email = (email or "").strip().lower()
     plan_id = (plan_id or "").strip().lower()
-    amount = _plan_amount(plan_id)
+    info = _plan_info(plan_id)
     if not email or "@" not in email:
-        raise ValueError("Нужен email")
-    if not amount:
-        raise ValueError("Оплата только для starter/pro")
+        raise ValueError("Нужен email аккаунта")
+    if not info:
+        raise ValueError("Оплата только для фиксированных тарифов Starter / Pro")
+
+    amount = int(info["price_rub"])
+    plan_name = str(info["name"])
+    site = _site()
 
     if not configured():
         rec = {
             "at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "status": "pending_manual",
+            "status": "pending_keys",
             "email": email,
             "plan": plan_id,
             "amount_rub": amount,
         }
         _append(rec)
         return {
-            "ok": True,
-            "mode": "manual",
-            "message": (
-                f"ЮKassa ещё не подключена. Напишите владельцу для активации {plan_id} "
-                f"({amount} ₽) на {email}. Или задайте YOOKASSA_* в .env."
-            ),
+            "ok": False,
+            "mode": "not_configured",
+            "error": "ЮKassa ещё не подключена в панели (shopId + секретный ключ).",
             "amount_rub": amount,
             "plan": plan_id,
+            "rekvizity_url": site + "/rekvizity/",
         }
 
-    site = (os.environ.get("PUBLIC_SITE_URL") or "https://neobrain.site").rstrip("/")
-    return_url = (return_url or f"{site}/#pricing").strip()
-    idem = str(uuid.uuid4())
-    body = {
-        "amount": {"value": f"{amount}.00", "currency": "RUB"},
-        "confirmation": {"type": "redirect", "return_url": return_url},
+    ret = (return_url or f"{site}/?paid=1#start").strip()
+    if not ret.startswith("http"):
+        ret = f"{site}/?paid=1#start"
+
+    amount_value = f"{amount}.00"
+    description = f"NeoBrain {plan_name} — 1 месяц ({amount} ₽)"
+    body: Dict[str, Any] = {
+        "amount": {"value": amount_value, "currency": "RUB"},
+        "confirmation": {"type": "redirect", "return_url": ret},
         "capture": True,
-        "description": f"NeoBrain {plan_id} — {email}",
-        "metadata": {"email": email, "plan": plan_id, "brand": "NeoBrain"},
+        "description": description[:128],
+        "metadata": {
+            "email": email,
+            "plan": plan_id,
+            "brand": "NeoBrain",
+            "period": "month",
+            "amount_rub": str(amount),
+        },
     }
+    if _send_receipt():
+        # vat_code 1 = без НДС (НПД)
+        body["receipt"] = {
+            "customer": {"email": email},
+            "items": [
+                {
+                    "description": f"NeoBrain {plan_name} — 1 месяц"[ :128],
+                    "quantity": "1.00",
+                    "amount": {"value": amount_value, "currency": "RUB"},
+                    "vat_code": 1,
+                    "payment_mode": "full_payment",
+                    "payment_subject": "service",
+                }
+            ],
+        }
+
+    idem = str(uuid.uuid4())
     req = urllib.request.Request(
         API_URL,
         data=json.dumps(body).encode("utf-8"),
@@ -152,11 +198,14 @@ def create_payment(
         with urllib.request.urlopen(req, timeout=25) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        detail = exc.read().decode("utf-8", errors="replace")[:700]
         raise RuntimeError(f"ЮKassa HTTP {exc.code}: {detail}") from exc
 
     conf = (data.get("confirmation") or {}).get("confirmation_url") or ""
-    rec = {
+    if not conf:
+        raise RuntimeError("ЮKassa не вернула confirmation_url")
+
+    _append({
         "at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "status": data.get("status") or "pending",
         "payment_id": data.get("id"),
@@ -164,8 +213,7 @@ def create_payment(
         "plan": plan_id,
         "amount_rub": amount,
         "confirmation_url": conf,
-    }
-    _append(rec)
+    })
     return {
         "ok": True,
         "mode": "yookassa",
@@ -173,6 +221,8 @@ def create_payment(
         "confirmation_url": conf,
         "amount_rub": amount,
         "plan": plan_id,
+        "plan_name": plan_name,
+        "description": description,
     }
 
 
@@ -199,7 +249,7 @@ def fetch_payment(payment_id: str) -> Dict[str, Any]:
 
 
 def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Обработка notification от ЮKassa (event payment.succeeded)."""
+    """Notification payment.succeeded → активация тарифа после GET-верификации."""
     event = (payload.get("event") or "").strip()
     obj = payload.get("object") or {}
     if event != "payment.succeeded":
@@ -207,7 +257,6 @@ def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     payment_id = (obj.get("id") or "").strip()
     if not payment_id:
         return {"ok": False, "error": "payment id missing"}
-    # Верификация: повторный GET у ЮKassa — нельзя активировать по поддельному POST
     try:
         verified = fetch_payment(payment_id)
     except Exception as exc:

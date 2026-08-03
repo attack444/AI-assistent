@@ -1121,7 +1121,7 @@
 
   <section class="section" id="start">
     <h2>Тарифы</h2>
-    <p>Регистрация даёт Free. Starter и Pro — оплата картой через ЮKassa (сам включается после оплаты).</p>
+    <p>Фиксированная цена за месяц. Free после регистрации · Starter и Pro — оплата картой (ЮKassa), тариф включается сразу после оплаты.</p>
     <div class="plans" id="plans-grid">
       <p class="hint">Загрузка тарифов…</p>
     </div>
@@ -1547,29 +1547,39 @@
     }
     void loadPublicConfig();
 
-    // —— Plans + self-serve pay ——
+    // —— Plans + fixed-price card pay (ЮKassa) ——
     async function startPay(planId) {
       const status = document.getElementById("plan-status");
       if (!userToken) { openAuth("login"); status.textContent = "Сначала войдите — оплата привяжется к аккаунту."; return; }
       await refreshMe();
       let email = (currentUser && currentUser.email) || "";
       if (!email) { status.textContent = "Не вижу email аккаунта — перелогиньтесь."; return; }
-      const tInput = document.querySelector("[name='cf-turnstile-response']");
+      const tInput = document.querySelector("#pay-turnstile [name='cf-turnstile-response']")
+        || document.querySelector("[name='cf-turnstile-response']");
       const turnstile = tInput ? tInput.value : "";
-      status.textContent = "Создаю счёт ЮKassa…";
+      status.textContent = "Открываю оплату ЮKassa…";
       try {
         const res = await fetch("/api/public/pay/create", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + userToken },
-          body: JSON.stringify({ email, plan: planId, turnstile }),
+          body: JSON.stringify({
+            plan: planId,
+            turnstile,
+            return_url: location.origin + "/?paid=1#start",
+          }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "pay");
+        const data = await res.json().catch(() => ({}));
         if (data.confirmation_url) {
           location.href = data.confirmation_url;
           return;
         }
-        status.textContent = data.message || "Заявка принята. Владелец активирует план, если ЮKassa ещё не подключена.";
+        if (data.mode === "not_configured" || res.status === 503) {
+          status.textContent = (data.error || "ЮKassa ещё не подключена.") +
+            " Реквизиты: /rekvizity/ — или подождите, пока владелец вставит ключи в панели.";
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        status.textContent = data.message || "Платёж создан.";
       } catch (err) {
         status.textContent = err.message || "Ошибка оплаты";
       }
@@ -1587,11 +1597,14 @@
           el.className = "plan" + (p.id === "starter" ? " featured" : "");
           const price = p.price_rub
             ? p.price_rub.toLocaleString("ru-RU") + " ₽<span>/мес</span>"
-            : "0 ₽<span> старт</span>";
+            : "0 ₽<span> · старт</span>";
           let cta = "";
           if (p.price_rub > 0) {
-            cta = "<div class='cta-row' style='margin-top:14px'><button type='button' class='btn btn-primary btn-pay' data-plan='" + p.id + "'>" +
-              (payReady ? "Оплатить " + p.name : "Подключить " + p.name) + "</button></div>";
+            const label = payReady
+              ? ("Оплатить " + p.price_rub.toLocaleString("ru-RU") + " ₽")
+              : ("Скоро: " + p.name + " " + p.price_rub.toLocaleString("ru-RU") + " ₽");
+            cta = "<div class='cta-row' style='margin-top:14px'><button type='button' class='btn btn-primary btn-pay' data-plan='" + p.id + "'" +
+              (payReady ? "" : " disabled") + ">" + label + "</button></div>";
           } else {
             cta = "<div class='cta-row' style='margin-top:14px'><button type='button' class='btn btn-ghost' id='plan-free-cta'>Начать Free</button></div>";
           }
@@ -1602,6 +1615,13 @@
             "<ul>" + (p.features || []).map((f) => "<li>" + f + "</li>").join("") + "</ul>" + cta;
           grid.appendChild(el);
         });
+        if (!payReady) {
+          const note = document.createElement("p");
+          note.className = "hint";
+          note.style.gridColumn = "1 / -1";
+          note.textContent = "Оплата картой подключается: владелец вставляет ключи ЮKassa в панели. Пока кнопки неактивны.";
+          grid.appendChild(note);
+        }
         grid.querySelectorAll(".btn-pay").forEach((btn) => {
           btn.addEventListener("click", () => startPay(btn.getAttribute("data-plan")));
         });
@@ -1612,6 +1632,25 @@
       }
     }
     void loadPlans();
+    // Возврат с ЮKassa: /?paid=1#start
+    (function afterPaid() {
+      try {
+        const u = new URL(location.href);
+        if (u.searchParams.get("paid") === "1") {
+          const st = document.getElementById("plan-status");
+          if (st) st.textContent = "Если оплата прошла — тариф обновится через несколько секунд. Обновляю…";
+          setTimeout(async () => {
+            await refreshMe();
+            if (st && currentUser) {
+              st.textContent = "Ваш план: " + String(currentUser.plan || "free").toUpperCase() +
+                ". Если ещё Free — подождите webhook или обновите страницу через минуту.";
+            }
+            u.searchParams.delete("paid");
+            history.replaceState({}, "", u.pathname + u.search + "#start");
+          }, 800);
+        }
+      } catch (_) {}
+    })();
     document.getElementById("btn-show-billing").addEventListener("click", async () => {
       if (!ensureAuth()) return;
       await refreshMe();

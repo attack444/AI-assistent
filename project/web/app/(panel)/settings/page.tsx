@@ -9,12 +9,16 @@ const FIELDS: { key: string; label: string; hint?: string; secret?: boolean }[] 
   { key: "brand_name", label: "Бренд" },
   { key: "owner_email", label: "Email владельца (OWNER)" },
   { key: "public_site_url", label: "URL витрины", hint: "https://neobrain.site" },
-  { key: "yookassa_shop_id", label: "ЮKassa shopId" },
+  {
+    key: "yookassa_shop_id",
+    label: "ЮKassa shopId",
+    hint: "Тестовый или боевой shopId из личного кабинета ЮKassa",
+  },
   {
     key: "yookassa_secret_key",
     label: "ЮKassa секретный ключ",
     secret: true,
-    hint: "После сохранения пользователи сами оплачивают Starter/Pro",
+    hint: "Webhook HTTP: https://neobrain.site/api/public/pay/webhook · событие payment.succeeded. Фикс-тарифы Starter 990 / Pro 2990 ₽",
   },
   {
     key: "metrika_id",
