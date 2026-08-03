@@ -62,7 +62,8 @@ if ! command -v certbot >/dev/null 2>&1; then
   apt-get install -y -q certbot python3-certbot-nginx
 fi
 
-# убрать битые 443-конфиги без валидных pem (кроме нашего vhost — certbot его дополнит)
+# Убрать только БИТЫЕ 443-конфиги (ssl_certificate указывает на отсутствующий pem).
+# Чужие рабочие SSL vhost'ы НЕ трогаем — иначе на multi-domain VPS падают другие сайты.
 CONF="/etc/nginx/sites-available/ai-helper-${SITE_NAME}.conf"
 for f in /etc/nginx/sites-enabled/*; do
   [ -e "$f" ] || continue
@@ -70,8 +71,14 @@ for f in /etc/nginx/sites-enabled/*; do
     *ai-helper-${SITE_NAME}.conf) continue ;;
     *default*) continue ;;
   esac
-  if grep -qE 'listen[[:space:]]+443|ssl_certificate' "$f" 2>/dev/null; then
-    echo "  · отключаю чужой SSL vhost: $f"
+  # Only consider vhosts that mention our domain (name collision / stale copy).
+  if ! grep -qE "server_name[[:space:]]+[^;]*${DOMAIN}" "$f" 2>/dev/null; then
+    continue
+  fi
+  cert_line="$(grep -E '^\s*ssl_certificate[[:space:]]+' "$f" 2>/dev/null | head -1 || true)"
+  cert_path="$(printf '%s' "$cert_line" | awk '{print $2}' | tr -d ';')"
+  if [ -n "$cert_path" ] && [ ! -f "$cert_path" ]; then
+    echo "  · отключаю битый SSL vhost (нет $cert_path): $f"
     rm -f "$f"
   fi
 done
