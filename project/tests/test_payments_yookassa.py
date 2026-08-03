@@ -69,9 +69,11 @@ class PayTests(unittest.TestCase):
             captured["body"] = req.data.decode("utf-8")
             return FakeResp()
 
-        with mock.patch.object(pay, "_creds", return_value=("shop", "secret")), mock.patch.object(
-            pay, "_append"
-        ), mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        with mock.patch.object(
+            pay, "_creds", return_value=("123456", "test_secretkeyxxxxxxxx")
+        ), mock.patch.object(pay, "_append"), mock.patch(
+            "urllib.request.urlopen", side_effect=fake_urlopen
+        ):
             r = pay.create_payment(email="buyer@example.com", plan_id="pro")
         self.assertTrue(r["ok"])
         self.assertEqual(r["amount_rub"], 2990)
@@ -79,6 +81,29 @@ class PayTests(unittest.TestCase):
         self.assertIn('"receipt"', captured["body"])
         self.assertIn("buyer@example.com", captured["body"])
         self.assertIn("2990.00", captured["body"])
+
+    def test_normalize_creds_splits_combined(self):
+        shop, secret = pay.normalize_creds("", "987654:test_abcXYZ")
+        self.assertEqual(shop, "987654")
+        self.assertEqual(secret, "test_abcXYZ")
+
+    def test_normalize_strips_quotes_and_bearer(self):
+        shop, secret = pay.normalize_creds(' "112233" ', "Bearer test_hello")
+        self.assertEqual(shop, "112233")
+        self.assertEqual(secret, "test_hello")
+
+    def test_friendly_auth_type_error(self):
+        msg = pay._friendly_http_error(
+            401,
+            '{"description":"Authentication type is not allowed","code":"invalid_credentials"}',
+        )
+        self.assertIn("API", msg)
+        self.assertIn("Секретный ключ", msg)
+
+    def test_verify_rejects_bad_prefix(self):
+        r = pay.verify_connection(shop_id="123456", secret_key="oauth-token-xxx")
+        self.assertFalse(r["ok"])
+        self.assertIn("test_", r["error"])
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { getOwnerSettings, saveOwnerSettings } from "@/lib/api";
+import { getOwnerSettings, saveOwnerSettings, verifyYookassa } from "@/lib/api";
 
 type Settings = Record<string, string | boolean | undefined>;
 
@@ -12,20 +12,24 @@ const FIELDS: { key: string; label: string; hint?: string; secret?: boolean }[] 
   {
     key: "yookassa_shop_id",
     label: "ЮKassa shopId",
-    hint: "Тестовый или боевой shopId из личного кабинета ЮKassa",
+    hint: "Только цифры из ЛК ЮKassa → магазин с интеграцией API",
   },
   {
     key: "yookassa_secret_key",
     label: "ЮKassa секретный ключ",
     secret: true,
-    hint: "Webhook HTTP: https://neobrain.site/api/public/pay/webhook · событие payment.succeeded. Фикс-тарифы Starter 990 / Pro 2990 ₽",
+    hint: "Строка test_… или live_… (Секретный ключ API). Не OAuth и не ключ мобильного SDK. Webhook: https://neobrain.site/api/public/pay/webhook",
   },
   {
     key: "metrika_id",
     label: "Яндекс.Метрика ID",
     hint: "На витрине уже вшит 111275874 — поле для смены/дубля в панели",
   },
-  { key: "ga4_id", label: "Google Analytics 4 ID", hint: "G-XXXXXXXX (опционально, если не через GTM)" },
+  {
+    key: "ga4_id",
+    label: "Google Analytics 4 ID",
+    hint: "На витрине уже G-3DPQC7HKJL",
+  },
   {
     key: "gtm_id",
     label: "Google Tag Manager",
@@ -77,6 +81,8 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ykBusy, setYkBusy] = useState(false);
+  const [ykMsg, setYkMsg] = useState("");
 
   const load = useCallback(() => {
     setError("");
@@ -100,7 +106,6 @@ export default function SettingsPage() {
         const v = s[f.key];
         if (typeof v === "string") payload[f.key] = v;
       }
-      // Яндекс 360: host/port сами
       if (payload.smtp_user && !String(s.smtp_host || "").trim()) {
         const u = payload.smtp_user.toLowerCase();
         if (u.includes("yandex") || u.endsWith("@ya.ru")) {
@@ -110,11 +115,51 @@ export default function SettingsPage() {
       }
       const res = await saveOwnerSettings(payload);
       setS((res.settings || {}) as Settings);
-      setOk("Сохранено. ЮKassa/Turnstile сразу; счётчики на витрине уже в HTML + подхватятся из панели.");
+      setOk("Сохранено. Дальше нажмите «Проверить ЮKassa», затем оплату на витрине.");
     } catch (err) {
       setError((err as Error).message || "Не сохранилось");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onVerifyYookassa() {
+    setYkBusy(true);
+    setYkMsg("");
+    setError("");
+    try {
+      // Сначала сохраним свежие значения из формы (если секрет не маска)
+      const shop = String(s.yookassa_shop_id || "").trim();
+      const secret = String(s.yookassa_secret_key || "").trim();
+      const patch: Record<string, string> = {};
+      if (shop && !shop.startsWith("••••")) patch.yookassa_shop_id = shop;
+      if (secret && !secret.startsWith("••••")) patch.yookassa_secret_key = secret;
+      if (Object.keys(patch).length) {
+        await saveOwnerSettings(patch);
+      }
+      const res = await verifyYookassa({
+        yookassa_shop_id: patch.yookassa_shop_id || "",
+        yookassa_secret_key: patch.yookassa_secret_key || "",
+      });
+      if (res.ok) {
+        setYkMsg(
+          res.message ||
+            `ОК: ЮKassa приняла ключи` +
+              (res.test ? " (тестовый магазин)" : " (боевой)") +
+              (res.shop_id_tail ? `, shop …${res.shop_id_tail}` : ""),
+        );
+        setOk(res.message || "ЮKassa подключена");
+      } else {
+        setYkMsg(res.error || "Ключи не приняты");
+        setError(res.error || "ЮKassa отклонила ключи");
+      }
+      load();
+    } catch (err) {
+      const msg = (err as Error).message || "Проверка не удалась";
+      setYkMsg(msg);
+      setError(msg);
+    } finally {
+      setYkBusy(false);
     }
   }
 
@@ -133,7 +178,7 @@ export default function SettingsPage() {
 
       <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
         <div className="muted" style={{ fontSize: "0.9rem" }}>
-          ЮKassa: {s.yookassa_configured ? "подключена — самооплата ON" : "не настроена"}
+          ЮKassa: {s.yookassa_configured ? "ключи сохранены" : "не настроена"}
           {" · "}
           Turnstile: {s.turnstile_configured ? "ON" : "OFF"}
           {" · "}
@@ -143,9 +188,22 @@ export default function SettingsPage() {
           {" · "}
           GitHub: {s.oauth_github_configured ? "ON" : "OFF"}
         </div>
+        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn" type="button" onClick={onVerifyYookassa} disabled={ykBusy || busy}>
+            {ykBusy ? "Проверяю ЮKassa…" : "Проверить ЮKassa"}
+          </button>
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            Реальный запрос GET /v3/me — если ОК, оплата заработает.
+          </span>
+        </div>
+        {ykMsg ? (
+          <p style={{ margin: "10px 0 0", color: ykMsg.startsWith("ОК") || ykMsg.includes("верные") ? "#2ea043" : "#c44" }}>
+            {ykMsg}
+          </p>
+        ) : null}
       </div>
 
-      <form className="panel" style={{ padding: 20, display: "grid", gap: 14 }} onSubmit={onSubmit}>
+      <form className="panel" style={{ padding: 20, display: "grid", gap: 14 }} onSubmit={onSubmit} autoComplete="off">
         {FIELDS.map((f) => (
           <label key={f.key} style={{ display: "grid", gap: 6 }}>
             <span style={{ fontWeight: 600 }}>{f.label}</span>
@@ -153,9 +211,23 @@ export default function SettingsPage() {
             <input
               className="input"
               type={f.secret ? "password" : "text"}
+              inputMode={f.key === "yookassa_shop_id" ? "numeric" : undefined}
               value={String(s[f.key] ?? "")}
               onChange={(ev) => setS((prev) => ({ ...prev, [f.key]: ev.target.value }))}
-              autoComplete="off"
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              name={`nb_${f.key}`}
+              data-1p-ignore="true"
+              data-lpignore="true"
+              placeholder={
+                f.key === "yookassa_secret_key"
+                  ? "test_… или live_…"
+                  : f.key === "yookassa_shop_id"
+                    ? "например 1234567"
+                    : undefined
+              }
             />
           </label>
         ))}
@@ -165,6 +237,9 @@ export default function SettingsPage() {
           </button>
           <button className="btn ghost" type="button" onClick={load} disabled={busy}>
             Обновить
+          </button>
+          <button className="btn ghost" type="button" onClick={onVerifyYookassa} disabled={ykBusy || busy}>
+            Проверить ЮKassa
           </button>
         </div>
       </form>

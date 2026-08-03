@@ -76,18 +76,51 @@ def _site() -> str:
     return site
 
 
+def _clean_cred(raw: str) -> str:
+    """Убирает кавычки/BOM/префиксы, которые ломают Basic Auth."""
+    val = (raw or "").strip().lstrip("\ufeff")
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in {'"', "'"}:
+        val = val[1:-1].strip()
+    # Иногда вставляют целиком заголовок
+    for prefix in ("Basic ", "Bearer ", "basic ", "bearer "):
+        if val.startswith(prefix):
+            val = val[len(prefix) :].strip()
+    # Без пробелов/переносов внутри ключа
+    val = "".join(val.split())
+    return val
+
+
+def normalize_creds(shop: str, secret: str) -> tuple[str, str]:
+    """shopId = цифры; secret = test_/live_… Если вставили shop:secret в одно поле — разделим."""
+    shop = _clean_cred(shop)
+    secret = _clean_cred(secret)
+    # В секрет случайно вставили "123456:test_xxx"
+    if ":" in secret and not secret.startswith(("test_", "live_")):
+        left, right = secret.split(":", 1)
+        if left.isdigit() and right:
+            if not shop:
+                shop = left
+            secret = right
+    # В shopId вставили "shopId: 123456" или URL
+    if not shop.isdigit():
+        digits = "".join(ch for ch in shop if ch.isdigit())
+        if len(digits) >= 5:
+            shop = digits
+    return shop, secret
+
+
 def _creds() -> tuple[str, str]:
-    shop = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
-    secret = os.environ.get("YOOKASSA_SECRET_KEY", "").strip()
+    shop = os.environ.get("YOOKASSA_SHOP_ID", "")
+    secret = os.environ.get("YOOKASSA_SECRET_KEY", "")
     try:
         import owner_settings as osset
 
         raw = osset.get_raw()
-        shop = (raw.get("yookassa_shop_id") or shop).strip()
-        secret = (raw.get("yookassa_secret_key") or secret).strip()
+        shop = raw.get("yookassa_shop_id") or shop
+        secret = raw.get("yookassa_secret_key") or secret
     except Exception:
         pass
-    return shop, secret
+    return normalize_creds(str(shop or ""), str(secret or ""))
 
 
 def configured() -> bool:
@@ -95,26 +128,62 @@ def configured() -> bool:
     return bool(shop and secret)
 
 
-def status() -> Dict[str, Any]:
+def creds_diagnostics() -> Dict[str, Any]:
+    """Публичная диагностика формата ключей (без самого секрета)."""
     shop, secret = _creds()
+    prefix = ""
+    if secret.startswith("test_"):
+        prefix = "test_"
+    elif secret.startswith("live_"):
+        prefix = "live_"
+    elif secret:
+        prefix = "other"
+    return {
+        "configured": bool(shop and secret),
+        "shop_id_set": bool(shop),
+        "shop_id_digits": shop.isdigit() if shop else False,
+        "shop_id_tail": shop[-4:] if len(shop) >= 4 else shop,
+        "secret_set": bool(secret),
+        "secret_prefix": prefix,
+        "secret_len": len(secret),
+        "format_ok": bool(shop and shop.isdigit() and prefix in {"test_", "live_"}),
+        "hint": (
+            None
+            if (shop and shop.isdigit() and prefix in {"test_", "live_"})
+            else (
+                "Нужны: shopId (только цифры) + секретный ключ API, "
+                "начинающийся на test_ или live_. Не OAuth и не ключ мобильного SDK."
+            )
+        ),
+    }
+
+
+def status() -> Dict[str, Any]:
     site = _site()
+    diag = creds_diagnostics()
     return {
         "ok": True,
         "provider": "yookassa",
         "mode": "fixed_price",
-        "configured": configured(),
-        "shop_id_set": bool(shop),
+        "configured": diag["configured"],
+        "shop_id_set": diag["shop_id_set"],
+        "shop_id_tail": diag.get("shop_id_tail") or "",
+        "secret_prefix": diag.get("secret_prefix") or "",
+        "format_ok": diag.get("format_ok"),
         "return_url": site + "/?paid=1#start",
         "webhook_url": site + WEBHOOK_PATH,
         "self_serve": True,
         "currency": "RUB",
         "packages": list_packages(),
         "brands": ["NeoBrain", "5MB2"],
-        "hint": None
-        if configured()
-        else "Панель → Настройки: shopId и секретный ключ. Webhook: "
-        + site
-        + WEBHOOK_PATH,
+        "hint": diag.get("hint")
+        or (
+            None
+            if diag["configured"]
+            else "Панель → Настройки: shopId и секретный ключ. Webhook: "
+            + site
+            + WEBHOOK_PATH
+        ),
     }
 
 
@@ -139,8 +208,103 @@ def _package_info(package_id: str) -> Optional[Dict[str, Any]]:
 
 def _auth_header() -> str:
     shop, secret = _creds()
-    raw = f"{shop}:{secret}".encode("utf-8")
+    raw = f"{shop}:{secret}".encode("ascii", errors="strict")
     return "Basic " + base64.b64encode(raw).decode("ascii")
+
+
+def _friendly_http_error(code: int, detail: str) -> str:
+    low = (detail or "").lower()
+    if code == 401 or "invalid_credentials" in low:
+        if "authentication type is not allowed" in low:
+            return (
+                "ЮKassa: Authentication type is not allowed — магазин не принимает эти ключи для API. "
+                "В ЛК ЮKassa нужен магазин с интеграцией «API» и именно «Секретный ключ» "
+                "(test_… / live_…), не OAuth-токен и не ключ SDK. "
+                "Выпустите новый секретный ключ и вставьте в панель вместе с shopId (цифры). "
+                "Проверка: Настройки → «Проверить ЮKassa»."
+            )
+        return (
+            "ЮKassa HTTP 401: неверные shopId/секретный ключ. "
+            "Пересохраните оба поля в панели (секрет начинается с test_ или live_). "
+            "Частая причина — автозаполнение браузера подменило секрет. "
+            f"Ответ ЮKassa: {detail[:240]}"
+        )
+    return f"ЮKassa HTTP {code}: {detail[:500]}"
+
+
+def verify_connection(
+    shop_id: str = "",
+    secret_key: str = "",
+) -> Dict[str, Any]:
+    """GET /v3/me — проверка, что ключи реально принимаются ЮKassa."""
+    if shop_id or secret_key:
+        shop, secret = normalize_creds(shop_id, secret_key)
+    else:
+        shop, secret = _creds()
+    diag = {
+        "shop_id_digits": shop.isdigit() if shop else False,
+        "shop_id_tail": shop[-4:] if len(shop) >= 4 else shop,
+        "secret_prefix": (
+            "test_"
+            if secret.startswith("test_")
+            else ("live_" if secret.startswith("live_") else ("other" if secret else ""))
+        ),
+        "secret_len": len(secret),
+    }
+    if not shop or not secret:
+        return {
+            "ok": False,
+            "error": "Нет shopId или секретного ключа",
+            **diag,
+        }
+    if not shop.isdigit():
+        return {
+            "ok": False,
+            "error": "shopId должен быть числом (скопируйте «shopId» из ЛК ЮKassa)",
+            **diag,
+        }
+    if not secret.startswith(("test_", "live_")):
+        return {
+            "ok": False,
+            "error": (
+                "Секретный ключ должен начинаться с test_ или live_. "
+                "Сейчас похоже на другой тип ключа (OAuth/SDK/пароль) — ЮKassa вернёт 401."
+            ),
+            **diag,
+        }
+    raw = f"{shop}:{secret}".encode("ascii", errors="strict")
+    auth = "Basic " + base64.b64encode(raw).decode("ascii")
+    req = urllib.request.Request(
+        "https://api.yookassa.ru/v3/me",
+        method="GET",
+        headers={"Authorization": auth, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:700]
+        return {
+            "ok": False,
+            "http_status": exc.code,
+            "error": _friendly_http_error(exc.code, detail),
+            "raw": detail[:400],
+            **diag,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": f"Сеть/ЮKassa недоступны: {exc}", **diag}
+
+    account = data.get("account_id") or data.get("id") or ""
+    status_shop = data.get("status") or data.get("test") 
+    return {
+        "ok": True,
+        "message": "ЮKassa отвечает — ключи верные, можно оплачивать.",
+        "account_id": str(account),
+        "shop_status": status_shop,
+        "test": bool(data.get("test")) if "test" in data else secret.startswith("test_"),
+        "me": {k: data.get(k) for k in ("account_id", "status", "test", "fiscalization_enabled") if k in data},
+        **diag,
+    }
 
 
 def _plan_info(plan_id: str) -> Optional[Dict[str, Any]]:
@@ -225,12 +389,24 @@ def _create_yookassa_payment(
             "Idempotence-Key": idem,
         },
     )
+    # Быстрая проверка формата до запроса платежа
+    diag = creds_diagnostics()
+    if not diag.get("format_ok"):
+        raise RuntimeError(
+            diag.get("hint")
+            or "Неверный формат ключей ЮKassa. Панель → Настройки → Проверить ЮKassa."
+        )
     try:
         with urllib.request.urlopen(req, timeout=25) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:700]
-        raise RuntimeError(f"ЮKassa HTTP {exc.code}: {detail}") from exc
+        raise RuntimeError(_friendly_http_error(exc.code, detail)) from exc
+    except UnicodeEncodeError as exc:
+        raise RuntimeError(
+            "В ключах ЮKassa есть недопустимые символы. "
+            "Вставьте shopId и секрет заново из ЛК (латиница/цифры)."
+        ) from exc
 
     conf = (data.get("confirmation") or {}).get("confirmation_url") or ""
     if not conf:

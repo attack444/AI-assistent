@@ -422,6 +422,25 @@ export function saveOwnerSettings(settings: Record<string, string>) {
   );
 }
 
+export function verifyYookassa(payload?: {
+  yookassa_shop_id?: string;
+  yookassa_secret_key?: string;
+}) {
+  return request<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    test?: boolean;
+    shop_id_tail?: string;
+    secret_prefix?: string;
+    account_id?: string;
+    raw?: string;
+  }>("/system/yookassa/verify", {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  });
+}
+
 export function listSites(opts?: { skipAuthRedirect?: boolean }) {
   return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites", {
     skipAuthRedirect: opts?.skipAuthRedirect,

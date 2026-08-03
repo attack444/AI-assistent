@@ -144,6 +144,18 @@ def update_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
             if k in SECRET_KEYS and isinstance(v, str) and v.startswith("••••"):
                 continue  # не затирать маской из UI
             data[k] = "" if v is None else str(v).strip()
+        # ЮKassa: нормализуем shopId/секрет (кавычки, shop:secret в одном поле)
+        try:
+            import payments_yookassa as pay
+
+            shop, secret = pay.normalize_creds(
+                str(data.get("yookassa_shop_id") or ""),
+                str(data.get("yookassa_secret_key") or ""),
+            )
+            data["yookassa_shop_id"] = shop
+            data["yookassa_secret_key"] = secret
+        except Exception:
+            pass
         _save(data)
     # sync critical into process env for payments module
     raw = get_raw()

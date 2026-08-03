@@ -754,7 +754,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.17.2",
+            "version": "2.17.3",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -2142,6 +2142,31 @@ class APIHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
+    def _post_system_yookassa_verify(self):
+        """Проверка shopId + secret через GET /v3/me."""
+        import payments_yookassa as pay
+
+        try:
+            body = self._read_body() or {}
+            shop = str(body.get("yookassa_shop_id") or body.get("shop_id") or "").strip()
+            secret = str(
+                body.get("yookassa_secret_key") or body.get("secret_key") or ""
+            ).strip()
+            if secret.startswith("••••"):
+                secret = ""
+            if not shop and not secret:
+                result = pay.verify_connection()
+            else:
+                saved_shop, saved_secret = pay._creds()
+                result = pay.verify_connection(
+                    shop_id=shop or saved_shop,
+                    secret_key=secret or saved_secret,
+                )
+            # Всегда 200 — UI читает result.ok (иначе request() бросает на 400)
+            self._send(200, _json(result))
+        except Exception as exc:
+            self._send(500, _json({"ok": False, "error": str(exc)}))
+
     def _post_public_feedback(self):
         import public_feedback as pf
         import spam_guard as sg
@@ -2240,7 +2265,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.17.2",
+                "version": "2.17.3",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
@@ -2759,6 +2784,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/system/settings":
             self._post_system_settings()
+            return
+        if path == "/system/yookassa/verify":
+            self._post_system_yookassa_verify()
             return
         if path == "/system/seo/news-drafts":
             self._post_system_seo_news_drafts()
