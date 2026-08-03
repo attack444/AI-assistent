@@ -1587,3 +1587,47 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
 @media (max-width: 900px) {
   .contacts-layout { grid-template-columns: 1fr; }
 }
+
+/* Rekvizity */
+.rekvizity-list {
+  margin: 20px 0 28px;
+  padding: 0;
+}
+.rekvizity-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.45fr) 1fr;
+  gap: 10px 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.rekvizity-row dt {
+  margin: 0;
+  opacity: 0.7;
+  font-size: 0.92rem;
+}
+.rekvizity-row dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  word-break: break-word;
+}
+.rekvizity-value {
+  font-variant-numeric: tabular-nums;
+}
+.rekvizity-copy {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (max-width: 700px) {
+  .rekvizity-row { grid-template-columns: 1fr; gap: 4px; }
+}

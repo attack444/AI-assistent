@@ -34,11 +34,13 @@ $brand = mb2_legal('brand') ?: '5MB2 Digital';
         <?php endif; ?>
         <p>VK: <a href="https://vk.com/5mb2online" target="_blank" rel="noopener">vk.com/5mb2online</a></p>
         <p>
+          <a href="<?php echo esc_url(home_url('/rekvizity/')); ?>">Реквизиты для оплаты</a>
+          ·
           <a href="<?php echo esc_url(home_url('/oferta/')); ?>">Публичная оферта</a>
           ·
           <a href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">Конфиденциальность</a>
         </p>
-        <p class="muted">Платформа AI: <a href="https://neobrain.site/contacts/">NeoBrain → контакты</a></p>
+        <p class="muted">Платформа AI: <a href="https://neobrain.site/contacts/">NeoBrain → контакты</a> · <a href="https://neobrain.site/rekvizity/">реквизиты</a></p>
       </div>
 
       <div class="contacts-form-panel">

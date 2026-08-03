@@ -108,6 +108,7 @@ function mb2_ensure_core_pages() {
     mb2_upsert_page('privacy-policy', 'Политика конфиденциальности', mb2_privacy_html());
     mb2_upsert_page('oferta', 'Публичная оферта', mb2_oferta_html());
     mb2_upsert_page('contacts', 'Контакты', mb2_contacts_html());
+    mb2_upsert_page('rekvizity', 'Реквизиты', mb2_rekvizity_html());
     mb2_upsert_page('spasibo', 'Спасибо за заявку', '', 'templates/thanks.php');
     mb2_upsert_page('materialy', 'Материалы', '', 'templates/materials.php');
     mb2_upsert_page('kejsy', 'Проекты', '', 'templates/cases.php');
@@ -231,6 +232,7 @@ function mb2_ensure_menus() {
         ['title' => 'Проекты', 'url' => $home . 'kejsy/'],
         ['title' => 'Материалы', 'url' => $home . 'materialy/'],
         ['title' => 'Контакты', 'url' => $home . 'contacts/'],
+        ['title' => 'Реквизиты', 'url' => $home . 'rekvizity/'],
         ['title' => 'Кабинет', 'url' => $home . 'cabinet/'],
         ['title' => 'Оферта', 'url' => $home . 'oferta/'],
         ['title' => 'Конфиденциальность', 'url' => $home . 'privacy-policy/'],

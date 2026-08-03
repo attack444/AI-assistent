@@ -30,13 +30,15 @@ if [ -n "$SRC" ]; then
       cp "${DIR_SRC}/${f}" "$ROOT/${f}"
     fi
   done
-  if [ -f "${DIR_SRC}/contacts.html" ]; then
-    cp -f "${DIR_SRC}/contacts.html" "$ROOT/contacts.html"
-  fi
-  if [ -d "${DIR_SRC}/contacts" ]; then
-    mkdir -p "$ROOT/contacts"
-    cp -f "${DIR_SRC}/contacts/"*.html "$ROOT/contacts/" 2>/dev/null || true
-  fi
+  for page in contacts rekvizity; do
+    if [ -f "${DIR_SRC}/${page}.html" ]; then
+      cp -f "${DIR_SRC}/${page}.html" "$ROOT/${page}.html"
+    fi
+    if [ -d "${DIR_SRC}/${page}" ]; then
+      mkdir -p "$ROOT/${page}"
+      cp -f "${DIR_SRC}/${page}/"*.html "$ROOT/${page}/" 2>/dev/null || true
+    fi
+  done
   echo "[OK] Скопировал витрину из $SRC"
 else
   # fallback: скачать с GitHub (ветка по умолчанию main; при необходимости подставь свою)

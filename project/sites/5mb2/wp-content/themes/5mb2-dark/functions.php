@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.8');
+define('MB2_THEME_VER', '1.9.9');
 
 $mb2_inc = get_template_directory() . '/inc';
 foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php', 'analytics.php'] as $mb2_file) {
@@ -145,6 +145,7 @@ add_action('update_option_mb2_legal', function () {
         mb2_upsert_page('privacy-policy', 'Политика конфиденциальности', mb2_privacy_html());
         mb2_upsert_page('oferta', 'Публичная оферта', mb2_oferta_html());
         mb2_upsert_page('contacts', 'Контакты', mb2_contacts_html());
+        mb2_upsert_page('rekvizity', 'Реквизиты', mb2_rekvizity_html(), '', 0, true);
     }
 });
 
