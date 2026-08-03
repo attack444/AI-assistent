@@ -23,13 +23,26 @@ def turnstile_required() -> bool:
     return bool(_turnstile_secret())
 
 
-def verify_turnstile(token: str, ip: str = "") -> Dict[str, Any]:
+def verify_turnstile(
+    token: str,
+    ip: str = "",
+    *,
+    required: bool = True,
+) -> Dict[str, Any]:
+    """Проверка Turnstile.
+
+    required=True — регистрация/feedback: без токена отказ.
+    required=False — оплата: если токена нет (виджет не открылся), не блокируем;
+    если токен передан — обязательно валидируем.
+    """
     secret = _turnstile_secret()
     if not secret:
         return {"ok": True, "skipped": True}
     token = (token or "").strip()
     if not token:
-        return {"ok": False, "error": "Подтвердите, что вы не робот (Turnstile)"}
+        if required:
+            return {"ok": False, "error": "Подтвердите, что вы не робот (Turnstile)"}
+        return {"ok": True, "skipped": True, "reason": "no_token"}
     body = urllib.parse.urlencode({
         "secret": secret,
         "response": token,
@@ -45,7 +58,12 @@ def verify_turnstile(token: str, ip: str = "") -> Dict[str, Any]:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
+        # Оплата не должна падать из‑за недоступности Cloudflare
+        if not required:
+            return {"ok": True, "skipped": True, "reason": f"verify_error:{exc}"}
         return {"ok": False, "error": f"Turnstile недоступен: {exc}"}
     if not data.get("success"):
+        if not required:
+            return {"ok": True, "skipped": True, "reason": "invalid_token", "codes": data.get("error-codes")}
         return {"ok": False, "error": "Проверка антибота не пройдена", "codes": data.get("error-codes")}
     return {"ok": True}

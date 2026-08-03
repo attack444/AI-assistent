@@ -754,7 +754,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.17.1",
+            "version": "2.17.2",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -1821,9 +1821,11 @@ class APIHandler(BaseHTTPRequestHandler):
         try:
             body = self._read_body()
             ip = self._public_ip()
+            # Оплату не блокируем, если виджет Turnstile не открылся
             ts = sg.verify_turnstile(
                 (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
                 ip=ip,
+                required=False,
             )
             if not ts.get("ok"):
                 self._send(400, _json({"error": ts.get("error") or "антибот"}))
@@ -1852,9 +1854,11 @@ class APIHandler(BaseHTTPRequestHandler):
         try:
             body = self._read_body()
             ip = self._public_ip()
+            # Уже залогинен — Turnstile желателен, но не стопорит оплату
             ts = sg.verify_turnstile(
                 (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
                 ip=ip,
+                required=False,
             )
             if not ts.get("ok"):
                 self._send(400, _json({"error": ts.get("error") or "антибот"}))
@@ -2236,7 +2240,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.17.1",
+                "version": "2.17.2",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),

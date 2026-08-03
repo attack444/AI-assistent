@@ -41,6 +41,7 @@ function mb2_render_pay_box($service_slug = '') {
       <label class="pay-box-label">Email для чека и связи
         <input type="email" name="pay_email" autocomplete="email" required placeholder="you@company.ru" />
       </label>
+      <div class="pay-box-turnstile" data-pay-turnstile style="margin:12px 0"></div>
       <p class="pay-box-note muted tiny" data-pay-note hidden></p>
       <button type="button" class="btn btn-primary btn-lg" data-pay-submit>
         Оплатить <?php echo esc_html($amount); ?> ₽

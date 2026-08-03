@@ -50,7 +50,7 @@ DEFAULTS: Dict[str, Any] = {
     "yookassa_shop_id": os.environ.get("YOOKASSA_SHOP_ID", ""),
     "yookassa_secret_key": os.environ.get("YOOKASSA_SECRET_KEY", ""),
     "metrika_id": os.environ.get("METRIKA_ID", "111275874"),
-    "ga4_id": os.environ.get("GA4_ID", ""),
+    "ga4_id": os.environ.get("GA4_ID", "G-3DPQC7HKJL"),
     "gtm_id": os.environ.get("GTM_ID", "GTM-5GWQ97XF"),
     "gsc_verification": os.environ.get("GSC_VERIFICATION", ""),
     "yandex_webmaster_verification": os.environ.get(
@@ -166,7 +166,7 @@ def public_config() -> Dict[str, Any]:
         "brand": s.get("brand_name") or "NeoBrain",
         "public_site_url": s.get("public_site_url") or "https://neobrain.site",
         "metrika_id": s.get("metrika_id") or "111275874",
-        "ga4_id": s.get("ga4_id") or "",
+        "ga4_id": s.get("ga4_id") or "G-3DPQC7HKJL",
         "gtm_id": s.get("gtm_id") or "GTM-5GWQ97XF",
         "gsc_verification": s.get("gsc_verification") or "",
         "yandex_webmaster_verification": s.get("yandex_webmaster_verification")

@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.10.0');
+define('MB2_THEME_VER', '1.10.1');
 
 $mb2_inc = get_template_directory() . '/inc';
 foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php', 'analytics.php', 'payments.php'] as $mb2_file) {

@@ -308,7 +308,82 @@
     restart();
   });
 
-  // —— ЮKassa: фиксированный пакет услуги ——
+  // —— ЮKassa: фиксированный пакет услуги (+ Turnstile, не блокирует оплату) ——
+  var mb2Turnstile = { sitekey: "", widgets: {}, ready: null };
+
+  function mb2LoadTurnstile() {
+    if (window.turnstile && typeof window.turnstile.render === "function") {
+      return Promise.resolve(window.turnstile);
+    }
+    if (mb2Turnstile.ready) return mb2Turnstile.ready;
+    mb2Turnstile.ready = new Promise(function (resolve) {
+      window.__mb2OnTurnstile = function () {
+        resolve(window.turnstile || null);
+      };
+      var s = document.createElement("script");
+      s.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__mb2OnTurnstile&render=explicit";
+      s.async = true;
+      s.onerror = function () {
+        resolve(null);
+      };
+      document.head.appendChild(s);
+    });
+    return mb2Turnstile.ready;
+  }
+
+  function mb2MountPayTurnstile(box, sitekey) {
+    var el = box.querySelector("[data-pay-turnstile]");
+    if (!el || !sitekey) return Promise.resolve(null);
+    return mb2LoadTurnstile().then(function (api) {
+      if (!api) return null;
+      try {
+        var id = box.getAttribute("data-package") || "pay";
+        if (mb2Turnstile.widgets[id] != null) {
+          try {
+            api.remove(mb2Turnstile.widgets[id]);
+          } catch (e) {}
+        }
+        el.innerHTML = "";
+        mb2Turnstile.widgets[id] = api.render(el, {
+          sitekey: sitekey,
+          theme: "dark",
+          appearance: "always",
+        });
+        return mb2Turnstile.widgets[id];
+      } catch (e) {
+        return null;
+      }
+    });
+  }
+
+  function mb2ReadTurnstile(box) {
+    var id = box.getAttribute("data-package") || "pay";
+    var wid = mb2Turnstile.widgets[id];
+    if (wid != null && window.turnstile && window.turnstile.getResponse) {
+      try {
+        var t = window.turnstile.getResponse(wid);
+        if (t) return t;
+      } catch (e) {}
+    }
+    var input = box.querySelector("[name='cf-turnstile-response']");
+    return input && input.value ? input.value : "";
+  }
+
+  var apiBase = (window.MB2 && MB2.payApi) || "https://neobrain.site/api";
+  fetch(apiBase + "/public/config")
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (cfg) {
+      mb2Turnstile.sitekey = (cfg && cfg.turnstile_site_key) || "";
+      if (!mb2Turnstile.sitekey) return;
+      document.querySelectorAll("[data-mb2-pay]").forEach(function (box) {
+        mb2MountPayTurnstile(box, mb2Turnstile.sitekey);
+      });
+    })
+    .catch(function () {});
+
   document.querySelectorAll("[data-mb2-pay]").forEach(function (box) {
     var btn = box.querySelector("[data-pay-submit]");
     var note = box.querySelector("[data-pay-note]");
@@ -333,46 +408,54 @@
         note.hidden = false;
         note.textContent = "Открываю оплату ЮKassa…";
       }
-      var api = (window.MB2 && MB2.payApi) || "https://neobrain.site/api";
-      var thanks = (window.MB2 && MB2.thanks) || (location.origin + "/spasibo/");
+      var thanks = (window.MB2 && MB2.thanks) || location.origin + "/spasibo/";
       var sep = thanks.indexOf("?") >= 0 ? "&" : "?";
-      fetch(api + "/public/pay/package", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email,
-          package: pkg,
-          return_url: thanks + sep + "paid=1&package=" + encodeURIComponent(pkg),
-        }),
-      })
-        .then(function (r) {
-          return r.json().then(function (d) {
-            return { ok: r.ok, status: r.status, data: d || {} };
+      var send = function (turnstile) {
+        return fetch(apiBase + "/public/pay/package", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email,
+            package: pkg,
+            turnstile: turnstile || "",
+            return_url: thanks + sep + "paid=1&package=" + encodeURIComponent(pkg),
+          }),
+        })
+          .then(function (r) {
+            return r.json().then(function (d) {
+              return { ok: r.ok, status: r.status, data: d || {} };
+            });
+          })
+          .then(function (res) {
+            if (res.data.confirmation_url) {
+              location.href = res.data.confirmation_url;
+              return;
+            }
+            var msg =
+              res.data.error ||
+              (res.status === 503
+                ? "Оплата картой ещё подключается. Можно по реквизитам."
+                : "Не удалось создать платёж");
+            if (note) {
+              note.hidden = false;
+              note.textContent = msg;
+            }
+            btn.disabled = false;
+          })
+          .catch(function () {
+            if (note) {
+              note.hidden = false;
+              note.textContent = "Сеть недоступна. Попробуйте позже или реквизиты.";
+            }
+            btn.disabled = false;
           });
-        })
-        .then(function (res) {
-          if (res.data.confirmation_url) {
-            location.href = res.data.confirmation_url;
-            return;
-          }
-          var msg =
-            res.data.error ||
-            (res.status === 503
-              ? "Оплата картой ещё подключается. Можно по реквизитам."
-              : "Не удалось создать платёж");
-          if (note) {
-            note.hidden = false;
-            note.textContent = msg;
-          }
-          btn.disabled = false;
-        })
-        .catch(function () {
-          if (note) {
-            note.hidden = false;
-            note.textContent = "Сеть недоступна. Попробуйте позже или реквизиты.";
-          }
-          btn.disabled = false;
-        });
+      };
+      var prepare = mb2Turnstile.sitekey
+        ? mb2MountPayTurnstile(box, mb2Turnstile.sitekey)
+        : Promise.resolve(null);
+      prepare.then(function () {
+        send(mb2ReadTurnstile(box));
+      });
     });
   });
 })();

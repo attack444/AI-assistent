@@ -23,6 +23,14 @@
   'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
   })(window,document,'script','dataLayer','GTM-5GWQ97XF');</script>
   <!-- End Google Tag Manager -->
+  <!-- Google tag (gtag.js) GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-3DPQC7HKJL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-3DPQC7HKJL');
+  </script>
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -1343,8 +1351,14 @@
         authPassword2.required = mode === "register";
         if (mode !== "register") authPassword2.value = "";
       }
+      const at = document.getElementById("auth-turnstile");
+      if (at) at.hidden = mode !== "register";
       modal.hidden = false;
       authEmail.focus();
+      // Turnstile в display:none не рисуется — монтируем после открытия модалки
+      if (mode === "register" && publicCfg.turnstile_site_key) {
+        setTimeout(function () { void mountTurnstile("auth-turnstile", publicCfg.turnstile_site_key); }, 50);
+      }
     }
 
     function closeAuth() { modal.hidden = true; }
@@ -1409,8 +1423,9 @@
       };
       if (authMode === "register") {
         body.name = authName.value.trim();
-        const tInput = document.querySelector("#auth-turnstile [name='cf-turnstile-response']");
-        if (tInput) body.turnstile = tInput.value;
+        body.turnstile = (typeof readTurnstileToken === "function")
+          ? readTurnstileToken("auth-turnstile")
+          : "";
       }
       try {
         const res = await fetch(path, {
@@ -1472,9 +1487,70 @@
 
     // —— Public config (analytics + turnstile + pay) ——
     let publicCfg = { yookassa_ready: false, turnstile_site_key: "" };
+    const turnstileWidgets = {};
+
+    function loadTurnstileApi() {
+      return new Promise(function (resolve) {
+        if (window.turnstile && typeof window.turnstile.render === "function") {
+          resolve(window.turnstile);
+          return;
+        }
+        const prev = window.__neobrainTurnstileReady;
+        if (prev) {
+          prev.then(resolve);
+          return;
+        }
+        window.__neobrainTurnstileReady = new Promise(function (res) {
+          window.__onNeobrainTurnstile = function () { res(window.turnstile); };
+          const s = document.createElement("script");
+          s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__onNeobrainTurnstile&render=explicit";
+          s.async = true;
+          s.onerror = function () { res(null); };
+          document.head.appendChild(s);
+        });
+        window.__neobrainTurnstileReady.then(resolve);
+      });
+    }
+
+    async function mountTurnstile(elId, sitekey) {
+      const el = document.getElementById(elId);
+      if (!el || !sitekey || el.hidden) return null;
+      const api = await loadTurnstileApi();
+      if (!api) return null;
+      try {
+        if (turnstileWidgets[elId] != null) {
+          try { api.remove(turnstileWidgets[elId]); } catch (_) {}
+          turnstileWidgets[elId] = null;
+        }
+        el.innerHTML = "";
+        const wid = api.render(el, {
+          sitekey: sitekey,
+          theme: "auto",
+          appearance: "always",
+        });
+        turnstileWidgets[elId] = wid;
+        return wid;
+      } catch (err) {
+        console.warn("Turnstile render failed", err);
+        return null;
+      }
+    }
+
+    function readTurnstileToken(elId) {
+      const wid = turnstileWidgets[elId];
+      if (wid != null && window.turnstile && typeof window.turnstile.getResponse === "function") {
+        try {
+          const t = window.turnstile.getResponse(wid);
+          if (t) return t;
+        } catch (_) {}
+      }
+      const input = document.querySelector("#" + elId + " [name='cf-turnstile-response']")
+        || document.querySelector("[name='cf-turnstile-response']");
+      return input && input.value ? input.value : "";
+    }
+
     function injectAnalytics(cfg) {
-      // Счётчики уже вшиты в HTML (Метрика 111275874, GTM-5GWQ97XF, yandex-verification).
-      // Здесь — доп. ключи из панели, без дублей.
+      // Вшито: Метрика 111275874, GTM-5GWQ97XF, GA4 G-3DPQC7HKJL, yandex-verification.
       function metaContent(raw, prefix) {
         let v = String(raw || "").trim();
         if (prefix && v.toLowerCase().startsWith(prefix.toLowerCase())) {
@@ -1488,7 +1564,6 @@
         m.content = metaContent(cfg.gsc_verification, "google-site-verification");
         document.head.appendChild(m);
       }
-      // yandex-verification уже в HTML (1e58779d59cc0fce) — не перетираем старым из панели
       if (!document.querySelector('meta[name="yandex-verification"]')) {
         const yv = metaContent(cfg.yandex_webmaster_verification, "yandex-verification");
         if (yv) {
@@ -1498,7 +1573,6 @@
           document.head.appendChild(m);
         }
       }
-      // GTM из панели — только если другой ID (основной уже в head)
       if (cfg.gtm_id && cfg.gtm_id !== "GTM-5GWQ97XF" && !document.querySelector("script[data-neobrain-gtm]")) {
         const id = cfg.gtm_id;
         const s = document.createElement("script");
@@ -1506,22 +1580,18 @@
         s.text = "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','" + id.replace(/[^A-Z0-9-]/gi, "") + "');";
         document.head.appendChild(s);
       }
-      if (cfg.ga4_id && !window.gtag) {
+      // GA4 уже в head (G-3DPQC7HKJL); из панели — только другой ID
+      if (cfg.ga4_id && cfg.ga4_id !== "G-3DPQC7HKJL" && !document.querySelector("script[data-neobrain-ga4]")) {
         const s = document.createElement("script");
         s.async = true;
+        s.setAttribute("data-neobrain-ga4", cfg.ga4_id);
         s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(cfg.ga4_id);
         document.head.appendChild(s);
         window.dataLayer = window.dataLayer || [];
         function gtag() { dataLayer.push(arguments); }
-        window.gtag = gtag;
+        window.gtag = window.gtag || gtag;
         gtag("js", new Date());
         gtag("config", cfg.ga4_id);
-      }
-      if (cfg.turnstile_site_key && !document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
-        const s = document.createElement("script");
-        s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-        s.async = true;
-        document.head.appendChild(s);
       }
       const cl = document.getElementById("console-link");
       if (cl && cfg.console_path) cl.href = cfg.console_path.replace(/\/?$/, "/") ;
@@ -1531,13 +1601,8 @@
         const res = await fetch("/api/public/config");
         publicCfg = await res.json();
         injectAnalytics(publicCfg);
-        const box = document.getElementById("pay-turnstile");
-        if (box && publicCfg.turnstile_site_key) {
-          box.innerHTML = '<div class="cf-turnstile" data-sitekey="' + publicCfg.turnstile_site_key + '"></div>';
-        }
-        const abox = document.getElementById("auth-turnstile");
-        if (abox && publicCfg.turnstile_site_key) {
-          abox.innerHTML = '<div class="cf-turnstile" data-sitekey="' + publicCfg.turnstile_site_key + '"></div>';
+        if (publicCfg.turnstile_site_key) {
+          await mountTurnstile("pay-turnstile", publicCfg.turnstile_site_key);
         }
         const og = document.getElementById("oauth-google");
         const oh = document.getElementById("oauth-github");
@@ -1554,9 +1619,10 @@
       await refreshMe();
       let email = (currentUser && currentUser.email) || "";
       if (!email) { status.textContent = "Не вижу email аккаунта — перелогиньтесь."; return; }
-      const tInput = document.querySelector("#pay-turnstile [name='cf-turnstile-response']")
-        || document.querySelector("[name='cf-turnstile-response']");
-      const turnstile = tInput ? tInput.value : "";
+      if (publicCfg.turnstile_site_key && turnstileWidgets["pay-turnstile"] == null) {
+        await mountTurnstile("pay-turnstile", publicCfg.turnstile_site_key);
+      }
+      const turnstile = readTurnstileToken("pay-turnstile");
       status.textContent = "Открываю оплату ЮKassa…";
       try {
         const res = await fetch("/api/public/pay/create", {
