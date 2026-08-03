@@ -130,8 +130,9 @@ function mb2_footer_nav() {
         $items = [
             (object) ['title' => 'Услуги', 'url' => home_url('/services/')],
             (object) ['title' => 'Проекты', 'url' => home_url('/kejsy/')],
-            (object) ['title' => 'Оферта', 'url' => home_url('/oferta/')],
             (object) ['title' => 'Контакты', 'url' => home_url('/contacts/')],
+            (object) ['title' => 'Реквизиты', 'url' => home_url('/rekvizity/')],
+            (object) ['title' => 'Оферта', 'url' => home_url('/oferta/')],
         ];
     }
     foreach ($items as $item) {
