@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -55,24 +56,23 @@ class PayTests(unittest.TestCase):
     def test_create_builds_receipt(self):
         captured = {}
 
-        class FakeResp:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-            def read(self):
-                return b'{"id":"pay-1","status":"pending","confirmation":{"confirmation_url":"https://yookassa.ru/pay"}}'
-
-        def fake_urlopen(req, timeout=25):
-            captured["body"] = req.data.decode("utf-8")
-            return FakeResp()
+        def fake_yk(method, path, *, shop, secret, body=None, idem=""):
+            captured["body"] = json.dumps(body or {})
+            return {
+                "http_status": 200,
+                "www_authenticate": "",
+                "data": {
+                    "id": "pay-1",
+                    "status": "pending",
+                    "confirmation": {"confirmation_url": "https://yookassa.ru/pay"},
+                },
+                "raw": "",
+            }
 
         with mock.patch.object(
             pay, "_creds", return_value=("123456", "test_secretkeyxxxxxxxx")
-        ), mock.patch.object(pay, "_append"), mock.patch(
-            "urllib.request.urlopen", side_effect=fake_urlopen
+        ), mock.patch.object(pay, "_append"), mock.patch.object(
+            pay, "_yookassa_request", side_effect=fake_yk
         ):
             r = pay.create_payment(email="buyer@example.com", plan_id="pro")
         self.assertTrue(r["ok"])
@@ -104,6 +104,19 @@ class PayTests(unittest.TestCase):
         r = pay.verify_connection(shop_id="123456", secret_key="oauth-token-xxx")
         self.assertFalse(r["ok"])
         self.assertIn("test_", r["error"])
+
+    def test_save_and_verify_rejects_short_secret(self):
+        r = pay.save_and_verify("123456", "test_short")
+        self.assertFalse(r["ok"])
+        self.assertFalse(r.get("saved"))
+
+    def test_fingerprint_hides_secret(self):
+        fp = pay.fingerprint("998877", "test_ABCDEFGHIJKLMNOPQRSTUV")
+        self.assertEqual(fp["shop_id"], "998877")
+        self.assertEqual(fp["secret_prefix"], "test_")
+        self.assertEqual(fp["secret_tail"], "STUV")
+        self.assertTrue(fp["format_ok"])
+        self.assertNotIn("ABCDEF", json.dumps(fp))
 
 
 if __name__ == "__main__":

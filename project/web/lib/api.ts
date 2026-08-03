@@ -433,11 +433,38 @@ export function verifyYookassa(payload?: {
     test?: boolean;
     shop_id_tail?: string;
     secret_prefix?: string;
+    secret_len?: number;
+    secret_tail?: string;
     account_id?: string;
     raw?: string;
   }>("/system/yookassa/verify", {
     method: "POST",
     body: JSON.stringify(payload || {}),
+  });
+}
+
+/** Сохранить shopId+secret одним запросом и сразу проверить /v3/me. */
+export function connectYookassa(payload: {
+  yookassa_shop_id: string;
+  yookassa_secret_key: string;
+}) {
+  return request<{
+    ok: boolean;
+    saved?: boolean;
+    error?: string;
+    message?: string;
+    test?: boolean;
+    shop_id?: string;
+    shop_id_tail?: string;
+    secret_prefix?: string;
+    secret_len?: number;
+    secret_tail?: string;
+    account_id?: string;
+    raw?: string;
+    stored?: Record<string, unknown>;
+  }>("/system/yookassa/connect", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 
