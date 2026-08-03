@@ -31,6 +31,18 @@ const FIELDS: { key: string; label: string; hint?: string; secret?: boolean }[] 
   { key: "smtp_port", label: "SMTP port" },
   { key: "smtp_user", label: "SMTP user" },
   { key: "smtp_password", label: "SMTP password", secret: true },
+  {
+    key: "google_client_id",
+    label: "Google OAuth Client ID",
+    hint: "Консоль Google Cloud → OAuth 2.0. Redirect: https://neobrain.site/api/public/auth/oauth/google/callback",
+  },
+  { key: "google_client_secret", label: "Google OAuth Client Secret", secret: true },
+  {
+    key: "github_client_id",
+    label: "GitHub OAuth Client ID",
+    hint: "GitHub → Settings → Developer settings → OAuth Apps. Callback: https://neobrain.site/api/public/auth/oauth/github/callback",
+  },
+  { key: "github_client_secret", label: "GitHub OAuth Client Secret", secret: true },
 ];
 
 export default function SettingsPage() {
@@ -91,6 +103,12 @@ export default function SettingsPage() {
           ЮKassa: {s.yookassa_configured ? "подключена — самооплата ON" : "не настроена"}
           {" · "}
           Turnstile: {s.turnstile_configured ? "ON" : "OFF"}
+          {" · "}
+          SMTP: {s.smtp_configured ? "ON" : "OFF"}
+          {" · "}
+          Google: {s.oauth_google_configured ? "ON" : "OFF"}
+          {" · "}
+          GitHub: {s.oauth_github_configured ? "ON" : "OFF"}
         </div>
       </div>
 

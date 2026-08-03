@@ -5,6 +5,15 @@
 2. 401 → витрина `/login` вместо `/console/login/`
 3. `PANEL_PASSWORD` затирался пустым `${PANEL_PASSWORD:-}` в compose
 
+## Волна 2.16 — кабинет, пароли, OAuth, интеграции
+
+1. Пароли кабинета только пользовательские (регистрация + смена в UI); OAuth-only может задать пароль без «текущего».
+2. Панель: нет тихой автогенерации `PANEL_PASSWORD` (нужен `.env` / `reset-panel-password.sh`; `ALLOW_AUTO_PANEL_PASSWORD=1` только явно).
+3. Google / GitHub OAuth: start/callback + поля в Настройках; callback кладёт токен в `localStorage`, не в query.
+4. SMTP mailer: письмо после регистрации; флаги `smtp_ready` / oauth в `/public/config`.
+5. Оплата: email только из сессии; Turnstile на register.
+6. Документы: `PROFESSIONAL_CHECKS_RU.md`, `COMPETITIVE_GAP_RU.md`.
+
 ## Новая волна (2.15)
 
 | # | Баг | Риск |

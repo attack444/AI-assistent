@@ -843,6 +843,7 @@
       <span id="auth-user" class="auth-user" hidden></span>
       <button type="button" class="btn btn-ghost top-btn" id="btn-login">Войти</button>
       <button type="button" class="btn btn-primary top-btn" id="btn-register">Регистрация</button>
+      <button type="button" class="btn btn-ghost top-btn" id="btn-password" hidden>Пароль</button>
       <button type="button" class="btn btn-ghost top-btn" id="btn-logout" hidden>Выйти</button>
     </div>
   </div>
@@ -854,11 +855,35 @@
       <form id="auth-form">
         <input class="auth-input" id="auth-name" type="text" placeholder="Имя (необязательно)" autocomplete="name" hidden />
         <input class="auth-input" id="auth-email" type="email" placeholder="Email" required autocomplete="email" />
-        <input class="auth-input" id="auth-password" type="password" placeholder="Пароль (от 8 символов)" required minlength="8" autocomplete="current-password" />
+        <input class="auth-input" id="auth-password" type="password" placeholder="Пароль (тот, что задаёте сами, от 8 символов)" required minlength="8" autocomplete="current-password" />
+        <input class="auth-input" id="auth-password2" type="password" placeholder="Повторите пароль" required minlength="8" autocomplete="new-password" hidden />
+        <div id="auth-turnstile" style="margin:10px 0"></div>
         <p class="auth-error" id="auth-error" hidden></p>
         <div class="cta-row">
           <button class="btn btn-primary" type="submit" id="auth-submit">Войти</button>
           <button class="btn btn-ghost" type="button" id="auth-cancel">Отмена</button>
+        </div>
+      </form>
+      <div class="cta-row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+        <a class="btn btn-ghost" id="oauth-google" href="/api/public/auth/oauth/google/start" hidden>Google</a>
+        <a class="btn btn-ghost" id="oauth-github" href="/api/public/auth/oauth/github/start" hidden>GitHub</a>
+      </div>
+      <p class="hint" style="margin-top:10px">Пароль не генерируется — вы задаёте его при регистрации и можете сменить в кабинете.</p>
+    </div>
+  </div>
+
+  <div class="auth-modal" id="pwd-modal" hidden>
+    <div class="auth-card">
+      <h3>Сменить пароль</h3>
+      <p class="hint">Текущий → новый (минимум 8 символов). Если входили через Google/GitHub и пароля ещё нет — оставьте «текущий» пустым.</p>
+      <form id="pwd-form">
+        <input class="auth-input" id="pwd-old" type="password" placeholder="Текущий пароль" autocomplete="current-password" />
+        <input class="auth-input" id="pwd-new" type="password" placeholder="Новый пароль" required minlength="8" autocomplete="new-password" />
+        <input class="auth-input" id="pwd-new2" type="password" placeholder="Повторите новый пароль" required minlength="8" autocomplete="new-password" />
+        <p class="auth-error" id="pwd-error" hidden></p>
+        <div class="cta-row">
+          <button class="btn btn-primary" type="submit">Сохранить</button>
+          <button class="btn btn-ghost" type="button" id="pwd-cancel">Отмена</button>
         </div>
       </form>
     </div>
@@ -1170,11 +1195,27 @@
     const authName = document.getElementById("auth-name");
     const authEmail = document.getElementById("auth-email");
     const authPassword = document.getElementById("auth-password");
+    const authPassword2 = document.getElementById("auth-password2");
     const authError = document.getElementById("auth-error");
     const authUserEl = document.getElementById("auth-user");
     const btnLogin = document.getElementById("btn-login");
     const btnRegister = document.getElementById("btn-register");
+    const btnPassword = document.getElementById("btn-password");
     const btnLogout = document.getElementById("btn-logout");
+
+    // OAuth callback ?oauth_token=
+    (function takeOauthToken() {
+      try {
+        const u = new URL(window.location.href);
+        const t = u.searchParams.get("oauth_token");
+        if (t) {
+          localStorage.setItem(AUTH_KEY, t);
+          userToken = t;
+          u.searchParams.delete("oauth_token");
+          window.history.replaceState({}, "", u.pathname + u.hash);
+        }
+      } catch (_) {}
+    })();
 
     function authHeaders(extra) {
       const h = Object.assign({ "Content-Type": "application/json" }, extra || {});
@@ -1189,6 +1230,7 @@
         authUserEl.textContent = currentUser.email + " · " + plan;
         btnLogin.hidden = true;
         btnRegister.hidden = true;
+        btnPassword.hidden = false;
         btnLogout.hidden = false;
         const st = document.getElementById("plan-status");
         if (st && currentUser.billing) {
@@ -1204,6 +1246,7 @@
         authUserEl.hidden = true;
         btnLogin.hidden = false;
         btnRegister.hidden = false;
+        btnPassword.hidden = true;
         btnLogout.hidden = true;
       }
     }
@@ -1218,6 +1261,11 @@
         : "Войди, чтобы пользоваться чатом и деплоем";
       authName.hidden = mode !== "register";
       authPassword.autocomplete = mode === "register" ? "new-password" : "current-password";
+      if (authPassword2) {
+        authPassword2.hidden = mode !== "register";
+        authPassword2.required = mode === "register";
+        if (mode !== "register") authPassword2.value = "";
+      }
       modal.hidden = false;
       authEmail.focus();
     }
@@ -1270,12 +1318,23 @@
     authForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       authError.hidden = true;
+      if (authMode === "register") {
+        if ((authPassword2 && authPassword2.value) !== authPassword.value) {
+          authError.hidden = false;
+          authError.textContent = "Пароли не совпадают";
+          return;
+        }
+      }
       const path = authMode === "register" ? "/api/public/auth/register" : "/api/public/auth/login";
       const body = {
         email: authEmail.value.trim(),
         password: authPassword.value,
       };
-      if (authMode === "register") body.name = authName.value.trim();
+      if (authMode === "register") {
+        body.name = authName.value.trim();
+        const tInput = document.querySelector("#auth-turnstile [name='cf-turnstile-response']");
+        if (tInput) body.turnstile = tInput.value;
+      }
       try {
         const res = await fetch(path, {
           method: "POST",
@@ -1293,6 +1352,42 @@
       } catch (err) {
         authError.hidden = false;
         authError.textContent = err.message || "Ошибка";
+      }
+    });
+
+    const pwdModal = document.getElementById("pwd-modal");
+    btnPassword.addEventListener("click", () => { pwdModal.hidden = false; });
+    document.getElementById("pwd-cancel").addEventListener("click", () => { pwdModal.hidden = true; });
+    document.getElementById("pwd-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById("pwd-error");
+      errEl.hidden = true;
+      const n1 = document.getElementById("pwd-new").value;
+      const n2 = document.getElementById("pwd-new2").value;
+      if (n1 !== n2) {
+        errEl.hidden = false;
+        errEl.textContent = "Новые пароли не совпадают";
+        return;
+      }
+      try {
+        const res = await fetch("/api/public/auth/password", {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            old_password: document.getElementById("pwd-old").value,
+            new_password: n1,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        pwdModal.hidden = true;
+        document.getElementById("pwd-old").value = "";
+        document.getElementById("pwd-new").value = "";
+        document.getElementById("pwd-new2").value = "";
+        alert("Пароль обновлён. Дальше входите с новым.");
+      } catch (err) {
+        errEl.hidden = false;
+        errEl.textContent = err.message || "Ошибка";
       }
     });
 
@@ -1351,6 +1446,14 @@
         if (box && publicCfg.turnstile_site_key) {
           box.innerHTML = '<div class="cf-turnstile" data-sitekey="' + publicCfg.turnstile_site_key + '"></div>';
         }
+        const abox = document.getElementById("auth-turnstile");
+        if (abox && publicCfg.turnstile_site_key) {
+          abox.innerHTML = '<div class="cf-turnstile" data-sitekey="' + publicCfg.turnstile_site_key + '"></div>';
+        }
+        const og = document.getElementById("oauth-google");
+        const oh = document.getElementById("oauth-github");
+        if (og) og.hidden = !publicCfg.oauth_google;
+        if (oh) oh.hidden = !publicCfg.oauth_github;
       } catch (_) {}
     }
     void loadPublicConfig();

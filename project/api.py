@@ -49,7 +49,8 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
+import urllib.parse
 
 PROJECT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_DIR))
@@ -82,41 +83,36 @@ def _normalize_secret(raw: str) -> str:
 
 
 def _resolve_panel_password() -> str:
-    """Пустой PANEL_PASSWORD = открытая панель через HTTPS. Генерируем и сохраняем."""
+    """Пароль панели задаёт владелец в .env — НЕ генерируем автоматически."""
     env = _normalize_secret(os.environ.get("PANEL_PASSWORD", ""))
     if env:
-        print(
-            f"[SECURITY] PANEL_PASSWORD из окружения (длина {len(env)})",
-            flush=True,
-        )
+        print(f"[SECURITY] PANEL_PASSWORD задан вручную (длина {len(env)})", flush=True)
         return env
     if os.environ.get("ALLOW_OPEN_PANEL", "").strip() == "1":
-        print("[SECURITY] ALLOW_OPEN_PANEL=1 — панель без пароля (только для отладки)", flush=True)
+        print("[SECURITY] ALLOW_OPEN_PANEL=1 — панель без пароля (только отладка)", flush=True)
         return ""
-    import secrets
-    from pathlib import Path as _P
+    # Миграция: только если явно разрешено
+    if os.environ.get("ALLOW_AUTO_PANEL_PASSWORD", "").strip() == "1":
+        from pathlib import Path as _P
+        import secrets
 
-    data = _P(os.environ.get("AI_HELPER_DATA", str(_P.home() / ".ai-helper")))
-    data.mkdir(parents=True, exist_ok=True)
-    pw_file = data / "generated_panel_password.txt"
-    if pw_file.is_file():
-        val = _normalize_secret(pw_file.read_text(encoding="utf-8"))
-        if val:
-            print(f"[SECURITY] PANEL_PASSWORD из {pw_file} (длина {len(val)})", flush=True)
-            return val
-    val = secrets.token_urlsafe(18)
-    pw_file.write_text(val + "\n", encoding="utf-8")
-    try:
-        pw_file.chmod(0o600)
-    except Exception:
-        pass
+        data = _P(os.environ.get("AI_HELPER_DATA", str(_P.home() / ".ai-helper")))
+        data.mkdir(parents=True, exist_ok=True)
+        pw_file = data / "generated_panel_password.txt"
+        if pw_file.is_file():
+            val = _normalize_secret(pw_file.read_text(encoding="utf-8"))
+            if val:
+                return val
+        val = secrets.token_urlsafe(18)
+        pw_file.write_text(val + "\n", encoding="utf-8")
+        print(f"[SECURITY] AUTO PANEL_PASSWORD → {pw_file} (ALLOW_AUTO_PANEL_PASSWORD=1)", flush=True)
+        return val
     print(
-        f"[SECURITY] PANEL_PASSWORD был пуст — сгенерирован. "
-        f"Пароль панели: {val}  (файл {pw_file}). "
-        f"Задай PANEL_PASSWORD в project/.env и перезапусти app.",
+        "[SECURITY] PANEL_PASSWORD пуст — задай в project/.env и recreate app. "
+        "Сброс: sudo bash project/deploy/reset-panel-password.sh 'твой_пароль'",
         flush=True,
     )
-    return val
+    return ""
 
 
 def _passwords_equal(a: str, b: str) -> bool:
@@ -152,6 +148,12 @@ _PUBLIC_PATHS = {
     "/public/auth/login",
     "/public/auth/logout",
     "/public/auth/me",
+    "/public/auth/password",
+    "/public/auth/oauth/status",
+    "/public/auth/oauth/google/start",
+    "/public/auth/oauth/google/callback",
+    "/public/auth/oauth/github/start",
+    "/public/auth/oauth/github/callback",
     "/public/me/sites",
     "/public/plans",
     "/public/admin/set-plan",
@@ -172,7 +174,10 @@ def _token_for(password: str) -> str:
 
 
 def _auth_enabled() -> bool:
-    return bool(PANEL_PASSWORD)
+    # Пустой пароль при ALLOW_OPEN_PANEL=1 → открытая панель; иначе вход обязателен
+    if os.environ.get("ALLOW_OPEN_PANEL", "").strip() == "1":
+        return bool(PANEL_PASSWORD)
+    return True
 
 
 def _default_roots() -> List[Path]:
@@ -680,20 +685,21 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "auth_required": False,
                 "token": "",
-                "message": "Пароль панели не задан (PANEL_PASSWORD)",
+                "message": "Пароль панели не задан (ALLOW_OPEN_PANEL)",
+            }))
+            return
+        if not PANEL_PASSWORD:
+            self._send(503, _json({
+                "ok": False,
+                "error": "PANEL_PASSWORD не задан в .env",
+                "hint": "sudo bash /opt/ai-helper/project/deploy/reset-panel-password.sh 'ваш_пароль'",
             }))
             return
         if not password or not _passwords_equal(password, PANEL_PASSWORD):
             self._send(401, _json({
                 "ok": False,
                 "error": "Неверный пароль",
-                "hint": (
-                    "Бери пароль из /opt/ai-helper/project/.env → PANEL_PASSWORD "
-                    "или: docker logs ai-helper-app 2>&1 | grep PANEL_PASSWORD | tail -3. "
-                    "Сброс: sudo bash project/deploy/reset-panel-password.sh"
-                ),
-                "got_len": len(password),
-                "need_len": len(PANEL_PASSWORD),
+                "hint": "Пароль из project/.env → PANEL_PASSWORD (тот, что задали вручную)",
             }))
             return
         self._send(200, _json({
@@ -746,7 +752,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.15.0",
+            "version": "2.16.0",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -1613,15 +1619,37 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _post_public_auth_register(self):
         import public_users as pu
+        import spam_guard as sg
 
         body = self._read_body()
         try:
+            ip = self._public_ip()
+            ts = sg.verify_turnstile(
+                (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
+                ip=ip,
+            )
+            if not ts.get("ok"):
+                self._send(400, _json({"error": ts.get("error") or "антибот"}))
+                return
             result = pu.register(
                 body.get("email") or "",
                 body.get("password") or "",
                 name=body.get("name") or "",
-                ip=self._public_ip(),
+                ip=ip,
             )
+            try:
+                import mailer
+
+                mailer.send_mail(
+                    to=result["user"]["email"],
+                    subject="NeoBrain — аккаунт создан",
+                    body=(
+                        f"Здравствуйте!\n\nАккаунт {result['user']['email']} создан.\n"
+                        f"Вход: https://neobrain.site/ (кнопка Войти) — пароль тот, что указали при регистрации.\n"
+                    ),
+                )
+            except Exception:
+                pass
             self._send(200, _json(result))
         except PermissionError as exc:
             self._send(429, _json({"error": str(exc)}))
@@ -1635,10 +1663,35 @@ class APIHandler(BaseHTTPRequestHandler):
 
         body = self._read_body()
         try:
-            result = pu.login(body.get("email") or "", body.get("password") or "")
+            result = pu.login(
+                body.get("email") or "",
+                body.get("password") or "",
+                ip=self._public_ip(),
+            )
             self._send(200, _json(result))
         except PermissionError as exc:
             self._send(401, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
+    def _post_public_auth_password(self):
+        import public_users as pu
+
+        user = self._require_public_user()
+        if not user or not user.get("email"):
+            return
+        body = self._read_body()
+        try:
+            result = pu.change_password(
+                user["email"],
+                body.get("old_password") or body.get("current_password") or "",
+                body.get("new_password") or body.get("password") or "",
+            )
+            self._send(200, _json(result))
+        except PermissionError as exc:
+            self._send(401, _json({"error": str(exc)}))
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
@@ -1655,6 +1708,61 @@ class APIHandler(BaseHTTPRequestHandler):
             self._send(401, _json({"error": "Нужен вход", "auth_required": True}))
             return
         self._send(200, _json({"ok": True, "user": user, "auth_required": pu.AUTH_REQUIRED}))
+
+    def _get_public_oauth_status(self):
+        import oauth_public as oa
+
+        self._send(200, _json(oa.status()))
+
+    def _get_public_oauth_start(self, path: str):
+        import oauth_public as oa
+
+        provider = "google" if "google" in path else "github"
+        try:
+            result = oa.start(provider)
+            # JSON для fetch или redirect для <a href>
+            qs = self._qs()
+            if (qs.get("format") or "") == "json":
+                self._send(200, _json(result))
+                return
+            self.send_response(302)
+            self.send_header("Location", result["url"])
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(500, _json({"error": str(exc)}))
+
+    def _get_public_oauth_callback(self, path: str):
+        import oauth_public as oa
+
+        provider = "google" if "google" in path else "github"
+        qs = self._qs()
+        try:
+            result = oa.finish(provider, qs.get("code") or "", qs.get("state") or "")
+            token = result.get("token") or ""
+            # Токен в HTML → localStorage, не в query (не утекает в логи/Referer)
+            safe = json.dumps(token)
+            html = (
+                "<!doctype html><meta charset=utf-8><title>Вход…</title>"
+                "<script>"
+                f"try{{localStorage.setItem('neobrain-user-token',{safe});}}"
+                "catch(e){}"
+                "location.replace('/');"
+                "</script>"
+                "<p>Входим…</p>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(html)))
+            self.end_headers()
+            self.wfile.write(html)
+        except PermissionError as exc:
+            self._send(401, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
 
     def _post_public_me_sites(self):
         import public_users as pu
@@ -1697,9 +1805,12 @@ class APIHandler(BaseHTTPRequestHandler):
         import payments_yookassa as pay
         import spam_guard as sg
 
+        user = self._require_public_user()
+        if not user or not user.get("email"):
+            return
         try:
             body = self._read_body()
-            ip = self.client_address[0] if self.client_address else ""
+            ip = self._public_ip()
             ts = sg.verify_turnstile(
                 (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
                 ip=ip,
@@ -1707,18 +1818,9 @@ class APIHandler(BaseHTTPRequestHandler):
             if not ts.get("ok"):
                 self._send(400, _json({"error": ts.get("error") or "антибот"}))
                 return
-            email = (body.get("email") or "").strip()
-            if not email:
-                # logged-in public user
-                try:
-                    import public_users as pu
-
-                    cookie = self.headers.get("Cookie", "")
-                    # fall through — email required in body for pay
-                except Exception:
-                    pass
+            # email только из сессии — нельзя оплатить «на чужой» email из body
             result = pay.create_payment(
-                email=email,
+                email=user["email"],
                 plan_id=(body.get("plan") or body.get("plan_id") or "").strip(),
                 return_url=(body.get("return_url") or "").strip(),
             )
@@ -2089,7 +2191,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.15.0",
+                "version": "2.16.0",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
@@ -2481,6 +2583,21 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/public/config":
             self._get_public_config()
             return
+        if path == "/public/auth/oauth/status":
+            self._get_public_oauth_status()
+            return
+        if path in {
+            "/public/auth/oauth/google/start",
+            "/public/auth/oauth/github/start",
+        }:
+            self._get_public_oauth_start(path)
+            return
+        if path in {
+            "/public/auth/oauth/google/callback",
+            "/public/auth/oauth/github/callback",
+        }:
+            self._get_public_oauth_callback(path)
+            return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
         if path == "/system/settings":
@@ -2536,6 +2653,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/auth/login":
             self._post_public_auth_login()
+            return
+        if path == "/public/auth/password":
+            self._post_public_auth_password()
             return
         if path == "/public/auth/logout":
             self._post_public_auth_logout()

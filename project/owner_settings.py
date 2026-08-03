@@ -29,12 +29,18 @@ EDITABLE = {
     "smtp_user",
     "smtp_password",
     "brand_name",
+    "google_client_id",
+    "google_client_secret",
+    "github_client_id",
+    "github_client_secret",
 }
 
 SECRET_KEYS = {
     "yookassa_secret_key",
     "turnstile_secret_key",
     "smtp_password",
+    "google_client_secret",
+    "github_client_secret",
 }
 
 DEFAULTS: Dict[str, Any] = {
@@ -54,6 +60,10 @@ DEFAULTS: Dict[str, Any] = {
     "smtp_port": "587",
     "smtp_user": "",
     "smtp_password": "",
+    "google_client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+    "google_client_secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    "github_client_id": os.environ.get("GITHUB_CLIENT_ID", ""),
+    "github_client_secret": os.environ.get("GITHUB_CLIENT_SECRET", ""),
 }
 
 
@@ -107,6 +117,15 @@ def get_settings(*, mask_secrets: bool = True) -> Dict[str, Any]:
     out["turnstile_configured"] = bool(
         data.get("turnstile_site_key") and data.get("turnstile_secret_key")
     )
+    out["smtp_configured"] = bool(
+        data.get("smtp_host") and data.get("smtp_user") and data.get("smtp_password")
+    )
+    out["oauth_google_configured"] = bool(
+        data.get("google_client_id") and data.get("google_client_secret")
+    )
+    out["oauth_github_configured"] = bool(
+        data.get("github_client_id") and data.get("github_client_secret")
+    )
     return out
 
 
@@ -153,4 +172,7 @@ def public_config() -> Dict[str, Any]:
         "turnstile_site_key": s.get("turnstile_site_key") or "",
         "yookassa_ready": bool(s.get("yookassa_shop_id") and s.get("yookassa_secret_key")),
         "console_path": os.environ.get("PANEL_BASE_PATH", "/console") or "/console",
+        "oauth_google": bool(s.get("google_client_id") and s.get("google_client_secret")),
+        "oauth_github": bool(s.get("github_client_id") and s.get("github_client_secret")),
+        "smtp_ready": bool(s.get("smtp_host") and s.get("smtp_user") and s.get("smtp_password")),
     }

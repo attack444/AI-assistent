@@ -23,12 +23,25 @@ set_kv() {
   fi
 }
 
+# Пароль панели задаёт владелец — не генерируем «тихий» пароль.
 if ! grep -q '^PANEL_PASSWORD=.\+' "$ENV_FILE" 2>/dev/null; then
-  PW=$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)
-  set_kv PANEL_PASSWORD "$PW"
-  echo "[SECURITY] PANEL_PASSWORD=${PW}"
-  echo "           https://neobrain.site/console/login/"
+  if [ -n "${PANEL_PASSWORD_INIT:-}" ]; then
+    set_kv PANEL_PASSWORD "$PANEL_PASSWORD_INIT"
+    echo "[SECURITY] PANEL_PASSWORD задан из PANEL_PASSWORD_INIT"
+  elif grep -q '^ALLOW_AUTO_PANEL_PASSWORD=1' "$ENV_FILE" 2>/dev/null; then
+    PW=$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)
+    set_kv PANEL_PASSWORD "$PW"
+    echo "[SECURITY] PANEL_PASSWORD авто (ALLOW_AUTO_PANEL_PASSWORD=1): ${PW}"
+  else
+    echo "[ERR] PANEL_PASSWORD не задан."
+    echo "      Задай свой пароль и повтори:"
+    echo "      sudo bash ${SCRIPT_DIR}/reset-panel-password.sh 'твой_пароль'"
+    echo "      или: PANEL_PASSWORD_INIT='твой_пароль' sudo -E bash $0"
+    exit 1
+  fi
 fi
+# Явно выключаем автогенерацию в приложении
+grep -q '^ALLOW_AUTO_PANEL_PASSWORD=' "$ENV_FILE" || echo 'ALLOW_AUTO_PANEL_PASSWORD=0' >> "$ENV_FILE"
 
 if ! grep -q '^SECRET_KEY=.\+' "$ENV_FILE" || grep -q 'dev-insecure-change-me' "$ENV_FILE"; then
   set_kv SECRET_KEY "$(openssl rand -hex 32)"

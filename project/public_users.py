@@ -28,24 +28,58 @@ _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 _lock = threading.RLock()
 
 _reg_hits: Dict[str, Deque[float]] = defaultdict(deque)
+_login_hits: Dict[str, Deque[float]] = defaultdict(deque)
 REG_LIMIT = int(os.environ.get("PUBLIC_REG_RATE_LIMIT", "5"))
 REG_WINDOW = int(os.environ.get("PUBLIC_REG_RATE_WINDOW", "3600"))
+LOGIN_LIMIT = int(os.environ.get("PUBLIC_LOGIN_RATE_LIMIT", "20"))
+LOGIN_WINDOW = int(os.environ.get("PUBLIC_LOGIN_RATE_WINDOW", "900"))
 SESSION_DAYS = int(os.environ.get("PUBLIC_SESSION_DAYS", "30"))
+
+_COMMON_PASSWORDS = {
+    "password", "password1", "12345678", "123456789", "qwerty123",
+    "11111111", "abcdefgh", "neo12345", "admin123", "letmein1",
+}
 
 
 def _now() -> float:
     return time.time()
 
 
-def check_register_rate(ip: str) -> Tuple[bool, str]:
+def validate_password(password: str) -> None:
+    """Пароль задаёт пользователь сам — не генерируем."""
+    password = password or ""
+    if len(password) < 8:
+        raise ValueError("Пароль минимум 8 символов")
+    if len(password) > 200:
+        raise ValueError("Пароль слишком длинный")
+    if password.lower() in _COMMON_PASSWORDS:
+        raise ValueError("Слишком простой пароль — придумайте другой")
+    if password.isdigit():
+        raise ValueError("Пароль не должен состоять только из цифр")
+
+
+def _rate_hit(store: Dict[str, Deque[float]], key: str, limit: int, window: int, label: str) -> Tuple[bool, str]:
     now = _now()
     with _lock:
-        q = _reg_hits[ip or "unknown"]
-        while q and now - q[0] > REG_WINDOW:
+        q = store[key or "unknown"]
+        while q and now - q[0] > window:
             q.popleft()
-        if len(q) >= REG_LIMIT:
-            return False, f"Лимит регистраций: {REG_LIMIT} / час"
+        if len(q) >= limit:
+            return False, f"{label}: лимит {limit}"
         q.append(now)
+    return True, ""
+
+
+def check_register_rate(ip: str) -> Tuple[bool, str]:
+    return _rate_hit(_reg_hits, ip, REG_LIMIT, REG_WINDOW, "Регистрации")
+
+
+def check_login_rate(ip: str, email: str = "") -> Tuple[bool, str]:
+    ok, why = _rate_hit(_login_hits, "ip:" + (ip or "unknown"), LOGIN_LIMIT, LOGIN_WINDOW, "Входы")
+    if not ok:
+        return ok, why
+    if email:
+        return _rate_hit(_login_hits, "em:" + email.lower(), LOGIN_LIMIT, LOGIN_WINDOW, "Входы")
     return True, ""
 
 
@@ -117,10 +151,7 @@ def register(email: str, password: str, name: str = "", ip: str = "") -> dict:
     name = (name or "").strip()[:80]
     if not _EMAIL_RE.match(email):
         raise ValueError("Некорректный email")
-    if len(password) < 8:
-        raise ValueError("Пароль минимум 8 символов")
-    if len(password) > 200:
-        raise ValueError("Пароль слишком длинный")
+    validate_password(password)
 
     ok, why = check_register_rate(ip)
     if not ok:
@@ -145,20 +176,103 @@ def register(email: str, password: str, name: str = "", ip: str = "") -> dict:
             "sites": [],
             "plan": plan,
             "usage": {},
+            "auth": "password",
         }
         _save_json(USERS_FILE, users)
         token = _create_session_unlocked(uid, email)
         return {"ok": True, "token": token, "user": _public_user(users[email])}
 
 
-def login(email: str, password: str) -> dict:
+def login(email: str, password: str, ip: str = "") -> dict:
     email = (email or "").strip().lower()
     password = password or ""
+    ok, why = check_login_rate(ip, email)
+    if not ok:
+        raise PermissionError(why)
     with _lock:
         users = _users()
         u = users.get(email)
-        if not u or not _verify_password(password, u.get("salt", ""), u.get("password_hash", "")):
+        if not u:
             raise PermissionError("Неверный email или пароль")
+        if not u.get("password_hash") or not u.get("salt"):
+            raise PermissionError(
+                "Для этого аккаунта вход по паролю не задан — войдите через Google/GitHub "
+                "или установите пароль в кабинете"
+            )
+        if not _verify_password(password, u.get("salt", ""), u.get("password_hash", "")):
+            raise PermissionError("Неверный email или пароль")
+        token = _create_session_unlocked(u["id"], email)
+        return {"ok": True, "token": token, "user": _public_user(u)}
+
+
+def change_password(email: str, old_password: str, new_password: str) -> dict:
+    """Смена пароля в личном кабинете — только тот, что задал пользователь."""
+    email = (email or "").strip().lower()
+    validate_password(new_password)
+    with _lock:
+        users = _users()
+        u = users.get(email)
+        if not u:
+            raise ValueError("Пользователь не найден")
+        # OAuth-only: old password may be empty → allow set first password
+        has_pwd = bool(u.get("password_hash") and u.get("salt"))
+        if has_pwd:
+            if not _verify_password(old_password or "", u.get("salt", ""), u.get("password_hash", "")):
+                raise PermissionError("Текущий пароль неверный")
+        elif old_password:
+            raise PermissionError("Текущий пароль неверный")
+        pwd_hash, salt = _hash_password(new_password)
+        u["password_hash"] = pwd_hash
+        u["salt"] = salt
+        u["auth"] = "password"
+        u["password_changed_at"] = _now()
+        users[email] = u
+        _save_json(USERS_FILE, users)
+        # сбросить другие сессии? оставляем текущую — клиент обновит UI
+        return {"ok": True, "user": _public_user(u)}
+
+
+def login_or_register_oauth(
+    *,
+    email: str,
+    name: str,
+    provider: str,
+    oauth_id: str,
+) -> dict:
+    email = (email or "").strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise ValueError("Некорректный email от провайдера")
+    with _lock:
+        users = _users()
+        u = users.get(email)
+        import public_plans as pp
+
+        if not u:
+            uid = secrets.token_hex(8)
+            plan = pp.plan_for_email(email, pp.DEFAULT_PLAN)
+            u = {
+                "id": uid,
+                "email": email,
+                "name": (name or "")[:80],
+                "password_hash": "",
+                "salt": "",
+                "created_at": _now(),
+                "sites": [],
+                "plan": plan,
+                "usage": {},
+                "auth": provider,
+                "oauth": {provider: oauth_id},
+            }
+            users[email] = u
+        else:
+            oauth = dict(u.get("oauth") or {})
+            if oauth_id:
+                oauth[provider] = oauth_id
+            u["oauth"] = oauth
+            if name and not u.get("name"):
+                u["name"] = name[:80]
+            users[email] = u
+        _save_json(USERS_FILE, users)
         token = _create_session_unlocked(u["id"], email)
         return {"ok": True, "token": token, "user": _public_user(u)}
 
@@ -237,9 +351,8 @@ def set_plan(email: str, plan_id: str) -> dict:
 
     email = (email or "").strip().lower()
     plan_id = pp.normalize_plan(plan_id)
-    if plan_id == "owner" and email != pp.OWNER_EMAIL:
-        # only OWNER_EMAIL may hold owner plan via auto; admin can still set starter/pro
-        pass
+    if plan_id == "owner" and email != (pp.OWNER_EMAIL or "").lower():
+        raise PermissionError("План owner только для OWNER_EMAIL")
     with _lock:
         users = _users()
         u = users.get(email)
