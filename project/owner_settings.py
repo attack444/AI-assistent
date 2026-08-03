@@ -141,10 +141,17 @@ def update_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
         for k, v in (patch or {}).items():
             if k not in EDITABLE:
                 continue
-            if k in SECRET_KEYS and isinstance(v, str) and v.startswith("••••"):
-                continue  # не затирать маской из UI
+            if k in SECRET_KEYS:
+                # Пустое / маска / undefined — не трогаем уже сохранённый секрет
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if not s or s.startswith("••••") or s.startswith("•"):
+                    continue
+                data[k] = s
+                continue
             data[k] = "" if v is None else str(v).strip()
-        # ЮKassa: нормализуем shopId/секрет (кавычки, shop:secret в одном поле)
+        # ЮKassa: нормализуем shopId/секрет (кавычки, лишние пробелы)
         try:
             import payments_yookassa as pay
 
