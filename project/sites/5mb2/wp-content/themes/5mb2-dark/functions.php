@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.7');
+define('MB2_THEME_VER', '1.9.8');
 
 $mb2_inc = get_template_directory() . '/inc';
 foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php', 'analytics.php'] as $mb2_file) {
@@ -114,6 +114,7 @@ function mb2_nav_fallback() {
         ['Проекты', home_url('/kejsy/')],
         ['Материалы', home_url('/materialy/')],
         ['О нас', home_url('/o-nas/')],
+        ['Контакты', home_url('/contacts/')],
     ];
     foreach ($items as $item) {
         echo '<li><a href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a></li>';

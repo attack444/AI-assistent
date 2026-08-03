@@ -223,6 +223,7 @@ function mb2_ensure_menus() {
         ['title' => 'Проекты', 'url' => $home . 'kejsy/'],
         ['title' => 'Материалы', 'url' => $home . 'materialy/'],
         ['title' => 'О нас', 'url' => $home . 'o-nas/'],
+        ['title' => 'Контакты', 'url' => $home . 'contacts/'],
     ];
     $footer = [
         ['title' => 'Услуги', 'url' => $home . 'services/'],

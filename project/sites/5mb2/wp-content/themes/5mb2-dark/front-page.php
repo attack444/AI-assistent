@@ -168,7 +168,9 @@ $services = mb2_services_catalog();
       <h2>Обсудим ваш рост</h2>
       <p class="muted">Выберите услугу или просто опишите задачу — вернёмся со следующими шагами.</p>
       <p style="margin-top:18px">
-        <a class="text-link" href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>
+        <?php $mb2_mail = mb2_legal('email') ?: 'hello@5mb2.ru'; ?>
+        <a class="text-link" href="mailto:<?php echo esc_attr($mb2_mail); ?>"><?php echo esc_html($mb2_mail); ?></a>
+        · <a class="text-link" href="<?php echo esc_url(home_url('/contacts/')); ?>">Контакты</a>
         ·
         <a class="text-link" href="https://vk.com/5mb2online" target="_blank" rel="noopener">VK</a>
         ·

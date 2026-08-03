@@ -152,6 +152,7 @@ HTML;
 }
 
 function mb2_contacts_html() {
+    // Контент-заглушка: реальный вид — page-contacts.php (реквизиты + форма).
     $name  = esc_html(mb2_legal_display_name());
     $email = esc_html(mb2_legal('email') ?: 'hello@5mb2.ru');
     $phone = esc_html(mb2_legal('phone'));
@@ -163,8 +164,6 @@ function mb2_contacts_html() {
     $lines .= "<p>Исполнитель: {$name}<br>Статус: самозанятый (НПД), без НДС<br>Регион: {$city}</p>";
     if ($inn) {
         $lines .= "<p>ИНН: {$inn}</p>";
-    } else {
-        $lines .= '<p><em>ИНН: заполните в WP → Настройки → 5MB2 реквизиты</em></p>';
     }
     $lines .= "<p>Email: <a href=\"mailto:{$email}\">{$email}</a></p>";
     if ($phone) {
@@ -172,6 +171,6 @@ function mb2_contacts_html() {
     }
     $lines .= '<p>VK: <a href="https://vk.com/5mb2online" target="_blank" rel="noopener">vk.com/5mb2online</a></p>';
     $lines .= '<p><a href="' . esc_url(home_url('/#contact')) . '">Оставить заявку</a> · <a href="' . esc_url(home_url('/oferta/')) . '">Публичная оферта</a> · <a href="' . esc_url(home_url('/privacy-policy/')) . '">Конфиденциальность</a></p>';
-    $lines .= '<p class="muted">Оплата услуг — по согласованию; чек НПД выдаётся через «Мой налог».</p>';
+    $lines .= '<p class="muted">AI-платформа: <a href="https://neobrain.site/contacts/">NeoBrain → контакты</a>. Чек НПД — через «Мой налог».</p>';
     return $lines;
 }

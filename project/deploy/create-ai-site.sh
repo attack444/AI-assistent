@@ -30,6 +30,10 @@ if [ -n "$SRC" ]; then
       cp "${DIR_SRC}/${f}" "$ROOT/${f}"
     fi
   done
+  if [ -d "${DIR_SRC}/contacts" ]; then
+    mkdir -p "$ROOT/contacts"
+    cp -f "${DIR_SRC}/contacts/"*.html "$ROOT/contacts/" 2>/dev/null || true
+  fi
   echo "[OK] Скопировал витрину из $SRC"
 else
   # fallback: скачать с GitHub (ветка по умолчанию main; при необходимости подставь свою)

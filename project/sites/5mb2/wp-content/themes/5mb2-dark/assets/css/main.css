@@ -1562,3 +1562,28 @@ body.nav-open .nav-toggle-bars i:nth-child(3) {
   }
   .check-st { margin: 0; }
 }
+
+/* Contacts page */
+.contacts-layout {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: clamp(28px, 5vw, 48px);
+  align-items: start;
+}
+.contacts-form-panel {
+  padding: 22px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.contacts-form-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display, inherit);
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.contacts-info .muted { opacity: 0.75; font-size: 0.95rem; }
+
+@media (max-width: 900px) {
+  .contacts-layout { grid-template-columns: 1fr; }
+}

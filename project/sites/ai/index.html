@@ -1183,7 +1183,11 @@
 
   <footer>
     <div>© NeoBrain · платформа AI для сайтов</div>
-    <div>Панель управления сервером — только для владельца · <a href="#feedback">Идея / ошибка</a></div>
+    <div>
+      <a href="/contacts/">Контакты</a>
+      · <a href="#feedback">Идея / ошибка</a>
+      · <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>
+    </div>
   </footer>
 
   <script>
@@ -1483,15 +1487,15 @@
         m.content = metaContent(cfg.gsc_verification, "google-site-verification");
         document.head.appendChild(m);
       }
-      const yv = metaContent(cfg.yandex_webmaster_verification, "yandex-verification");
-      if (yv && yv !== "1e58779d59cc0fce") {
-        let m = document.querySelector('meta[name="yandex-verification"]');
-        if (!m) {
-          m = document.createElement("meta");
+      // yandex-verification уже в HTML (1e58779d59cc0fce) — не перетираем старым из панели
+      if (!document.querySelector('meta[name="yandex-verification"]')) {
+        const yv = metaContent(cfg.yandex_webmaster_verification, "yandex-verification");
+        if (yv) {
+          const m = document.createElement("meta");
           m.name = "yandex-verification";
+          m.content = yv;
           document.head.appendChild(m);
         }
-        m.content = yv;
       }
       // GTM из панели — только если другой ID (основной уже в head)
       if (cfg.gtm_id && cfg.gtm_id !== "GTM-5GWQ97XF" && !document.querySelector("script[data-neobrain-gtm]")) {

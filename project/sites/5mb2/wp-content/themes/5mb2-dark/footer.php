@@ -18,7 +18,9 @@
     </div>
     <div>
       <p class="footer-title">Контакт</p>
-      <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>
+      <?php $mb2_mail = mb2_legal('email') ?: 'hello@5mb2.ru'; ?>
+      <a href="mailto:<?php echo esc_attr($mb2_mail); ?>"><?php echo esc_html($mb2_mail); ?></a>
+      <a href="<?php echo esc_url(home_url('/contacts/')); ?>">Страница контактов</a>
       <a href="https://vk.com/5mb2online" target="_blank" rel="noopener">VK · 5mb2online</a>
       <a href="<?php echo esc_url(home_url('/#contact')); ?>">Оставить заявку</a>
       <a href="#feedback">Идея или ошибка</a>
