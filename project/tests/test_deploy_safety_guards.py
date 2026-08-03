@@ -23,8 +23,11 @@ def test_reset_mysql_does_not_grep_wipe_all_mysql_volumes():
     text = _read("reset-mysql-password.sh")
     assert "grep -E 'mysql_data|deploy_mysql'" not in text
     assert "_mysql_data_volume" in text
-    # Cyrillic password rewrite must not force REINIT=1
-    assert "REINIT=1" not in text.split("кириллица")[1].split("sql_escape")[0]
+    # Cyrillic password rewrite must not assign REINIT=1 (comment may mention it)
+    cyr_block = text.split("кириллица")[1].split("sql_escape")[0]
+    assert "REINIT=1" not in [
+        ln.strip() for ln in cyr_block.splitlines() if not ln.strip().startswith("#")
+    ]
 
 
 def test_enable_https_does_not_disable_unrelated_ssl_vhosts():
