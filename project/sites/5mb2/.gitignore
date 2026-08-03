@@ -1,0 +1,32 @@
+# Не коммитим секреты и мусор WordPress
+wp-config.php
+wp-config.php.*
+wp-config-*.php
+*.bak
+*.sql
+*.sql.gz
+*.zip
+
+# Логи / хостинг-мусор
+logs/
+tmp/
+mail.log
+*.log
+softaculous_backups/
+.softaculous/
+php-bin/
+php-bin-*/
+index.html_
+
+# Медиа и кэш
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/backup*/
+wp-content/ai1wm-backups/
+wp-content/wflogs/
+wp-content/debug.log
+error_log
+
+**/node_modules/
+**/.sass-cache/

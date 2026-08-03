@@ -9,8 +9,9 @@ api.py — REST API сервер для AI Helper.
 
 Endpoints:
   GET    /status
-  POST   /chat
-  POST   /chat/stream
+  GET    /chats  /chats/<id>  /context
+  POST   /chats  /chats/rename  /chat  /chat/stream
+  DELETE /chats/<id>
   POST   /smart-commit
   GET    /project/files
   POST   /project/read
@@ -24,6 +25,9 @@ Endpoints:
   POST   /sites
   DELETE /sites/<name>
   POST   /sites/deploy
+  GET    /system/health
+  GET    /system/incidents
+  POST   /system/watchdog
 """
 from __future__ import annotations
 
@@ -56,6 +60,7 @@ from core import (
 from memory import MemoryStore
 from profile import UserProfile, load_profile
 from tools import git_run, list_dir, read_file
+import chat_store as chats
 import panel_uploads as pup
 import wp_tools as wpt
 
@@ -69,6 +74,7 @@ PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "").strip()
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me").strip()
 # Chunked uploads support up to 2 GB by default (WordPress backups)
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
+MAX_JSON_BODY = int(os.environ.get("MAX_JSON_BODY", str(20 * 1024 * 1024)))
 HOST_SITES_PATH = os.environ.get("HOST_SITES_PATH", "/var/ai-helper/sites")
 CHUNK_SIZE = int(os.environ.get("UPLOAD_CHUNK_SIZE", str(4 * 1024 * 1024)))  # 4 MB
 
@@ -91,6 +97,7 @@ _PUBLIC_PATHS = {
     "/public/me/sites",
     "/public/plans",
     "/public/admin/set-plan",
+    "/public/feedback",
 }
 
 
@@ -488,10 +495,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Internal Server Error")
 
     def _read_body(self) -> Dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0))
-        if length:
-            return json.loads(self.rfile.read(length).decode("utf-8"))
-        return {}
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            return {}
+        if length > MAX_JSON_BODY:
+            raise ValueError(
+                f"JSON слишком большой: {length // (1024 * 1024)} МБ "
+                f"(лимит {MAX_JSON_BODY // (1024 * 1024)} МБ)"
+            )
+        raw = self.rfile.read(length)
+        if not raw:
+            return {}
+        return json.loads(raw.decode("utf-8"))
 
     def _stream_body_to_file(self, dest: Path, max_bytes: int = MAX_UPLOAD_BYTES) -> int:
         """Stream raw request body to disk in chunks (no full in-memory buffer)."""
@@ -531,6 +546,29 @@ class APIHandler(BaseHTTPRequestHandler):
     def _qs(self) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
 
+    def _server_workspace(self) -> Optional[Path]:
+        """Workspace бэкенда панели для чата site=server|panel|backend."""
+        candidates = [
+            Path(os.environ.get("AI_HELPER_PROJECT", "").strip())
+            if os.environ.get("AI_HELPER_PROJECT", "").strip()
+            else None,
+            PROJECT_DIR,  # /opt/ai-helper/project внутри смонтирован
+            Path("/opt/ai-helper/project"),
+            Path("/opt/ai-helper"),
+        ]
+        for cand in candidates:
+            if cand is None:
+                continue
+            try:
+                p = cand.expanduser().resolve()
+            except Exception:
+                continue
+            if p.is_dir() and ((p / "api.py").is_file() or (p / "project" / "api.py").is_file()):
+                if (p / "project" / "api.py").is_file() and not (p / "api.py").is_file():
+                    return p / "project"
+                return p
+        return None
+
     def _load_context(self, project_name: str = "", site_name: str = "") -> tuple:
         settings = load_settings()
         profile = load_profile()
@@ -538,8 +576,11 @@ class APIHandler(BaseHTTPRequestHandler):
         projects = load_projects()
         project_root: Optional[Path] = None
         # Site folder takes priority (hosting workspace for chat/tools)
-        site = (site_name or "").strip()
-        if site and _SAFE_NAME.match(site):
+        site = (site_name or "").strip().lower()
+        # Специальный workspace: DeepSeek правит бэкенд, не только файлы сайта
+        if site in {"server", "panel", "backend"}:
+            project_root = self._server_workspace()
+        elif site and _SAFE_NAME.match(site):
             candidate = _ensure_sites_root() / site
             if candidate.is_dir():
                 project_root = candidate
@@ -610,28 +651,40 @@ class APIHandler(BaseHTTPRequestHandler):
             settings.ollama_host,
             fl.free_model(settings.fast_llm_model, settings.llm_model),
         )
-        self._send(200, _json({
+        free_model_name = free_st.get("model") or fl.free_model()
+        tools_ok = bool(
+            free_st.get("tools_supported")
+            if "tools_supported" in free_st
+            else fl.model_supports_tools(free_model_name)
+        )
+        payload: Dict[str, Any] = {
             "ok": True,
             "ollama": ost.reachable,
-            "models": ost.models,
+            "models": list(ost.models or [])[:40],
             "groq": bool(settings.groq_api_key or os.environ.get("GROQ_API_KEY", "").strip()),
             "groq_model": settings.groq_model,
             "deepseek": deepseek,
             "deepseek_model": settings.deepseek_model,
             "free_llm": bool(free_st.get("reachable") and free_st.get("has_model")),
-            "free_model": free_st.get("model") or fl.free_model(),
+            "free_model": free_model_name,
+            "free_tools": tools_ok,
             "llm_prefer_free": fl.prefer_free(),
             "llm_model": settings.llm_model,
             "fast_model": settings.fast_llm_model,
-            "projects": list(projects.keys()),
-            "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
             "auth_required": _auth_enabled(),
-            "sites_root": str(SITES_ROOT),
-            "host_sites_path": HOST_SITES_PATH,
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.3",
-        }))
+            "version": "2.10.0",
+            "widget_guest": os.environ.get("PUBLIC_WIDGET_GUEST", "1").strip().lower()
+            not in {"0", "false", "no", "off"},
+        }
+        # Paths / project names only for authenticated panel clients
+        if (not _auth_enabled()) or self._authorized():
+            payload["projects"] = list(projects.keys())
+            payload["allowed_roots"] = [str(r) for r in ALLOWED_ROOTS]
+            payload["sites_root"] = str(SITES_ROOT)
+            payload["host_sites_path"] = HOST_SITES_PATH
+        self._send(200, _json(payload))
 
     # ── GET /project/files ───────────────────────────────────────
     def _get_project_files(self):
@@ -648,11 +701,26 @@ class APIHandler(BaseHTTPRequestHandler):
     def _post_project_read(self):
         body = self._read_body()
         path = body.get("path", "")
+        proj_name = body.get("project", "") or body.get("site", "")
         if not path:
             self._send(400, _json({"error": "Нужен путь (path)"}))
             return
-        r = read_file(path)
-        self._send(200 if r["ok"] else 404, _json(r))
+        try:
+            # Prefer explicit path under allowed roots; else resolve via site workspace
+            try:
+                safe = _resolve_safe(path, must_exist=True)
+                r = read_file(str(safe))
+            except Exception:
+                _, _, _, project_root = self._load_context(proj_name)
+                if not project_root:
+                    raise
+                from tools import resolve_workspace_path
+                safe = resolve_workspace_path(path, project_root)
+                r = read_file(str(safe))
+        except Exception as exc:
+            self._send(403, _json({"ok": False, "error": str(exc)}))
+            return
+        self._send(200 if r.get("ok") else 404, _json(r))
 
     # ── FS: list / read / write / mkdir / delete / upload ────────
     def _get_fs_list(self):
@@ -1204,6 +1272,69 @@ class APIHandler(BaseHTTPRequestHandler):
         )
         self._send(200, _json({"ok": True, "site": info}))
 
+    def _post_sites_health(self):
+        """Auto-check site issues; optional auto_fix."""
+        from hosting_tools import site_health_check
+
+        body = self._read_body()
+        name = (body.get("site") or body.get("name") or "").strip()
+        auto_fix = bool(body.get("auto_fix") or body.get("fix"))
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Некорректное имя сайта"}))
+            return
+        root = _ensure_sites_root() / name
+        if not root.is_dir():
+            self._send(404, _json({"error": f"Сайт не найден: {name}"}))
+            return
+        result = site_health_check(str(root), auto_fix=auto_fix)
+        result["site"] = name
+        self._send(200, _json(result))
+
+    def _post_sites_sync(self):
+        """
+        Write a file into a site from VS Code / remote clients.
+        Body: { site, path, content } — path relative to site root (e.g. index.html).
+        Instantly live via nginx (no separate deploy step).
+        """
+        body = self._read_body()
+        name = (body.get("site") or body.get("name") or "").strip()
+        rel = (body.get("path") or body.get("relative_path") or "").strip().lstrip("/")
+        content = body.get("content", "")
+        if not _SAFE_NAME.match(name):
+            self._send(400, _json({"error": "Некорректное имя сайта (site)"}))
+            return
+        if not rel or ".." in Path(rel).parts:
+            self._send(400, _json({"error": "Нужен относительный path внутри сайта"}))
+            return
+        if not isinstance(content, str):
+            self._send(400, _json({"error": "content должен быть строкой"}))
+            return
+        root = _ensure_sites_root() / name
+        if not root.is_dir():
+            self._send(404, _json({"error": f"Сайт не найден: {name}"}))
+            return
+        try:
+            dest = (root / rel).resolve()
+            if not _is_under(dest, root) and dest != root.resolve():
+                raise PermissionError("Путь вне сайта")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
+            try:
+                os.chmod(dest, 0o644)
+            except OSError:
+                pass
+            self._send(200, _json({
+                "ok": True,
+                "site": name,
+                "path": str(dest),
+                "relative": rel.replace("\\", "/"),
+                "bytes": len(content.encode("utf-8")),
+                "url": f"/sites/{name}/{rel.replace(chr(92), '/')}",
+                "live": True,
+            }))
+        except Exception as exc:
+            self._send(400, _json({"error": str(exc)}))
+
     # ── WordPress ────────────────────────────────────────────────
     def _get_wp_status(self):
         qs = self._qs()
@@ -1383,7 +1514,7 @@ class APIHandler(BaseHTTPRequestHandler):
         import public_chat as pch
         return pch.client_ip(self)
 
-    def _require_public_user(self):
+    def _require_public_user(self, *, allow_widget_guest: bool = False):
         """Return user dict or send 401 and None."""
         import public_users as pu
 
@@ -1391,7 +1522,10 @@ class APIHandler(BaseHTTPRequestHandler):
         if user:
             return user
         if not pu.AUTH_REQUIRED:
-            return {"id": "", "email": "", "name": "guest"}
+            return {"id": "", "email": "", "name": "guest", "guest": True}
+        # Guest widget chat (5mb2.ru etc.) — no platform login
+        if allow_widget_guest and getattr(pu, "WIDGET_GUEST", True):
+            return {"id": "", "email": "", "name": "widget-guest", "guest": True}
         self._send(401, _json({
             "error": "Нужен вход",
             "auth_required": True,
@@ -1487,12 +1621,14 @@ class APIHandler(BaseHTTPRequestHandler):
         import public_chat as pch
         import public_users as pu
 
-        user = self._require_public_user()
+        body = self._read_body()
+        is_widget = str(body.get("source") or "").strip().lower() in {"widget", "embed", "guest"}
+        user = self._require_public_user(allow_widget_guest=is_widget)
         if user is None:
             return
-        body = self._read_body()
         message = (body.get("message") or "").strip()
         history = body.get("history") or []
+        site_hint = str(body.get("site") or body.get("site_hint") or "").strip()[:120]
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
@@ -1501,13 +1637,15 @@ class APIHandler(BaseHTTPRequestHandler):
             if not ok_q:
                 self._send(429, _json({"error": why_q, "upgrade": True}))
                 return
-        ok, why = pch.check_rate_limit(pch.client_ip(self))
+        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
         if not ok:
             self._send(429, _json({"error": why}))
             return
         parts: List[str] = []
         err = ""
-        for ev in pch.stream_public_chat(message, history):
+        for ev in pch.stream_public_chat(
+            message, history, widget=is_widget or bool(user.get("guest")), site_hint=site_hint
+        ):
             if ev["type"] == "text":
                 parts.append(ev["content"])
             elif ev["type"] == "error":
@@ -1518,21 +1656,24 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send(200, _json({
             "ok": True,
             "response": "".join(parts),
-            "model": "deepseek",
+            "model": "auto",
             "user": user.get("email") or None,
             "plan": user.get("plan"),
+            "guest": bool(user.get("guest")),
         }))
 
     def _post_public_chat_stream(self):
         import public_chat as pch
         import public_users as pu
 
-        user = self._require_public_user()
+        body = self._read_body()
+        is_widget = str(body.get("source") or "").strip().lower() in {"widget", "embed", "guest"}
+        user = self._require_public_user(allow_widget_guest=is_widget)
         if user is None:
             return
-        body = self._read_body()
         message = (body.get("message") or "").strip()
         history = body.get("history") or []
+        site_hint = str(body.get("site") or body.get("site_hint") or "").strip()[:120]
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
@@ -1541,7 +1682,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if not ok_q:
                 self._send(429, _json({"error": why_q, "upgrade": True}))
                 return
-        ok, why = pch.check_rate_limit(pch.client_ip(self))
+        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
         if not ok:
             self._send(429, _json({"error": why}))
             return
@@ -1561,7 +1702,9 @@ class APIHandler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
-        for ev in pch.stream_public_chat(message, history):
+        for ev in pch.stream_public_chat(
+            message, history, widget=is_widget or bool(user.get("guest")), site_hint=site_hint
+        ):
             _sse(ev)
 
     def _post_public_deploy(self):
@@ -1583,15 +1726,21 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._send(429, _json({"error": why}))
                 return
             ctype = (self.headers.get("Content-Type") or "").lower()
-            tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+            filename = (
+                self.headers.get("X-Filename")
+                or self._qs().get("filename")
+                or "site.zip"
+            )
+            tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
             if "json" in ctype:
                 body = self._read_body()
+                filename = body.get("filename") or filename
                 raw = base64.b64decode(body.get("content_b64") or "")
                 if not raw:
-                    self._send(400, _json({"error": "Нужен ZIP (content_b64)"}))
+                    self._send(400, _json({"error": "Нужен файл (content_b64): ZIP / tar.gz / HTML"}))
                     return
                 if len(raw) > pd.MAX_ZIP:
-                    self._send(400, _json({"error": f"ZIP > {pd.MAX_ZIP // (1024*1024)} МБ"}))
+                    self._send(400, _json({"error": f"Файл > {pd.MAX_ZIP // (1024*1024)} МБ"}))
                     return
                 tmp.write_bytes(raw)
             else:
@@ -1601,6 +1750,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 ip=self._public_ip(),
                 user_id=user.get("id") or "",
                 user_email=user.get("email") or "",
+                filename=str(filename),
             )
             if user.get("email"):
                 pu.consume_quota(user["email"], "deploy")
@@ -1620,20 +1770,22 @@ class APIHandler(BaseHTTPRequestHandler):
             name = (qs.get("name") or "").strip()
             token = (qs.get("token") or self.headers.get("X-Public-Token") or "").strip()
             ctype = (self.headers.get("Content-Type") or "").lower()
+            filename = self.headers.get("X-Filename") or qs.get("filename") or "site.zip"
             if "json" in ctype:
                 body = self._read_body()
                 name = (body.get("name") or name).strip()
                 token = (body.get("token") or token).strip()
+                filename = body.get("filename") or filename
                 raw = base64.b64decode(body.get("content_b64") or "")
                 if not raw:
-                    self._send(400, _json({"error": "Нужен ZIP"}))
+                    self._send(400, _json({"error": "Нужен файл (ZIP / tar.gz / HTML)"}))
                     return
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
                 tmp.write_bytes(raw)
             else:
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
                 self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
-            result = pd.redeploy(name, token, tmp)
+            result = pd.redeploy(name, token, tmp, filename=str(filename))
             self._send(200, _json(result))
         except Exception as exc:
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
@@ -1684,6 +1836,215 @@ class APIHandler(BaseHTTPRequestHandler):
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
             self._send(code, _json({"error": str(exc)}))
 
+    def _post_public_feedback(self):
+        import public_feedback as pf
+
+        try:
+            body = self._read_body()
+            # honeypot
+            if (body.get("website") or "").strip():
+                self._send(200, _json({"ok": True, "message": "Спасибо!"}))
+                return
+            ip = self.client_address[0] if self.client_address else ""
+            result = pf.save_feedback(
+                kind=(body.get("type") or body.get("kind") or "idea"),
+                message=body.get("message") or "",
+                email=body.get("email") or "",
+                page=body.get("page") or "",
+                source=(body.get("source") or "ai-helper"),
+                ip=ip,
+            )
+            self._send(200, _json(result))
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(500, _json({"error": str(exc)}))
+
+    def _get_feedback(self):
+        """Inbox для панели владельца (нужен PANEL_PASSWORD)."""
+        import public_feedback as pf
+
+        qs = self._qs()
+        try:
+            limit = int(qs.get("limit") or 100)
+        except ValueError:
+            limit = 100
+        items = pf.list_feedback(limit=limit)
+        self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
+
+    def _local_watchdog_ok(self) -> bool:
+        """Cron на VPS может дергать watchdog без Bearer с localhost."""
+        ip = ""
+        try:
+            ip = (self.client_address[0] if self.client_address else "") or ""
+        except Exception:
+            ip = ""
+        return ip in {"127.0.0.1", "::1", "localhost"}
+
+    def _get_system_health(self):
+        import system_health as sh
+
+        qs = self._qs()
+        base = (qs.get("base") or "").strip()
+        host = (qs.get("host") or "").strip()
+        report = sh.check_targets(base_url=base, host=host)
+        self._send(200, _json({"ok": True, **report}))
+
+    def _get_system_incidents(self):
+        import system_health as sh
+
+        qs = self._qs()
+        try:
+            limit = int(qs.get("limit") or 50)
+        except ValueError:
+            limit = 50
+        items = sh.list_incidents(limit=limit)
+        self._send(200, _json({"ok": True, "items": items, "count": len(items)}))
+
+    def _get_system_overview(self):
+        import system_overview as so
+
+        # reuse status payload bits
+        status_payload: Dict[str, Any] = {}
+        try:
+            import free_llm as fl
+
+            settings = load_settings()
+            ost = check_ollama_status(settings.ollama_host)
+            status_payload = {
+                "deepseek": bool(
+                    settings.deepseek_api_key
+                    or os.environ.get("DEEPSEEK_API_KEY", "").strip()
+                ),
+                "deepseek_model": settings.deepseek_model,
+                "ollama": ost.reachable,
+                "free_llm": True,
+                "llm_prefer_free": fl.prefer_free(),
+                "version": "2.10.0",
+                "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
+                "sites_root": str(SITES_ROOT),
+            }
+        except Exception as exc:
+            status_payload = {"error": str(exc)[:200]}
+        overview = so.build_overview(
+            api_status=status_payload,
+            sites_root=_ensure_sites_root(),
+        )
+        self._send(200, _json(overview))
+
+    def _get_system_dns(self):
+        import dns_tools as dt
+
+        qs = self._qs()
+        domain = (qs.get("domain") or "").strip()
+        if not domain:
+            # all known domains
+            import system_overview as so
+
+            items = so._collect_domains(_ensure_sites_root())
+            self._send(200, _json({
+                "ok": True,
+                "vps_ip": dt.detect_vps_ip(),
+                "items": items,
+            }))
+            return
+        info = dt.lookup_domain(domain, expected_ip=dt.detect_vps_ip())
+        self._send(200, _json(info))
+
+    def _post_system_watchdog(self):
+        import system_health as sh
+
+        try:
+            body = self._read_body()
+        except Exception:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        remediate = bool(body.get("remediate", True))
+        ask_ai = bool(body.get("ask_deepseek") or body.get("ask_ai"))
+        result = sh.run_watchdog(
+            remediate=remediate,
+            ask_ai=ask_ai,
+            base_url=(body.get("base") or "").strip(),
+            host=(body.get("host") or "").strip(),
+        )
+        self._send(200, _json({"ok": True, **result}))
+
+    # ── Chats (persistent) ───────────────────────────────────────
+    def _get_chats(self):
+        qs = self._qs()
+        site = (qs.get("site") or "").strip()
+        items = chats.list_chats(site_id=site)
+        self._send(200, _json({"ok": True, "chats": items}))
+
+    def _get_chat(self, chat_id: str):
+        chat = chats.get_chat(chat_id)
+        if not chat:
+            self._send(404, _json({"error": "Чат не найден"}))
+            return
+        self._send(200, _json({"ok": True, "chat": chat}))
+
+    def _post_chats(self):
+        body = self._read_body()
+        site = (body.get("site") or body.get("site_id") or "").strip()
+        title = (body.get("title") or "Новый чат").strip()
+        chat = chats.create_chat(site_id=site, title=title)
+        self._send(200, _json({"ok": True, "chat": chat}))
+
+    def _post_chat_rename(self):
+        body = self._read_body()
+        chat_id = (body.get("id") or body.get("chat_id") or "").strip()
+        title = (body.get("title") or "").strip()
+        if not chat_id:
+            self._send(400, _json({"error": "Нужен id чата"}))
+            return
+        chat = chats.rename_chat(chat_id, title)
+        if not chat:
+            self._send(404, _json({"error": "Чат не найден"}))
+            return
+        self._send(200, _json({"ok": True, "chat": chat}))
+
+    def _delete_chat(self, chat_id: str):
+        ok = chats.delete_chat(chat_id)
+        self._send(200 if ok else 404, _json({"ok": ok}))
+
+    def _get_context(self):
+        """Site/project snapshot for the panel chat UI."""
+        from agent import _project_snapshot
+        from hosting_tools import build_site_card
+
+        qs = self._qs()
+        site = (qs.get("site") or "").strip()
+        proj = (qs.get("project") or "").strip()
+        settings, profile, memory, project_root = self._load_context(proj, site)
+        snapshot = _project_snapshot(project_root, max_files=80) if project_root else ""
+        card = build_site_card(project_root) if project_root else ""
+        tree: List[str] = []
+        info: Dict[str, Any] = {}
+        if project_root and project_root.is_dir():
+            r = list_dir(str(project_root), recursive=False)
+            if r.get("ok"):
+                tree = list(r.get("items") or [])[:80]
+            if site and _SAFE_NAME.match(site):
+                try:
+                    info = _site_info(site)
+                except Exception:
+                    info = {}
+        self._send(200, _json({
+            "ok": True,
+            "site": site or None,
+            "project": project_root.name if project_root else None,
+            "project_root": str(project_root) if project_root else None,
+            "snapshot": snapshot,
+            "card": card,
+            "tree": tree,
+            "can_edit": bool(project_root),
+            "is_wordpress": bool(info.get("is_wordpress")),
+            "domain": info.get("domain"),
+            "has_index": info.get("has_index"),
+            "url": info.get("url"),
+        }))
+
     # ── POST /chat ───────────────────────────────────────────────
     def _post_chat(self):
         body = self._read_body()
@@ -1694,17 +2055,28 @@ class APIHandler(BaseHTTPRequestHandler):
         proj_name = body.get("project", "")
         site_name = (body.get("site") or "").strip()
         history = body.get("history", [])
+        chat_id = (body.get("chat_id") or "").strip()
         settings, profile, memory, project_root = self._load_context(proj_name, site_name)
+
+        if chat_id:
+            stored = chats.history_for_agent(chat_id)
+            if stored:
+                history = stored
+            chats.add_message(chat_id, "user", message)
 
         t0 = time.time()
         text = _run_agent_sync(message, project_root, settings, profile, memory, history)
         elapsed = round(time.time() - t0, 2)
+
+        if chat_id:
+            chats.add_message(chat_id, "assistant", text)
 
         self._send(200, _json({
             "ok": True,
             "response": text,
             "elapsed_sec": elapsed,
             "project": project_root.name if project_root else None,
+            "chat_id": chat_id or None,
         }))
 
     # ── POST /chat/stream (SSE) ──────────────────────────────────
@@ -1716,12 +2088,37 @@ class APIHandler(BaseHTTPRequestHandler):
         proj_name = body.get("project", "")
         site_name = (body.get("site") or "").strip()
         history = body.get("history", [])
+        chat_id = (body.get("chat_id") or "").strip()
 
         if not message:
             self._send(400, _json({"error": "Нужно поле 'message'"}))
             return
 
         settings, profile, memory, project_root = self._load_context(proj_name, site_name)
+
+        # Auto-create / bind persistent chat
+        if not chat_id:
+            chat = chats.create_chat(
+                site_id=site_name,
+                title=chats.auto_title_from_message(message),
+            )
+            chat_id = chat["id"]
+        else:
+            existing = chats.get_chat(chat_id)
+            if not existing:
+                chat = chats.create_chat(
+                    site_id=site_name,
+                    title=chats.auto_title_from_message(message),
+                )
+                chat_id = chat["id"]
+            else:
+                stored = chats.history_for_agent(chat_id)
+                if stored:
+                    history = stored
+                if existing.get("title") in ("", "Новый чат") and message:
+                    chats.rename_chat(chat_id, chats.auto_title_from_message(message))
+
+        chats.add_message(chat_id, "user", message)
 
         self.close_connection = True
         self.send_response(200)
@@ -1738,6 +2135,12 @@ class APIHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass
+
+        assistant_parts: List[str] = []
+        tool_events: List[Dict[str, Any]] = []
+        _sse({"type": "chat", "chat_id": chat_id, "site": site_name or None,
+              "project": project_root.name if project_root else None,
+              "project_root": str(project_root) if project_root else None})
 
         try:
             for ev in run_agent(
@@ -1757,31 +2160,79 @@ class APIHandler(BaseHTTPRequestHandler):
                 http_proxy=settings.http_proxy,
             ):
                 if ev.type == "text":
+                    assistant_parts.append(ev.content)
                     _sse({"type": "text", "content": ev.content})
                 elif ev.type == "error":
                     _sse({"type": "error", "content": ev.content})
-                    _sse({"type": "done"})
+                    if assistant_parts or tool_events:
+                        chats.add_message(
+                            chat_id, "assistant", "".join(assistant_parts),
+                            meta={"tools": tool_events, "error": ev.content},
+                        )
+                    _sse({"type": "done", "chat_id": chat_id})
                     return
                 elif ev.type == "tool_call":
+                    tool_events.append({"name": ev.tool_name, "args": ev.tool_args})
                     _sse({"type": "tool_call", "name": ev.tool_name, "args": ev.tool_args})
+                elif ev.type == "tool_result":
+                    tr = ev.tool_result or {}
+                    summary = {
+                        "name": ev.tool_name,
+                        "ok": bool(tr.get("ok")),
+                        "path": tr.get("path") or tr.get("deleted") or tr.get("dst"),
+                        "edited": bool(tr.get("edited")),
+                        "added": tr.get("added"),
+                        "removed": tr.get("removed"),
+                        "applied": tr.get("applied"),
+                        "total": tr.get("total"),
+                        "error": tr.get("error"),
+                        "diff": (tr.get("diff") or "")[:1200],
+                    }
+                    if ev.tool_name == "apply_edits" and tr.get("results"):
+                        summary["paths"] = [
+                            x.get("path") for x in tr["results"] if x.get("path")
+                        ][:20]
+                    tool_events.append({"result": summary})
+                    chats.add_message(
+                        chat_id, "tool",
+                        f"{ev.tool_name}: {'ok' if summary['ok'] else 'fail'}"
+                        + (f" → {summary['path']}" if summary.get("path") else ""),
+                        meta=summary,
+                    )
+                    _sse({"type": "tool_result", "name": ev.tool_name, "result": summary})
                 elif ev.type == "info":
                     _sse({"type": "info", "content": ev.content})
                 elif ev.type == "done":
-                    _sse({"type": "done"})
+                    chats.add_message(
+                        chat_id, "assistant", "".join(assistant_parts),
+                        meta={"tools": tool_events} if tool_events else {},
+                    )
+                    _sse({"type": "done", "chat_id": chat_id})
                     return
         except Exception as exc:
             _sse({"type": "error", "content": str(exc)})
-            _sse({"type": "done"})
+            chats.add_message(
+                chat_id, "assistant", "".join(assistant_parts),
+                meta={"error": str(exc), "tools": tool_events},
+            )
+            _sse({"type": "done", "chat_id": chat_id})
 
     # ── POST /smart-commit ───────────────────────────────────────
     def _post_smart_commit(self):
+        import re
+        import shlex
+
         body = self._read_body()
-        proj_name = body.get("project", "")
+        # Prefer site name from extension; ignore local Windows paths
+        proj_name = (body.get("site") or body.get("project") or "").strip()
+        if proj_name and (":" in proj_name or proj_name.startswith("/") or "\\" in proj_name):
+            # Looks like a local filesystem path — use configured site / default project
+            proj_name = ""
         push = body.get("push", False)
         settings, profile, memory, project_root = self._load_context(proj_name)
 
         if not project_root:
-            self._send(404, _json({"error": "Нет активного проекта"}))
+            self._send(404, _json({"error": "Нет активного проекта / сайта. Укажи site в запросе."}))
             return
 
         diff_result = git_run("diff --cached --stat", str(project_root))
@@ -1797,9 +2248,10 @@ class APIHandler(BaseHTTPRequestHandler):
         )
         commit_msg = _run_agent_sync(prompt, project_root, settings, profile, memory)
         commit_msg = commit_msg.strip().split("\n")[0].strip('"').strip("'")
+        commit_msg = re.sub(r"[\r\n\x00\"\\]", " ", commit_msg).strip()[:180] or "chore: update"
 
         git_run("add -A", str(project_root))
-        commit_r = git_run(f'commit -m "{commit_msg}"', str(project_root))
+        commit_r = git_run(f"commit -m {shlex.quote(commit_msg)}", str(project_root))
         result = {"ok": commit_r["ok"], "message": commit_msg, "output": commit_r.get("output")}
 
         if push and commit_r["ok"]:
@@ -1843,6 +2295,22 @@ class APIHandler(BaseHTTPRequestHandler):
             self._get_wp_status()
         elif path == "/wp/db-test":
             self._get_wp_db_test()
+        elif path == "/chats":
+            self._get_chats()
+        elif path.startswith("/chats/"):
+            self._get_chat(path[len("/chats/"):])
+        elif path == "/context":
+            self._get_context()
+        elif path == "/feedback":
+            self._get_feedback()
+        elif path == "/system/health":
+            self._get_system_health()
+        elif path == "/system/incidents":
+            self._get_system_incidents()
+        elif path == "/system/overview":
+            self._get_system_overview()
+        elif path == "/system/dns":
+            self._get_system_dns()
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 
@@ -1890,11 +2358,20 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/public/fs/write":
             self._post_public_fs_write()
             return
+        if path == "/public/feedback":
+            self._post_public_feedback()
+            return
+        if path == "/system/watchdog":
+            if self._local_watchdog_ok() or self._require_auth():
+                self._post_system_watchdog()
+            return
         if path not in _PUBLIC_PATHS and not self._require_auth():
             return
         routes = {
             "/chat": self._post_chat,
             "/chat/stream": self._post_chat_stream,
+            "/chats": self._post_chats,
+            "/chats/rename": self._post_chat_rename,
             "/smart-commit": self._post_smart_commit,
             "/project/read": self._post_project_read,
             "/fs/read": self._post_fs_read,
@@ -1906,6 +2383,8 @@ class APIHandler(BaseHTTPRequestHandler):
             "/sites/deploy": self._post_sites_deploy,
             "/sites/migrate": self._post_sites_migrate,
             "/sites/domain": self._post_sites_domain,
+            "/sites/sync": self._post_sites_sync,
+            "/sites/health": self._post_sites_health,
             "/sites/fix-perms": self._post_sites_fix_perms,
             "/sites/normalize": self._post_sites_normalize,
             "/upload/init": self._post_upload_init,
@@ -1932,6 +2411,8 @@ class APIHandler(BaseHTTPRequestHandler):
         if path.startswith("/sites/"):
             name = path[len("/sites/"):]
             self._delete_site(name)
+        elif path.startswith("/chats/"):
+            self._delete_chat(path[len("/chats/"):])
         else:
             self._send(404, _json({"error": f"Unknown endpoint: {path}"}))
 

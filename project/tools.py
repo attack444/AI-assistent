@@ -67,23 +67,71 @@ def _run(cmd: str | list, cwd: str | None = None, timeout: int = 60,
 
 
 # ---------------------------------------------------------------------------
+# Path sandbox (relative paths → project root)
+# ---------------------------------------------------------------------------
+
+def resolve_workspace_path(
+    path: str,
+    project_root: Optional[Path] = None,
+    *,
+    default_to_root: bool = False,
+) -> Path:
+    """
+    Resolve a path for agent file tools.
+    Relative paths are rooted at project_root (site workspace).
+    Absolute paths must stay under project_root when it is set.
+    """
+    raw = (path or "").strip()
+    if not raw:
+        if default_to_root and project_root is not None:
+            return project_root.resolve()
+        raise ValueError("Пустой путь")
+
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        base = project_root if project_root is not None else Path.cwd()
+        p = (base / p).resolve()
+    else:
+        p = p.resolve()
+
+    if project_root is not None:
+        root = project_root.resolve()
+        try:
+            p.relative_to(root)
+        except ValueError:
+            if p != root:
+                raise PermissionError(
+                    f"Путь вне рабочей папки сайта ({root}): {raw}"
+                )
+    return p
+
+
+# ---------------------------------------------------------------------------
 # File tools
 # ---------------------------------------------------------------------------
 
 def read_file(path: str) -> Dict[str, Any]:
-    """Читает файл целиком. Для больших файлов — первые 100 KB."""
+    """Читает файл. Не более ~100 KB с диска (без загрузки гигабайтных дампов в RAM)."""
     args = {"path": path}
+    _CAP = 100_000
     try:
         p = Path(path).expanduser().resolve()
         if not p.is_file():
             r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
         else:
-            text = p.read_text(encoding="utf-8", errors="ignore")
-            truncated = len(text) > 100_000
+            with p.open("rb") as fh:
+                raw = fh.read(_CAP + 1)
+            truncated = len(raw) > _CAP
+            text = raw[:_CAP].decode("utf-8", errors="ignore")
             if truncated:
-                text = text[:100_000] + "\n...[обрезано до 100 KB]"
-            r = {"ok": True, "path": str(p), "content": text,
-                 "lines": text.count("\n") + 1, "truncated": truncated}
+                text += "\n...[обрезано до 100 KB]"
+            r = {
+                "ok": True,
+                "path": str(p),
+                "content": text,
+                "lines": text.count("\n") + 1,
+                "truncated": truncated,
+            }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("read_file", args, r)
@@ -98,12 +146,31 @@ def read_file_lines(path: str, start: int = 1, end: int = 200) -> Dict[str, Any]
         if not p.is_file():
             r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
         else:
-            lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
-            total = len(lines)
-            s, e = max(1, start) - 1, min(end, total)
-            chunk = "\n".join(f"{i+s+1}: {l}" for i, l in enumerate(lines[s:e]))
-            r = {"ok": True, "path": str(p), "content": chunk,
-                 "from_line": s + 1, "to_line": e, "total_lines": total}
+            start_i = max(1, int(start))
+            end_i = max(start_i, min(int(end), start_i + 2000))
+            lines_out: List[str] = []
+            total = 0
+            with p.open("r", encoding="utf-8", errors="ignore") as fh:
+                for i, line in enumerate(fh, 1):
+                    total = i
+                    if i < start_i:
+                        continue
+                    if i > end_i:
+                        # keep counting total cheaply up to a soft cap
+                        if i > end_i + 50_000:
+                            total = end_i  # unknown full size; avoid scanning huge files
+                            break
+                        continue
+                    lines_out.append(f"{i}: {line.rstrip(chr(10)).rstrip(chr(13))}")
+            chunk = "\n".join(lines_out)
+            r = {
+                "ok": True,
+                "path": str(p),
+                "content": chunk,
+                "from_line": start_i,
+                "to_line": min(end_i, total),
+                "total_lines": total,
+            }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("read_file_lines", args, r)
@@ -140,10 +207,88 @@ def write_file(path: str, content: str) -> Dict[str, Any]:
             "ok": True, "path": str(p), "bytes": len(content.encode()),
             "diff": diff, "added": added, "removed": removed,
             "is_new": old_text == "",
+            "edited": True,
         }
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("write_file", args, r)
+    return r
+
+
+def str_replace(
+    path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool = False,
+) -> Dict[str, Any]:
+    """
+    Точечная правка файла: заменяет old_string на new_string.
+    Предпочтительнее write_file для частичных правок.
+    """
+    args = {"path": path, "replace_all": replace_all}
+    try:
+        import difflib
+        p = Path(path).expanduser().resolve()
+        if not p.is_file():
+            r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {p}"}
+            _log("str_replace", args, r)
+            return r
+        if not old_string:
+            r = {"ok": False, "error": "old_string пустой"}
+            _log("str_replace", args, r)
+            return r
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        count = text.count(old_string)
+        if count == 0:
+            r = {
+                "ok": False,
+                "error": "old_string не найден в файле — прочитай файл и повтори с точным фрагментом",
+                "path": str(p),
+            }
+            _log("str_replace", args, r)
+            return r
+        if count > 1 and not replace_all:
+            r = {
+                "ok": False,
+                "error": (
+                    f"old_string встречается {count} раз — уточни контекст "
+                    "или поставь replace_all=true"
+                ),
+                "path": str(p),
+                "matches": count,
+            }
+            _log("str_replace", args, r)
+            return r
+        _backup(p)
+        if replace_all:
+            new_text = text.replace(old_string, new_string)
+            replaced = count
+        else:
+            new_text = text.replace(old_string, new_string, 1)
+            replaced = 1
+        p.write_text(new_text, encoding="utf-8")
+        diff_lines = list(difflib.unified_diff(
+            text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"{p.name} (до)",
+            tofile=f"{p.name} (после)",
+            n=3,
+        ))
+        diff = "".join(diff_lines[:200])
+        added = sum(1 for l in diff_lines if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in diff_lines if l.startswith("-") and not l.startswith("---"))
+        r = {
+            "ok": True,
+            "path": str(p),
+            "replaced": replaced,
+            "diff": diff,
+            "added": added,
+            "removed": removed,
+            "edited": True,
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("str_replace", args, r)
     return r
 
 
@@ -157,7 +302,7 @@ def create_file(path: str, content: str = "") -> Dict[str, Any]:
         else:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
-            r = {"ok": True, "path": str(p), "created": True}
+            r = {"ok": True, "path": str(p), "created": True, "edited": True}
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("create_file", args, r)
@@ -177,10 +322,132 @@ def delete_file(path: str) -> Dict[str, Any]:
                 shutil.rmtree(p)
             else:
                 p.unlink()
-            r = {"ok": True, "deleted": str(p), "backup": backup}
+            r = {"ok": True, "deleted": str(p), "backup": backup, "edited": True}
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("delete_file", args, r)
+    return r
+
+
+def mkdir_path(path: str) -> Dict[str, Any]:
+    """Создаёт папку (включая родителей)."""
+    args = {"path": path}
+    try:
+        p = Path(path).expanduser().resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        r: Dict[str, Any] = {"ok": True, "path": str(p), "edited": True}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("mkdir_path", args, r)
+    return r
+
+
+def copy_path(src: str, dst: str) -> Dict[str, Any]:
+    """Копирует файл или папку."""
+    args = {"src": src, "dst": dst}
+    try:
+        s = Path(src).expanduser().resolve()
+        d = Path(dst).expanduser().resolve()
+        if not s.exists():
+            r: Dict[str, Any] = {"ok": False, "error": f"Источник не найден: {s}"}
+        else:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            if s.is_dir():
+                if d.exists():
+                    r = {"ok": False, "error": f"Папка назначения уже есть: {d}"}
+                else:
+                    shutil.copytree(s, d)
+                    r = {"ok": True, "src": str(s), "dst": str(d), "edited": True, "type": "dir"}
+            else:
+                shutil.copy2(s, d)
+                r = {"ok": True, "src": str(s), "path": str(d), "dst": str(d),
+                     "edited": True, "type": "file"}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("copy_path", args, r)
+    return r
+
+
+def move_path(src: str, dst: str) -> Dict[str, Any]:
+    """Перемещает или переименовывает файл/папку."""
+    args = {"src": src, "dst": dst}
+    try:
+        s = Path(src).expanduser().resolve()
+        d = Path(dst).expanduser().resolve()
+        if not s.exists():
+            r: Dict[str, Any] = {"ok": False, "error": f"Источник не найден: {s}"}
+        else:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            if d.exists():
+                r = {"ok": False, "error": f"Назначение уже существует: {d}"}
+            else:
+                shutil.move(str(s), str(d))
+                r = {"ok": True, "src": str(s), "path": str(d), "dst": str(d), "edited": True}
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("move_path", args, r)
+    return r
+
+
+def apply_edits(edits: Any) -> Dict[str, Any]:
+    """
+    Пакетная точечная правка нескольких файлов.
+    edits: список {path, old_string, new_string, replace_all?} или JSON-строка.
+    """
+    args = {"count": 0}
+    try:
+        items = edits
+        if isinstance(edits, str):
+            items = json.loads(edits)
+        if not isinstance(items, list) or not items:
+            r: Dict[str, Any] = {"ok": False, "error": "edits должен быть непустым списком"}
+            _log("apply_edits", args, r)
+            return r
+        results: List[Dict[str, Any]] = []
+        ok_count = 0
+        for i, item in enumerate(items[:40]):
+            if not isinstance(item, dict):
+                results.append({"ok": False, "index": i, "error": "элемент не объект"})
+                continue
+            path = str(item.get("path") or "")
+            old = item.get("old_string")
+            new = item.get("new_string")
+            if old is None or new is None:
+                results.append({"ok": False, "index": i, "path": path,
+                                "error": "нужны old_string и new_string"})
+                continue
+            one = str_replace(
+                path,
+                str(old),
+                str(new),
+                replace_all=bool(item.get("replace_all", False)),
+            )
+            one["index"] = i
+            results.append({
+                "ok": one.get("ok"),
+                "index": i,
+                "path": one.get("path") or path,
+                "replaced": one.get("replaced"),
+                "added": one.get("added"),
+                "removed": one.get("removed"),
+                "error": one.get("error"),
+                "diff": (one.get("diff") or "")[:800],
+                "edited": bool(one.get("edited")),
+            })
+            if one.get("ok"):
+                ok_count += 1
+        r = {
+            "ok": ok_count == len(results) and ok_count > 0,
+            "applied": ok_count,
+            "total": len(results),
+            "results": results,
+            "edited": ok_count > 0,
+            "path": next((x["path"] for x in results if x.get("ok")), None),
+        }
+        args["count"] = len(results)
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("apply_edits", args, r)
     return r
 
 
@@ -307,6 +574,100 @@ def search_code(query: str, root: str) -> Dict[str, Any]:
     except Exception as exc:
         r = {"ok": False, "error": str(exc)}
     _log("search_code", args, r)
+    return r
+
+
+def smart_search(
+    query: str,
+    root: str = ".",
+    mode: str = "all",
+    max_results: int = 80,
+) -> Dict[str, Any]:
+    """
+    Умный поиск по сайту/проекту:
+    - name: имена файлов
+    - path: пути папок/файлов
+    - content: фрагменты кода/текста
+    - all: всё сразу
+    """
+    args = {"query": query, "root": root, "mode": mode}
+    try:
+        q = (query or "").strip()
+        if not q:
+            return {"ok": False, "error": "Пустой query"}
+        p = Path(root).expanduser().resolve()
+        if not p.is_dir():
+            return {"ok": False, "error": f"Не директория: {p}"}
+        mode = (mode or "all").lower().strip()
+        if mode not in {"all", "name", "path", "content"}:
+            mode = "all"
+        max_results = max(10, min(int(max_results or 80), 200))
+        q_lower = q.lower()
+        name_hits: List[str] = []
+        path_hits: List[str] = []
+        content_hits: List[str] = []
+
+        from core import iter_project_files
+
+        # Walk names/paths (skip only relative segments — not /tmp host path)
+        if mode in {"all", "name", "path"}:
+            for item in p.rglob("*"):
+                try:
+                    rel_parts = item.relative_to(p).parts
+                except ValueError:
+                    continue
+                if any(s in rel_parts for s in _SKIP_DIRS):
+                    continue
+                rel = "/".join(rel_parts).replace("\\", "/")
+                rel_l = rel.lower()
+                if mode in {"all", "path"} and q_lower in rel_l:
+                    kind = "dir" if item.is_dir() else "file"
+                    path_hits.append(f"{kind}: {rel}")
+                if mode in {"all", "name"} and item.is_file() and q_lower in item.name.lower():
+                    name_hits.append(rel)
+                if len(path_hits) + len(name_hits) >= max_results * 2:
+                    break
+
+        # Content search (escaped, case-insensitive); also try as loose regex if looks like regex
+        if mode in {"all", "content"}:
+            try:
+                if any(ch in q for ch in r".*+?[](){}^$|\\") and len(q) >= 3:
+                    pattern = re.compile(q, re.IGNORECASE)
+                else:
+                    pattern = re.compile(re.escape(q), re.IGNORECASE)
+            except re.error:
+                pattern = re.compile(re.escape(q), re.IGNORECASE)
+            for f in iter_project_files(p):
+                try:
+                    rel = str(f.relative_to(p)).replace("\\", "/")
+                    for i, line in enumerate(
+                        f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+                    ):
+                        if pattern.search(line):
+                            content_hits.append(f"{rel}:{i}: {line.strip()[:140]}")
+                            if len(content_hits) >= max_results:
+                                break
+                except Exception:
+                    pass
+                if len(content_hits) >= max_results:
+                    break
+
+        r = {
+            "ok": True,
+            "query": q,
+            "mode": mode,
+            "names": name_hits[:max_results],
+            "paths": path_hits[:max_results],
+            "content": content_hits[:max_results],
+            "counts": {
+                "names": len(name_hits[:max_results]),
+                "paths": len(path_hits[:max_results]),
+                "content": len(content_hits[:max_results]),
+            },
+        }
+    except Exception as exc:
+        r = {"ok": False, "error": str(exc)}
+    _log("smart_search", args, r)
     return r
 
 
@@ -884,14 +1245,25 @@ def apply_self_improvement(file: str, new_content: str, reason: str = "") -> Dic
         from pathlib import Path as _Path
 
         SELF_DIR = _Path(__file__).resolve().parent
-        target = SELF_DIR / file
-        if not target.exists():
-            r: Dict[str, Any] = {"ok": False, "error": f"Файл не найден: {target}"}
+        rel = (file or "").replace("\\", "/").strip().lstrip("/")
+        if not rel or ".." in rel.split("/"):
+            r = {"ok": False, "error": "Недопустимый путь файла (только относительный внутри ассистента)"}
+            _log("apply_self_improvement", args, r)
+            return r
+        target = (SELF_DIR / rel).resolve()
+        try:
+            target.relative_to(SELF_DIR)
+        except ValueError:
+            r = {"ok": False, "error": f"Путь вне папки ассистента: {file}"}
+            _log("apply_self_improvement", args, r)
+            return r
+        if not target.exists() or not target.is_file():
+            r = {"ok": False, "error": f"Файл не найден: {target}"}
             _log("apply_self_improvement", args, r)
             return r
 
         # Бэкап ВСЕХ файлов перед изменением
-        backup_dir = backup_all_sources(label=f"self_improve_{_Path(file).stem}")
+        backup_dir = backup_all_sources(label=f"self_improve_{target.stem}")
 
         r = safe_apply_patch(target, new_content, reason=reason, backup_dir=backup_dir)
         r["backup_dir"] = str(backup_dir)
@@ -1041,11 +1413,17 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "name": "read_file",
             "description": (
                 "Читает содержимое файла. "
-                "ВСЕГДА используй этот инструмент вместо того чтобы просить пользователя показать код."
+                "Путь относительный к корню сайта/проекта (например index.html, wp-config.php). "
+                "ВСЕГДА используй вместо просьбы показать код."
             ),
             "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string", "description": "Абсолютный путь к файлу"}},
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Относительный путь от корня сайта или абсолютный внутри workspace",
+                    }
+                },
                 "required": ["path"],
             },
         },
@@ -1058,7 +1436,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
                     "start": {"type": "integer", "description": "Первая строка (1-based)", "default": 1},
                     "end": {"type": "integer", "description": "Последняя строка", "default": 200},
                 },
@@ -1070,14 +1448,41 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Перезаписывает файл. Автоматический бэкап перед записью.",
+            "description": (
+                "Полностью перезаписывает файл на сервере. Автобэкап + diff. "
+                "Для точечных правок предпочитай str_replace."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
                     "content": {"type": "string", "description": "Полное содержимое файла"},
                 },
                 "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "str_replace",
+            "description": (
+                "Точечная правка файла на сервере: заменяет точный фрагмент old_string на new_string. "
+                "Сначала прочитай файл через read_file. Это основной способ редактирования."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
+                    "old_string": {"type": "string", "description": "Точный существующий фрагмент"},
+                    "new_string": {"type": "string", "description": "На что заменить"},
+                    "replace_all": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "true — заменить все вхождения",
+                    },
+                },
+                "required": ["path", "old_string", "new_string"],
             },
         },
     },
@@ -1089,7 +1494,7 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
                     "content": {"type": "string", "default": ""},
                 },
                 "required": ["path"],
@@ -1103,8 +1508,85 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             "description": "Удаляет файл или папку. Автобэкап перед удалением.",
             "parameters": {
                 "type": "object",
-                "properties": {"path": {"type": "string"}},
+                "properties": {
+                    "path": {"type": "string", "description": "Относительный путь от корня сайта"},
+                },
                 "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mkdir_path",
+            "description": "Создаёт папку (включая родителей) в корне сайта.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Относительный путь папки"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "copy_path",
+            "description": "Копирует файл или папку внутри сайта.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                },
+                "required": ["src", "dst"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_path",
+            "description": "Перемещает или переименовывает файл/папку внутри сайта.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                },
+                "required": ["src", "dst"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_edits",
+            "description": (
+                "Пакетная правка нескольких файлов за один вызов. "
+                "Передай список {path, old_string, new_string}. "
+                "Предпочтительнее нескольких str_replace подряд."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "edits": {
+                        "type": "array",
+                        "description": "Список правок",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "old_string": {"type": "string"},
+                                "new_string": {"type": "string"},
+                                "replace_all": {"type": "boolean"},
+                            },
+                            "required": ["path", "old_string", "new_string"],
+                        },
+                    },
+                },
+                "required": ["edits"],
             },
         },
     },
@@ -1113,20 +1595,23 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
         "function": {
             "name": "list_dir",
             "description": (
-                "Список файлов и папок. "
-                "Используй recursive=true для полного сканирования проекта. "
-                "ВСЕГДА вызывай этот инструмент когда пользователь спрашивает о файлах в папке."
+                "Список файлов и папок сайта/проекта. "
+                "Путь '.' или пустой = корень сайта. recursive=true для полного дерева."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {
+                        "type": "string",
+                        "description": "Относительный путь ('.' = корень сайта)",
+                        "default": ".",
+                    },
                     "recursive": {"type": "boolean", "default": False,
                                   "description": "true — рекурсивно по всем подпапкам"},
                     "extensions": {"type": "string", "default": "",
                                    "description": "Фильтр по расширениям через запятую: '.py,.js'"},
                 },
-                "required": ["path"],
+                "required": [],
             },
         },
     },
@@ -1139,10 +1624,14 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "pattern": {"type": "string", "description": "Glob-маска: '*.py', '*.env', 'README*'"},
-                    "root": {"type": "string", "description": "Папка для поиска"},
+                    "root": {
+                        "type": "string",
+                        "description": "Папка для поиска (по умолчанию корень сайта)",
+                        "default": ".",
+                    },
                     "max_depth": {"type": "integer", "default": 6},
                 },
-                "required": ["pattern", "root"],
+                "required": ["pattern"],
             },
         },
     },
@@ -1155,9 +1644,37 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "root": {"type": "string", "description": "Корневая папка проекта"},
+                    "root": {
+                        "type": "string",
+                        "description": "Корневая папка (по умолчанию корень сайта)",
+                        "default": ".",
+                    },
                 },
-                "required": ["query", "root"],
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "smart_search",
+            "description": (
+                "Умный поиск по сайту: имена файлов, пути папок и фрагменты кода. "
+                "mode: all | name | path | content. Используй вместо ручного list_dir."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Что искать: header, style.css, site-title…"},
+                    "root": {"type": "string", "default": "."},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["all", "name", "path", "content"],
+                        "default": "all",
+                    },
+                    "max_results": {"type": "integer", "default": 80},
+                },
+                "required": ["query"],
             },
         },
     },
@@ -1499,6 +2016,146 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
             },
         },
     },
+    # ── Hosting / WordPress (VPS panel) ───────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "site_status",
+            "description": (
+                "Статус текущего сайта: WordPress?, домен, index, MySQL, siteurl/home. "
+                "Вызывай первым при проблемах с сайтом."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": ".", "description": "Корень сайта (обычно '.')"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "wp_replace_urls",
+            "description": (
+                "WordPress: заменить siteurl/home и URL в постах. "
+                "old_url='AUTO' — взять из БД. new_url например http://5mb2.ru"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "new_url": {"type": "string"},
+                    "old_url": {"type": "string", "default": "AUTO"},
+                    "table_prefix": {"type": "string", "default": ""},
+                    "path": {"type": "string", "default": "."},
+                },
+                "required": ["new_url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "site_fix_perms",
+            "description": "Выставить права 755/644 на файлы сайта (nginx не видит файлы).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "flatten_site_layout",
+            "description": (
+                "Разворачивает вложенный public_html/www/wordpress в корень сайта "
+                "(после кривого ZIP с хостинга)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "php_lint",
+            "description": "Проверка синтаксиса PHP (php -l).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Путь к .php файлу"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "nginx_test",
+            "description": "Проверить конфиг nginx (nginx -t), если доступен.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "site_health_check",
+            "description": (
+                "Автопроверка сайта: структура, WordPress/БД, viewport, съехавший header/float, "
+                "права. auto_fix=true — сразу исправить безопасные проблемы (clearfix, viewport, flatten, URL)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "."},
+                    "auto_fix": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "true — применить автоисправления",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "dns_lookup",
+            "description": (
+                "Проверить DNS домена: A/AAAA/NS/MX/TXT/CNAME и совпадение с IP VPS. "
+                "Используй при проблемах доступа к сайту / «сайт не открывается»."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "description": "Домен, например 5mb2.ru",
+                    },
+                },
+                "required": ["domain"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "system_overview",
+            "description": (
+                "Сводка системы: здоровье панели/API/DeepSeek/сайтов, DNS, docker, "
+                "что DeepSeek может править (сайты vs бэкенд)."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
     # ── Self-evolution ────────────────────────────────────────────────────────
     {
         "type": "function",
@@ -1576,15 +2233,49 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     },
 ]
 
+def dns_lookup(domain: str = "") -> Dict[str, Any]:
+    import dns_tools as dt
+
+    return dt.lookup_domain(domain, expected_ip=dt.detect_vps_ip())
+
+
+def system_overview_tool() -> Dict[str, Any]:
+    import importlib
+
+    so = importlib.import_module("system_overview")
+    return so.build_overview(include_health=True, include_dns=True)
+
+
+def _hosting_fns() -> Dict[str, Any]:
+    import hosting_tools as ht
+    return {
+        "site_status": ht.site_status,
+        "wp_replace_urls": ht.wp_replace_urls,
+        "site_fix_perms": ht.site_fix_perms,
+        "flatten_site_layout": ht.flatten_site_layout,
+        "php_lint": ht.php_lint,
+        "nginx_test": ht.nginx_test,
+        "site_health_check": ht.site_health_check,
+        "dns_lookup": dns_lookup,
+        "system_overview": system_overview_tool,
+    }
+
+
 TOOL_FUNCTIONS: Dict[str, Any] = {
     "read_file": read_file,
     "read_file_lines": read_file_lines,
     "write_file": write_file,
+    "str_replace": str_replace,
     "create_file": create_file,
     "delete_file": delete_file,
+    "mkdir_path": mkdir_path,
+    "copy_path": copy_path,
+    "move_path": move_path,
+    "apply_edits": apply_edits,
     "list_dir": list_dir,
     "find_files": find_files,
     "search_code": search_code,
+    "smart_search": smart_search,
     "run_command": run_command,
     "run_powershell": run_powershell,
     "get_env_var": get_env_var,
@@ -1609,6 +2300,8 @@ TOOL_FUNCTIONS: Dict[str, Any] = {
     "notify_windows": notify_windows,
     "format_code": format_code,
     "check_deps": check_deps,
+    # hosting / wordpress
+    **_hosting_fns(),
     # self-evolution
     "apply_self_improvement": apply_self_improvement,
     "self_update_check": self_update_check,

@@ -14,6 +14,8 @@ services:
       - ai_helper_data:/root/.ai-helper
       - /var/ai-helper/sites:/opt/sites
       - /var/ai-helper/sites:/var/ai-helper/sites
+      # Исходники панели/API — чтобы DeepSeek (чат site=server) правил бэкенд
+      - /opt/ai-helper:/opt/ai-helper
     env_file:
       - ../.env
     environment:
@@ -22,6 +24,8 @@ services:
       - AI_HELPER_API_PORT=8502
       - SITES_ROOT=/opt/sites
       - HOST_SITES_PATH=/var/ai-helper/sites
+      - AI_HELPER_PROJECT=/opt/ai-helper/project
+      - VPS_PUBLIC_IP=${VPS_PUBLIC_IP:-80.78.248.195}
       - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
       - MAX_UPLOAD_BYTES=2147483648
       - PANEL_PASSWORD=${PANEL_PASSWORD:-}
@@ -30,6 +34,8 @@ services:
       - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
       - LLM_PREFER_FREE=${LLM_PREFER_FREE:-1}
       - FAST_LLM_MODEL=${FAST_LLM_MODEL:-qwen2.5:1.5b}
+      - PUBLIC_WIDGET_GUEST=${PUBLIC_WIDGET_GUEST:-1}
+      - PUBLIC_AUTH_REQUIRED=${PUBLIC_AUTH_REQUIRED:-1}
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}

@@ -1,60 +1,52 @@
-# AI Helper — VS Code Extension
+# AI Helper для VS Code — 1.3
 
-Локальный AI-ассистент прямо в VS Code. Работает с твоим Ollama и Groq.
+## Обновить расширение БЕЗ `git pull` всего репо
 
-## Установка
+Качается только папка расширения (~несколько файлов). Если версия уже стоит — **ничего не качает**.
 
-### Вариант 1: Из VSIX (рекомендуется)
+### Способ 1 — одна команда (рекомендуется)
 
-```cmd
-cd vscode-extension
-npm install
-npm run package
+В **PowerShell**:
+
+```powershell
+irm https://raw.githubusercontent.com/attack444/AI-assistent/cursor/complete-ai-helper-17f9/project/vscode-extension/update-extension.ps1 | iex
 ```
 
-Затем в VS Code: `Ctrl+Shift+P` → "Extensions: Install from VSIX" → выбери `ai-helper-1.0.0.vsix`
+Потом **полностью закрой и открой VS Code**.
 
-### Вариант 2: Символическая ссылка (для разработки)
+### Способ 2 — bat-файл
 
-Скопируй папку `vscode-extension` в:
-- Windows: `%USERPROFILE%\.vscode\extensions\ai-helper-1.0.0`
-- Перезапусти VS Code
+Если репо уже есть локально — запусти  
+`project\vscode-extension\install-from-github.bat`  
+(он всё равно тянет свежие файлы с GitHub, не копирует устаревшую локальную копию).
 
-## Требования
+### Что делает скрипт
 
-- AI Helper должен быть запущен (`START.bat`)
-- API сервер работает на `http://localhost:8502`
+1. Скачивает только `package.json` → смотрит версию  
+2. Если такая же уже в `%USERPROFILE%\.vscode\extensions\` → выход  
+3. Иначе качает ~7 файлов расширения и удаляет старые папки `ai-helper*`  
+4. Не трогает остальной проект / сайты / Docker  
 
-## Горячие клавиши
+---
 
-| Клавиша | Действие |
-|---|---|
-| `Ctrl+Alt+A` | Спросить про файл/выделение |
-| `Ctrl+Alt+F` | Найти и исправить баги |
-| `Ctrl+Alt+C` | Smart Git Commit |
+## Настройка после установки
 
-## Команды (Ctrl+Shift+P → "AI Helper:")
+`Ctrl+Shift+P` → **AI Helper: Настройка VPS**  
+→ пароль панели → сайт → авто-синк  
 
-- **Спросить про файл** — задать вопрос с контекстом открытого файла
-- **Найти и исправить баги** — анализ кода
-- **Объяснить код** — подробное объяснение
-- **Написать тесты** — pytest/jest тесты
-- **Smart Git Commit** — AI генерирует commit message
-- **Smart Git Commit + Push** — коммит + пуш
+В Settings → AI Helper должны быть: **Password**, **Site**, **Auto Sync On Save**.  
+Если только Api Url / Chat Url — VS Code ещё держит старое расширение: закрой редактор и повтори команду выше.
 
-## Контекстное меню
+Форматтеры в списке Settings к AI Helper не относятся.
 
-Правый клик в редакторе → раздел "AI Helper"
+---
 
-## SCM (Source Control)
+## Сервер (панель / API) — отдельно
 
-В панели Git появляются кнопки "AI Helper: Smart Commit" и "+ Push"
+Расширение ≠ сервер. API на VPS обновляй так:
 
-## Настройки
-
-```json
-{
-  "aiHelper.apiUrl": "http://localhost:8502",
-  "aiHelper.chatUrl": "http://localhost:8501"
-}
+```bash
+curl -fsSL https://raw.githubusercontent.com/attack444/AI-assistent/cursor/complete-ai-helper-17f9/project/deploy/bootstrap-update.sh | bash
 ```
+
+`git pull` всего репо на ПК для расширения **не нужен**.

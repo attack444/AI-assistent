@@ -23,6 +23,12 @@ project/.env
 project/deploy/site.env
 project/deploy/*.local.sh
 
+# WordPress site dumps (secrets / huge media) — see sites/5mb2/.gitignore too
+**/wp-config.php
+**/wp-content/uploads/
+**/*.sql
+**/*.sql.gz
+
 # Streamlit (config.toml коммитим, локальные credentials — нет)
 .streamlit/*
 !.streamlit/config.toml

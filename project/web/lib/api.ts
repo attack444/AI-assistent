@@ -150,6 +150,132 @@ export function uploadFs(path: string, file: File) {
   );
 }
 
+export type FeedbackItem = {
+  at?: string;
+  type?: string;
+  type_label?: string;
+  message?: string;
+  email?: string;
+  page?: string;
+  source?: string;
+  ip?: string;
+};
+
+export function listFeedback(limit = 100) {
+  return request<{ ok: boolean; items: FeedbackItem[]; count: number }>(
+    `/feedback?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
+export type HealthCheck = {
+  id?: string;
+  label?: string;
+  ok?: boolean;
+  status?: number;
+  error?: string | null;
+  warn?: string;
+  ms?: number;
+  priority?: number;
+  model?: string;
+};
+
+export type SystemHealthReport = {
+  ok: boolean;
+  priority_ok?: boolean;
+  at?: string;
+  checks?: HealthCheck[];
+  failed?: string[];
+  priority_failed?: string[];
+  actions?: { action?: string; container?: string; ok?: boolean; error?: string }[];
+  ai_repair?: { ok?: boolean; reply?: string; tools?: string[]; error?: string; skipped?: boolean };
+  recovered?: boolean;
+  incident?: FeedbackItem | null;
+};
+
+export function getSystemHealth() {
+  return request<SystemHealthReport>("/system/health");
+}
+
+export function listSystemIncidents(limit = 50) {
+  return request<{ ok: boolean; items: FeedbackItem[]; count: number }>(
+    `/system/incidents?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
+export function runSystemWatchdog(opts?: {
+  remediate?: boolean;
+  ask_deepseek?: boolean;
+}) {
+  return request<SystemHealthReport>("/system/watchdog", {
+    method: "POST",
+    body: JSON.stringify({
+      remediate: opts?.remediate ?? true,
+      ask_deepseek: opts?.ask_deepseek ?? false,
+    }),
+  });
+}
+
+export type DnsInfo = {
+  ok?: boolean;
+  domain?: string;
+  site?: string;
+  records?: {
+    A?: string[];
+    AAAA?: string[];
+    NS?: string[];
+    MX?: string[];
+    TXT?: string[];
+    CNAME?: string[];
+  };
+  www_a?: string[];
+  expected_ip?: string | null;
+  points_to_vps?: boolean | null;
+  issues?: string[];
+  healthy?: boolean;
+  error?: string;
+};
+
+export type Capability = {
+  id?: string;
+  label?: string;
+  deepseek?: boolean;
+  panel?: boolean;
+  how?: string;
+  note?: string;
+  available_now?: boolean;
+  workspace?: string;
+};
+
+export type SystemOverview = {
+  ok: boolean;
+  at?: string;
+  vps_ip?: string;
+  api_status?: ApiStatus & { llm_prefer_free?: boolean; free_llm?: boolean };
+  health?: SystemHealthReport;
+  dns?: DnsInfo[];
+  docker?: { name?: string; status?: string; ports?: string }[];
+  incidents?: FeedbackItem[];
+  capabilities?: Capability[];
+  workspaces?: {
+    sites_root?: string;
+    server_project?: string;
+    server_editable?: boolean;
+    chat_server_hint?: string;
+  };
+  links?: Record<string, string>;
+};
+
+export function getSystemOverview() {
+  return request<SystemOverview>("/system/overview");
+}
+
+export function getSystemDns(domain?: string) {
+  const q = domain ? `?domain=${encodeURIComponent(domain)}` : "";
+  return request<{ ok?: boolean; items?: DnsInfo[]; vps_ip?: string } & DnsInfo>(
+    `/system/dns${q}`,
+  );
+}
+
 export function listSites() {
   return request<{ ok: boolean; sites: SiteInfo[]; sites_root: string }>("/sites");
 }
@@ -506,19 +632,102 @@ async function uploadBinary<T>(path: string, file: File): Promise<T> {
   return data as T;
 }
 
+export type ChatSummary = {
+  id: string;
+  title: string;
+  site_id?: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type ChatMessage = {
+  id: number | string;
+  role: "user" | "assistant" | "tool" | string;
+  content: string;
+  meta?: Record<string, unknown>;
+  created_at?: number;
+};
+
+export type ChatDetail = ChatSummary & {
+  messages: ChatMessage[];
+};
+
+export type SiteContext = {
+  ok: boolean;
+  site?: string | null;
+  project?: string | null;
+  project_root?: string | null;
+  snapshot?: string;
+  card?: string;
+  tree?: string[];
+  can_edit?: boolean;
+  is_wordpress?: boolean;
+  domain?: string | null;
+  has_index?: boolean;
+  url?: string;
+};
+
 export type ChatEvent =
   | { type: "text"; content: string }
   | { type: "error"; content: string }
   | { type: "tool_call"; name: string; args?: unknown }
+  | {
+      type: "tool_result";
+      name: string;
+      result?: {
+        ok?: boolean;
+        path?: string;
+        edited?: boolean;
+        added?: number;
+        removed?: number;
+        error?: string;
+        diff?: string;
+      };
+    }
   | { type: "info"; content: string }
-  | { type: "done" };
+  | { type: "chat"; chat_id: string; site?: string | null; project?: string | null; project_root?: string | null }
+  | { type: "done"; chat_id?: string };
+
+export function listChats(site?: string) {
+  const q = site ? `?site=${encodeURIComponent(site)}` : "";
+  return request<{ ok: boolean; chats: ChatSummary[] }>(`/chats${q}`);
+}
+
+export function getChat(id: string) {
+  return request<{ ok: boolean; chat: ChatDetail }>(`/chats/${encodeURIComponent(id)}`);
+}
+
+export function createChat(site?: string, title?: string) {
+  return request<{ ok: boolean; chat: ChatDetail }>("/chats", {
+    method: "POST",
+    body: JSON.stringify({ site: site || "", title: title || "Новый чат" }),
+  });
+}
+
+export function renameChat(id: string, title: string) {
+  return request<{ ok: boolean; chat: ChatDetail }>("/chats/rename", {
+    method: "POST",
+    body: JSON.stringify({ id, title }),
+  });
+}
+
+export function deleteChat(id: string) {
+  return request<{ ok: boolean }>(`/chats/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function getSiteContext(site?: string) {
+  const q = site ? `?site=${encodeURIComponent(site)}` : "";
+  return request<SiteContext>(`/context${q}`);
+}
 
 export async function streamChat(
   message: string,
   history: { role: string; content: string }[],
   onEvent: (ev: ChatEvent) => void,
   signal?: AbortSignal,
-  opts?: { site?: string; project?: string },
+  opts?: { site?: string; project?: string; chat_id?: string },
 ) {
   const res = await fetch(`${API_BASE}/chat/stream`, {
     method: "POST",
@@ -531,6 +740,7 @@ export async function streamChat(
       history,
       ...(opts?.site ? { site: opts.site } : {}),
       ...(opts?.project ? { project: opts.project } : {}),
+      ...(opts?.chat_id ? { chat_id: opts.chat_id } : {}),
     }),
     signal,
   });

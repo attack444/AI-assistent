@@ -1,0 +1,1547 @@
+# Translation of Plugins - RSS Aggregator &#8211; RSS Import, News Feeds, Feed to Post, and Autoblogging - Stable (latest release) in Russian
+# This file is distributed under the same license as the Plugins - RSS Aggregator &#8211; RSS Import, News Feeds, Feed to Post, and Autoblogging - Stable (latest release) package.
+msgid ""
+msgstr ""
+"PO-Revision-Date: 2025-11-24 13:58:42+0000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n % 10 == 1 && n % 100 != 11) ? 0 : ((n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? 1 : 2);\n"
+"X-Generator: GlotPress/4.0.3\n"
+"Language: ru\n"
+"Project-Id-Version: Plugins - RSS Aggregator &#8211; RSS Import, News Feeds, Feed to Post, and Autoblogging - Stable (latest release)\n"
+
+#: v4/includes/v5-notices.php:396 core/js/dist/admin.js:108
+msgid "Minutes"
+msgstr "Минуты"
+
+#: v4/includes/v5-notices.php:391 core/js/dist/admin.js:108
+msgid "Hours"
+msgstr "Часы"
+
+#: v4/includes/v5-notices.php:386 core/js/dist/admin.js:108
+msgid "Days"
+msgstr "Дни"
+
+#: v4/includes/v5-notices.php:377 core/js/dist/admin.js:37
+msgid "Contact support"
+msgstr "Связаться со службой поддержки"
+
+#: v4/src/Modules/FeedTemplatesModule.php:130
+#: v4/src/Modules/FeedTemplatesModule.php:133
+#: v4/src/Modules/FeedTemplatesModule.php:141
+#: v4/src/Modules/FeedTemplatesModule.php:230
+#: v4/src/Modules/FeedTemplatesModule.php:231 core/js/dist/admin.js:114
+msgid "Templates"
+msgstr "Шаблоны"
+
+#: v4/src/Modules/FeedTemplatesModule.php:134
+msgid "Add New Template"
+msgstr "Добавить новый шаблон"
+
+#: v4/src/Modules/FeedTemplatesModule.php:135
+msgid "Edit Template"
+msgstr "Изменить шаблон"
+
+#: v4/src/Modules/FeedTemplatesModule.php:136
+msgid "New Template"
+msgstr "Новый шаблон"
+
+#: v4/src/Modules/FeedTemplatesModule.php:137
+msgid "View Template"
+msgstr "Просмотреть шаблон"
+
+#: v4/src/Modules/FeedTemplatesModule.php:496
+#: v4/src/Templates/Feeds/Types/ListTemplateType.php:29
+#: core/js/dist/admin.js:23
+msgid "List"
+msgstr "Список"
+
+#: v4/src/Modules/FeedTemplatesModule.php:529 core/js/dist/admin.js:37
+msgid "Numbered"
+msgstr "Нумерованный"
+
+#: v4/src/Modules/FeedTemplatesModule.php:532
+msgid "Bullets"
+msgstr "Маркеры"
+
+#: v4/src/Modules/FeedTemplatesModule.php:533
+msgid "Numbers"
+msgstr "Числа"
+
+#: v4/src/Modules/ImagesModule.php:150 core/js/dist/admin.js:37
+msgid "Image"
+msgstr "Изображение"
+
+#: v4/src/Modules/ImagesModule.php:191 v4/src/Modules/ImagesModule.php:289
+#: core/js/dist/admin.js:108
+msgid "Images"
+msgstr "Изображения"
+
+#: v4/src/Modules/ImportExportToolsModule.php:30 core/js/dist/admin.js:38
+msgid "Export"
+msgstr "Экспорт"
+
+#: v4/src/Modules/ImportExportToolsModule.php:43 core/js/dist/admin.js:38
+#: core/js/dist/admin.js:78
+msgid "Import"
+msgstr "Импорт"
+
+#: v4/src/Modules/ResetToolModule.php:30 core/js/dist/admin.js:108
+msgid "Reset"
+msgstr "Сбросить"
+
+#: v4/src/Modules/SysInfoToolModule.php:30
+msgid "System Info"
+msgstr "Сведения о системе"
+
+#: v4/src/Modules/ToolsModule.php:41 v4/src/Modules/ToolsModule.php:52
+msgid "Tools"
+msgstr "Инструменты"
+
+#: v4/src/Modules/UpsellModule.php:88 v4/src/Modules/UpsellModule.php:101
+#: v4/src/Modules/UpsellModule.php:114 v4/src/Modules/UpsellModule.php:129
+msgid "See Pricing"
+msgstr "Смотреть цены"
+
+#: v4/src/Modules/UpsellModule.php:126
+msgid "Priority support"
+msgstr "Приоритетная поддержка"
+
+#: v4/src/RestApi/Auth/AuthVerifyNonce.php:55
+msgid "Invalid request"
+msgstr "Неверный запрос"
+
+#: v4/src/Twig/Extensions/Date/TwigDateTranslator.php:63
+#: core/js/dist/admin.js:108
+msgid "day"
+msgid_plural "days"
+msgstr[0] "дней"
+msgstr[1] "дн"
+msgstr[2] "notFound"
+
+#: v4/src/Twig/Extensions/Date/TwigDateTranslator.php:66
+#: core/js/dist/admin.js:108
+msgid "hour"
+msgid_plural "hours"
+msgstr[0] "час"
+msgstr[1] "часов"
+msgstr[2] "notFound"
+
+#: v4/src/Twig/Extensions/Date/TwigDateTranslator.php:69
+#: core/js/dist/admin.js:108
+msgid "minute"
+msgid_plural "minutes"
+msgstr[0] "минута"
+msgstr[1] "минуты"
+msgstr[2] "notFound"
+
+#: v4/src/Twig/Extensions/Date/TwigDateTranslator.php:72
+msgid "second"
+msgid_plural "seconds"
+msgstr[0] "секунда"
+msgstr[1] "секунды"
+msgstr[2] "notFound"
+
+#: v4/src/Twig/Extensions/Date/TwigDateTranslator.php:75
+#: core/js/dist/admin.js:108
+msgid "month"
+msgid_plural "months"
+msgstr[0] "месяц"
+msgstr[1] "месяцы"
+msgstr[2] "месяцы"
+
+#: v4/src/Twig/Extensions/Date/TwigDateTranslator.php:78
+#: core/js/dist/admin.js:108
+msgid "year"
+msgid_plural "years"
+msgstr[0] "год"
+msgstr[1] "годы"
+msgstr[2] "годы"
+
+#: v4/src/Ui/BlacklistTable.php:130
+msgid "Edit"
+msgstr "Изменить"
+
+#: v4/src/Ui/BlacklistTable.php:134 v4/src/Ui/BlacklistTable.php:171
+#: core/js/dist/admin.js:37 core/js/dist/admin.js:38 core/js/dist/admin.js:108
+msgid "Delete"
+msgstr "Удалить"
+
+#: v4/includes/admin-help.php:111
+msgid "Premium Support"
+msgstr "Премиум поддержка"
+
+#: v4/includes/admin-help.php:196
+msgid "Email"
+msgstr "Email"
+
+#: v4/includes/admin-help.php:211
+msgid "Subject"
+msgstr "Тема письма"
+
+#: v4/includes/admin-help.php:221
+msgid "Message"
+msgstr "Сообщение"
+
+#: v4/includes/legacy-feed-display.php:203
+msgctxt "Text before author name. Example: \"By John Smith\" "
+msgid "By"
+msgstr "Автор"
+
+#: v4/includes/admin-intro-page.php:420
+msgctxt "default name of shortcode page"
+msgid "Feeds"
+msgstr "Потоки"
+
+#: v4/includes/scripts.php:109
+msgid "Global"
+msgstr "Глобально"
+
+#: v4/includes/v5-notices.php:55
+msgid "Note:"
+msgstr "Примечание:"
+
+#: v4/includes/admin-help.php:27
+msgid "Knowledge Base"
+msgstr "База знаний"
+
+#: core/modules/admin.php:129 v4/src/Modules/LogsToolModule.php:33
+msgid "Logs"
+msgstr "Журналы"
+
+#: core/modules/feedItems.php:50
+msgid "Featured Image"
+msgstr "Изображение записи"
+
+#: core/modules/feedItems.php:51 core/js/dist/admin.js:114
+msgid "Set featured image"
+msgstr "Установить изображение записи"
+
+#: core/modules/feedItems.php:52
+msgid "Remove featured image"
+msgstr "Удалить изображение записи"
+
+#: core/modules/feedItems.php:53
+msgid "Use as featured image"
+msgstr "Использовать как изображение записи"
+
+#: core/modules/feedItems.php:91 core/js/dist/admin.js:37
+#: core/js/dist/admin.js:108
+msgid "Author"
+msgstr "Автор"
+
+#: core/modules/feedItems.php:92 core/js/dist/admin.js:37
+#: core/js/dist/admin.js:38 core/js/dist/admin.js:108
+msgid "Date"
+msgstr "По дате создания"
+
+#: core/src/Tier.php:16 core/js/dist/admin.js:13
+msgid "Free"
+msgstr "Бесплатно"
+
+#: core/modules/feedItems.php:108
+msgid "(no title)"
+msgstr "(без названия)"
+
+#: core/src/Tier.php:18 core/js/dist/admin.js:13 core/js/dist/admin.js:108
+msgid "Basic"
+msgstr "Базовый"
+
+#: core/src/Tier.php:20 core/js/dist/admin.js:13
+msgid "Plus"
+msgstr "Плюс"
+
+#: core/modules/licensing.php:37
+msgctxt "Name of the free plan"
+msgid "Free"
+msgstr "Бесплатно"
+
+#: core/src/Tier.php:22 core/js/dist/admin.js:13 core/js/dist/admin.js:108
+msgid "Pro"
+msgstr "ПРО"
+
+#: core/modules/licensing.php:51
+msgctxt "Name of the basic plan"
+msgid "Basic"
+msgstr "Базовый"
+
+#: core/src/Tier.php:26 core/js/dist/admin.js:37 core/js/dist/admin.js:108
+msgid "Unknown"
+msgstr "Неизвестно"
+
+#: core/modules/licensing.php:70
+msgctxt "Name of the plus plan"
+msgid "Plus"
+msgstr "Плюс"
+
+#: core/src/Utils/Result.php:107
+msgid "An unknown error occurred"
+msgstr "Произошла неизвестная ошибка"
+
+#: core/modules/licensing.php:88
+msgctxt "Name of the pro plan"
+msgid "Pro"
+msgstr "ПРО"
+
+#: core/src/V4/V4TemplatesMigrator.php:149
+#: core/src/V4/V4TemplatesMigrator.php:200
+#: v4/src/Modules/FeedTemplatesModule.php:439
+#: v4/src/Templates/Feeds/MasterFeedsTemplate.php:289
+#: v4/src/Templates/Feeds/Types/ListTemplateType.php:109
+msgid "By"
+msgstr "Автор"
+
+#: core/modules/logger.php:47
+msgctxt "post type singular name"
+msgid "Log"
+msgstr "Лог"
+
+#: v4.php:1091
+msgid "Click here to learn more."
+msgstr "Нажмите, чтобы узнать больше."
+
+#: core/modules/logger.php:49
+msgctxt "add new on admin bar"
+msgid "Log"
+msgstr "Лог"
+
+#: v4/includes/admin-display.php:114 v4/includes/admin-heartbeat.php:44
+msgid "..."
+msgstr "..."
+
+#: core/modules/logger.php:65
+msgctxt "post status"
+msgid "Alert"
+msgstr "Тревога"
+
+#: v4/includes/admin-display.php:134
+msgctxt "Example: \"Updated 2 days ago\""
+msgid "Updated"
+msgstr "Обновлен"
+
+#: core/modules/logger.php:66
+msgctxt "post status"
+msgid "Critical"
+msgstr "Критическое"
+
+#: v4/includes/admin-display.php:145
+msgctxt "Example: \"15 new\""
+msgid "items"
+msgstr "элементы"
+
+#: core/modules/logger.php:67
+msgctxt "post status"
+msgid "Error"
+msgstr "Ошибка"
+
+#: core/modules/logger.php:68
+msgctxt "post status"
+msgid "Warning"
+msgstr "Внимание"
+
+#: v4/includes/admin-display.php:184
+msgid "items"
+msgstr "элементы"
+
+#: core/modules/logger.php:69
+msgctxt "post status"
+msgid "Notice"
+msgstr "Заметка"
+
+#: v4/includes/admin-display.php:197
+msgid "Fetch"
+msgstr "Привести"
+
+#: core/modules/logger.php:70
+msgctxt "post status"
+msgid "Info"
+msgstr "Инфо"
+
+#: core/modules/admin.php:125 v4/includes/admin-display.php:818
+#: v4/src/Modules/UpsellModule.php:292 core/js/dist/admin.js:21
+#: core/js/dist/admin.js:114
+msgid "Upgrade"
+msgstr "Обновить"
+
+#: core/modules/logger.php:71
+msgctxt "post status"
+msgid "Debug"
+msgstr "Отлаживать"
+
+#: v4/includes/admin-editor.php:120 v4/src/Modules/FeedTemplatesModule.php:131
+msgid "Template"
+msgstr "Шаблон"
+
+#: core/src/Display/DisplaySettings.php:123
+msgctxt "Default value for the \"Author prefix\" display setting"
+msgid "By "
+msgstr "От "
+
+#: v4/includes/admin-editor.php:187 core/js/dist/admin.js:37
+msgid "Pagination"
+msgstr "Пагинация"
+
+#: core/src/Display/DisplaySettings.php:124
+msgctxt "Default value for the \"Read more text\" display setting"
+msgid "Read more"
+msgstr "Читать далее"
+
+#: v4/includes/admin-editor.php:192
+msgid "Enabled"
+msgstr "Включить"
+
+#: core/src/Display/LayoutTrait.php:152
+msgctxt "Time ago format"
+msgid "%s ago"
+msgstr "%s назад"
+
+#: v4/includes/admin-editor.php:193
+msgid "Disabled"
+msgstr "Отключено"
+
+#: core/src/Display/LayoutTrait.php:154
+msgctxt "Time ago format (future)"
+msgid "%s from now"
+msgstr "%s тому назад"
+
+#. Author of the plugin
+#: wp-rss-aggregator.php
+msgid "RebelCode"
+msgstr "RebelCode"
+
+#: core/src/Renderer.php:397
+msgid "Previous"
+msgstr "Назад"
+
+#. Author URI of the plugin
+#: wp-rss-aggregator.php
+msgid "https://rebelcode.com"
+msgstr "https://rebelcode.com"
+
+#: core/src/Renderer.php:407 core/js/dist/admin.js:114
+msgid "Next"
+msgstr "Далее"
+
+#. translators: the plugin name.
+#: core/edd-sl-updater.php:255
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:257
+msgid "There is a new version of %1$s available."
+msgstr "Доступна новая версия %1$s."
+
+#: core/src/Source/Schedule/MinuteSchedule.php:73
+msgid "Every minute"
+msgid_plural "Every %d minutes"
+msgstr[0] "Ежеминутно"
+msgstr[1] "Каждые %d минут"
+msgstr[2] "Каждые %d минут"
+
+#: core/edd-sl-updater.php:261
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:263
+msgid "Contact your network administrator to install the update."
+msgstr "Обратитесь к администратору сети для установки обновления."
+
+#. translators: 1. opening anchor tag, do not translate 2. the new plugin
+#. version 3. closing anchor tag, do not translate.
+#: core/edd-sl-updater.php:266
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:268
+msgid "%1$sView version %2$s details%3$s."
+msgstr "%1$sПросмотреть версию %2$s подробности%3$s."
+
+#: core/edd-sl-updater.php:274
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:276
+msgid "%1$sView version %2$s details%3$s or %4$supdate now%5$s."
+msgstr "%1$s Просмотреть подробности версии %2$s %3$s или %4$s обновить сейчас %5$s."
+
+#: core/edd-sl-updater.php:285
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:287
+msgid "Update now."
+msgstr "Обновить сейчас."
+
+#: core/modules/admin.php:118 v4/includes/admin-editor.php:129
+#: core/js/dist/admin.js:37 core/js/dist/admin.js:38 core/js/dist/admin.js:108
+#: core/js/dist/admin.js:114
+msgid "Sources"
+msgstr "Источники"
+
+#: core/modules/admin.php:121 core/js/dist/admin.js:37 core/js/dist/admin.js:38
+msgid "Integrations"
+msgstr "Интеграция"
+
+#: core/modules/admin.php:123 core/js/dist/admin.js:37
+msgid "Help"
+msgstr "Помощь"
+
+#: core/modules/debugInfo.php:19
+msgid "Version"
+msgstr "Версия"
+
+#: core/modules/debugInfo.php:23
+msgid "Plan"
+msgstr "Тариф"
+
+#: core/modules/debugInfo.php:34
+msgctxt "fsockopen status in Site Health Info"
+msgid "Unsupported"
+msgstr "Не поддерживается"
+
+#: core/modules/debugInfo.php:43 v4/includes/admin-metaboxes.php:100
+#: core/js/dist/admin.js:13 core/js/dist/admin.js:38
+msgid "Yes"
+msgstr "Да"
+
+#: core/modules/debugInfo.php:44 v4/includes/admin-metaboxes.php:101
+#: core/js/dist/admin.js:13 core/js/dist/admin.js:38
+msgid "No"
+msgstr "Нет"
+
+#: core/modules/logger.php:46
+msgctxt "post type general name"
+msgid "Logs"
+msgstr "Журнал"
+
+#: core/modules/logger.php:48
+msgctxt "admin menu"
+msgid "Logs"
+msgstr "Журнал"
+
+#: core/modules/logger.php:50
+msgid "New Log"
+msgstr "Новый журнал"
+
+#: core/modules/logger.php:51
+msgid "Edit Log"
+msgstr "Изменить журнал"
+
+#: core/modules/logger.php:52
+msgid "View Log"
+msgstr "Посмотреть журнал"
+
+#: core/modules/logger.php:53
+msgid "All Logs"
+msgstr "Все журналы"
+
+#: core/modules/logger.php:54
+msgid "Search Logs"
+msgstr "Поиск журналов"
+
+#: core/modules/logger.php:64
+msgctxt "post status"
+msgid "Emergency"
+msgstr "Неотложно"
+
+#: core/modules/updater.php:22
+msgid "Every 15 Minutes"
+msgstr "Каждые 15 минут"
+
+#: core/modules/updater.php:26
+msgid "Every 30 Minutes"
+msgstr "Каждые 30 минут"
+
+#: core/modules/updater.php:30
+msgid "Every 2 Hours"
+msgstr "Каждые 2 Часа"
+
+#: core/src/Cli/Commands/FeedCommand.php:41
+msgid "Valid"
+msgstr "Действительный"
+
+#: core/src/Cli/Commands/FeedCommand.php:43
+msgid "Invalid"
+msgstr "Ключ неверен"
+
+#: core/src/Importer.php:349
+msgctxt "Progress bar"
+msgid "%1$d/%2$d"
+msgstr "%1$d/%2$d"
+
+#: core/src/Licensing.php:172
+msgid "Your license has expired."
+msgstr "Срок действия вашей лицензии истек."
+
+#: core/src/Licensing.php:232 core/src/Licensing.php:246
+msgid "Invalid license key"
+msgstr "Неверный лицензионный ключ"
+
+#: core/src/Rpc/Handlers/RpcWpHandler.php:98
+msgid "Email is not valid"
+msgstr "Email не действителен"
+
+#: core/src/Rpc/RpcServer.php:81 v4/src/RestApi/EndPointManager.php:94
+msgid "Unauthorized"
+msgstr "Неавторизованный"
+
+#: core/src/Utils/Strings.php:160
+msgctxt "DO NOT TRANSLATE. Change to \"characters\" for Eastern languages"
+msgid "words"
+msgstr "слова"
+
+#: core/src/V4/V4TemplatesMigrator.php:142
+#: core/src/V4/V4TemplatesMigrator.php:197
+#: v4/src/Modules/FeedTemplatesModule.php:436
+#: v4/src/Templates/Feeds/MasterFeedsTemplate.php:286
+#: v4/src/Templates/Feeds/Types/ListTemplateType.php:97
+#: core/js/dist/admin.js:78
+msgid "Source:"
+msgstr "Источник:"
+
+#: core/src/V4/V4TemplatesMigrator.php:145
+#: core/src/V4/V4TemplatesMigrator.php:202
+#: v4/src/Modules/FeedTemplatesModule.php:441
+#: v4/src/Templates/Feeds/MasterFeedsTemplate.php:291
+#: v4/src/Templates/Feeds/Types/ListTemplateType.php:117
+msgid "Published on:"
+msgstr "Дата:"
+
+#: v4.php:588
+msgid "Error Message:"
+msgstr "Сообщение об ошибке:"
+
+#: v4.php:796
+msgctxt "Used like \"Kindly contact your hosting provider or contact support for more information.\""
+msgid "contact support"
+msgstr "связаться с поддержкой"
+
+#: core/modules/logger.php:56
+msgid "No logs found."
+msgstr "Журналы не найдены."
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:344
+msgid "The feed sources have been activated!"
+msgstr "Источники ленты были активированы!"
+
+#: core/edd-sl-updater.php:516
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:519
+msgid "You do not have permission to install plugin updates"
+msgstr "У вас нет прав на установку обновлений плагина"
+
+#: core/edd-sl-updater.php:516
+#: v4/includes/libraries/EDD_licensing/EDD_SL_Plugin_Updater.php:519
+msgid "Error"
+msgstr "Ошибка"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:102
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:156
+msgid "No addon ID"
+msgstr "Нет ID дополнения"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:130
+msgid "Invalid event specified"
+msgstr "Указано недопустимое событие"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:103
+msgid "No event specified"
+msgstr "Не указаны события"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:104
+msgid "No license"
+msgstr "Нет лицензии"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:98
+msgid "Bad nonce"
+msgstr "Неверный номер"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/AjaxController.php:93
+msgid "No nonce"
+msgstr "Нет номера"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:187
+msgid "License"
+msgstr "Лицензия"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:242
+#: core/js/dist/admin.js:37 core/js/dist/admin.js:108 core/js/dist/admin.js:112
+msgid "Enter your license key"
+msgstr "Введите ваш лицензионный ключ"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:346
+msgid "Status"
+msgstr "Статус"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:391
+msgid "No activations left. Click here to manage the sites you've activated licenses on."
+msgstr "Не осталось доступных активаций. Нажмите здесь для управления активированными лицензиями на ваших сайтах."
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:410
+msgid "Renew your license to continue receiving updates and support."
+msgstr "Продлите вашу лицензию для продолжения получения обновлений и поддержки."
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:359
+msgid "Failed to get license information. This is a temporary problem. Check your internet connection and try again later."
+msgstr "Не удалось получить информацию о лицензии. Это временная проблема. Проверьте подключение к Интернету и повторите попытку позже."
+
+#: core/src/Utils/Strings.php:152 v4/includes/misc-functions.php:312
+msgid "&hellip;"
+msgstr "&hellip;"
+
+#: v4/includes/opml-importer.php:63
+msgid "Import OPML"
+msgstr "Импорт OPML"
+
+#: v4/includes/opml-importer.php:74
+msgid "Howdy! Import your feeds here from an OPML (.xml) export file."
+msgstr "Привет! Импортируйте ваши ленты здесь из файла экспорта OPML (.xml)."
+
+#: v4/includes/opml-importer.php:75
+msgid "Click the button below, choose your file, and click 'Upload'."
+msgstr "Нажмите на кнопку ниже, выберите файл и нажмите кнопку \"Загрузить\"."
+
+#: v4/includes/opml-importer.php:76
+msgid "We will take care of the rest."
+msgstr "Мы позаботимся об остальном."
+
+#: v4/includes/opml-importer.php:109
+msgid "Sorry, an error has been encountered."
+msgstr "Извините, была найдена ошибка."
+
+#: v4/includes/opml-importer.php:117
+msgid "Sorry, it seems your uploaded file has been misplaced!"
+msgstr "Извините, кажется, ваш загруженный файл не был распознан!"
+
+#: v4/includes/opml-importer.php:194
+msgid "Feeds were imported successfully!"
+msgstr "Ленты были успешно импортированы!"
+
+#: v4/includes/opml-importer.php:201 v4/includes/opml-importer.php:232
+msgid "ID"
+msgstr "ID"
+
+#: v4/includes/opml-importer.php:264
+msgid "WP RSS OPML"
+msgstr "WP RSS OPML"
+
+#: v4/includes/opml-importer.php:265
+msgid "Import Feeds from an OPML file into WP RSS Aggregator"
+msgstr "Импорт ленты из OPML файла в WP RSS Aggregator"
+
+#: v4/includes/scripts.php:20 v4/includes/scripts.php:34
+msgid "Please wait ..."
+msgstr "Пожалуйста, подождите ..."
+
+#: v4/includes/scripts.php:31
+msgid "Failed to import"
+msgstr "Ошибка импорта"
+
+#: v4/includes/scripts.php:35
+msgid "Bulk Add"
+msgstr "Массовое добавление"
+
+#: v4/includes/scripts.php:36
+msgid "OK"
+msgstr "OK"
+
+#: v4/includes/scripts.php:37 core/js/dist/admin.js:37 core/js/dist/admin.js:38
+#: core/js/dist/admin.js:108
+msgid "Cancel"
+msgstr "Отмена"
+
+#: v4/includes/scripts.php:38
+msgid "The feed items listed here will be disregarded when importing new items from your feed sources."
+msgstr "Пункты лент, перечисленные здесь, будут учитываться при импорте новых пунктов из ваших источников лент."
+
+#: v4/includes/scripts.php:40
+msgid "Remove selected from Blacklist"
+msgstr "Удалить выбранные из черного списка"
+
+#: v4/includes/scripts.php:53 core/js/dist/admin.js:37 core/js/dist/admin.js:38
+msgid "Pause"
+msgstr "Пауза"
+
+#: v4/includes/scripts.php:64
+msgid "Activating..."
+msgstr "Активация..."
+
+#: v4/includes/scripts.php:65
+msgid "Deactivating..."
+msgstr "Деактивация..."
+
+#: v4/includes/system-info.php:106
+msgid "Your server supports fsockopen."
+msgstr "Ваш сервер поддерживает fsockopen."
+
+#: v4/includes/system-info.php:106
+msgid "Your server does not support fsockopen."
+msgstr "Ваш сервер не поддерживает fsockopen."
+
+#: v4/includes/update.php:67
+msgid "No Follow"
+msgstr "Не поддерживать"
+
+#: v4/includes/update.php:69
+msgid "Follow"
+msgstr "Поддерживать"
+
+#. Plugin URI of the plugin
+#: wp-rss-aggregator.php
+msgid "https://wprssaggregator.com"
+msgstr "https://wprssaggregator.com"
+
+#. Plugin Name of the plugin
+#: wp-rss-aggregator.php core/modules/debugInfo.php:15
+msgid "WP RSS Aggregator"
+msgstr "WP RSS Aggregator"
+
+#: v4/includes/system-info.php:64
+msgid "Could not determine database driver version"
+msgstr "Невозможно определить версию драйвера базы данных"
+
+#: v4/includes/scripts.php:70
+msgid "Sending..."
+msgstr "Отправляем..."
+
+#: v4/includes/scripts.php:78
+msgid "Your message has been sent and we'll send you a confirmation e-mail when we receive it."
+msgstr "Выше сообщение было отправлено и мы пришлем вам сообщение с подтверждением когда мы его получим."
+
+#: v4/includes/scripts.php:72
+msgid "There was an error sending the form. Please use the <a href=\"%s\">contact form on our site.</a>"
+msgstr "Возникла ошибка отправки формы. Пожалуйста используйте <a href=\"%s\">контактную форму на нашем сайте.</a>"
+
+#. translators: If your word count is based on single characters (East Asian
+#. characters), enter 'characters'. Otherwise, enter 'words'. Do not translate
+#. into your own language.
+#: v4/includes/misc-functions.php:320
+msgctxt "word count: words or characters?"
+msgid "words"
+msgstr "слов"
+
+#: v4/includes/image-caching.php:544
+msgid "The file library cannot be read from %1$s"
+msgstr "Библиотека файлов не может быть прочитана с %1$s"
+
+#: v4/includes/image-caching.php:538
+msgid "Could not create directory: \"%1$s\". Filename: \"%2$s\""
+msgstr "Не могу создать папку: \"%1$s\". Имя файла: \"%2$s\""
+
+#: v4/includes/image-caching.php:514
+msgid "Invalid URL provided: \"%1$s\""
+msgstr "Предоставлен неправильный URL : \"%1$s\""
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:194
+msgid "License key"
+msgstr "Лицензионный ключ"
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:365
+msgid "The feed sources have been paused!"
+msgstr "Источники Feed были приостановлены!"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:203
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:320
+msgid "Activate license"
+msgstr "Активируйте лицензию"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:416
+#: core/js/dist/admin.js:108
+msgid "Activations:"
+msgstr "Активации:"
+
+#: v4/includes/Aventura/Wprss/Core/Licensing/Settings.php:432
+msgid "Registered to:"
+msgstr "Зарегистрировано на:"
+
+#: v4.php:859
+msgid "%2$s requires WordPress version %1$s or higher."
+msgstr "Для %2$s требуется WordPress версии %1$s или выше."
+
+#: v4/includes/admin.php:136 core/js/dist/admin.js:37
+msgid "Documentation"
+msgstr "Документация"
+
+#: v4/includes/admin-help.php:40
+msgid "Frequently Asked Questions (FAQ)"
+msgstr "Часто задаваемые вопросы (FAQ)"
+
+#: v4/includes/admin-help.php:174
+msgid "If you still can't find an answer to your query after reading the documentation and going through the FAQ, just fill out the support request form below. We'll be happy to help you out."
+msgstr ""
+"Если вы все еще не можете найти ответ на свой вопрос после прочтения документации и FAQ, просто <a href=\"http://www.wprssaggregator.com/contact/\">обратитесь в службу поддержки</a>.\n"
+"Мы будем рады вам помочь."
+
+#: v4/includes/admin-help.php:1113
+msgid "Could not enqueue tooltip content: the queue method is not a valid callable."
+msgstr "Не удалось поставить в очередь содержание подсказки: метод очереди не действителен."
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:180
+msgid "Successfully imported <code>%1$s</code> feed sources."
+msgstr "Успешно импортировано <code>%1$s</code> лент."
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:224
+msgid "Invalid file or file size too big."
+msgstr "Битый файл или слишком большой размер файла."
+
+#: v4/includes/admin-options.php:239
+msgid "Import Settings"
+msgstr "Настройки импорта"
+
+#: v4/includes/admin-metaboxes.php:15
+msgid "Save Feed Source"
+msgstr "Сохранить источник ленты"
+
+#: v4/includes/admin-metaboxes.php:33
+msgid "Feed Preview"
+msgstr "Предварительный просмотр ленты"
+
+#: v4/includes/admin-metaboxes.php:42
+msgid "Feed Processing"
+msgstr "Обработка ленты"
+
+#: v4/includes/admin-metaboxes.php:62
+msgid "Feed Source Details"
+msgstr "Данные источника ленты"
+
+#: v4/includes/admin-metaboxes.php:81 v4/includes/opml-importer.php:203
+#: v4/includes/opml-importer.php:234 v4/src/Ui/BlacklistTable.php:74
+#: core/js/dist/admin.js:38
+msgid "URL"
+msgstr "Адрес"
+
+#: v4/includes/admin-metaboxes.php:89
+msgid "Limit"
+msgstr "Лимит"
+
+#: v4/includes/admin-metaboxes.php:106 core/js/dist/admin.js:108
+msgid "Link to enclosure"
+msgstr "Ссылка на приложение"
+
+#: v4/includes/admin-metaboxes.php:99 v4/includes/admin-metaboxes.php:278
+#: v4/includes/admin-metaboxes.php:638 v4/includes/admin-metaboxes.php:774
+#: v4/includes/admin-options.php:655 v4/includes/admin-options.php:761
+#: v4/includes/admin-options.php:874 v4/includes/feed-access.php:275
+#: v4/src/Modules/FeedTemplatesModule.php:390 core/js/dist/admin.js:38
+msgid "Default"
+msgstr "По умолчанию"
+
+#: v4/includes/admin-metaboxes.php:532
+msgid "Latest %1$s feed items out of %2$s available from %3$s"
+msgstr "Последние %1$s пункты ленты из %2$s доступных из %3$s"
+
+#: v4/includes/admin-metaboxes.php:547 v4/includes/scripts.php:58
+msgid "ago"
+msgstr "назад"
+
+#: v4/includes/admin-metaboxes.php:548
+msgid "No Date"
+msgstr "Нет даты"
+
+#: v4/includes/admin-metaboxes.php:500
+msgid "No feed URL defined yet"
+msgstr "Еще не указано ни одного адреса ленты"
+
+#: v4/includes/admin-metaboxes.php:594
+msgid "Force the feed"
+msgstr "Принудительно обновить ленту"
+
+#: v4/includes/admin-metaboxes.php:633 core/js/dist/admin.js:108
+msgid "Active"
+msgstr "Активный"
+
+#: v4/includes/admin-metaboxes.php:820
+msgid "Give it a 5 star rating on WordPress.org"
+msgstr "Оцените плагин по 5-бальной шкале на WordPress.org"
+
+#: v4/includes/admin-options.php:264
+msgid "Styles"
+msgstr "Стили"
+
+#: v4/includes/admin-options.php:172
+msgid "Limit feed items stored"
+msgstr "Максимальный срок хранения пунктов лент"
+
+#: v4/includes/admin-options.php:187
+msgid "Custom feed URL"
+msgstr "Адрес пользовательской ленты"
+
+#: v4/includes/admin-options.php:195
+msgid "Custom feed limit"
+msgstr "Лимит пользовательской ленты"
+
+#: v4/includes/admin-options-legacy.php:24 core/js/dist/admin.js:37
+msgid "Link title"
+msgstr "Ссылка в названии"
+
+#: v4/includes/admin-options-legacy.php:28
+msgid "Title maximum length"
+msgstr "Максимальная длина названия"
+
+#: v4/includes/admin-options-legacy.php:32
+msgid "Show authors"
+msgstr "Показать авторов"
+
+#: v4/includes/admin-options-legacy.php:36
+msgid "For video feed items use"
+msgstr "Для видео в пунктах ленты использовать"
+
+#: v4/includes/admin-options-legacy.php:40
+msgid "Pagination type"
+msgstr "Тип пагинации"
+
+#: v4/includes/admin-options-legacy.php:44
+msgid "Feed display limit"
+msgstr "Максимальное число отображаемых пунктов в ленте"
+
+#: v4/includes/admin-options-legacy.php:48 core/js/dist/admin.js:37
+msgid "Open links behaviour"
+msgstr "Открывать ссылки"
+
+#: v4/includes/admin-options-legacy.php:52
+msgid "Set links as nofollow"
+msgstr "Присвоить ссылкам тег nofollow"
+
+#: v4/includes/admin-options-legacy.php:62
+msgid "Show source"
+msgstr "Показать источник"
+
+#: v4/includes/admin-options-legacy.php:66
+msgid "Text preceding source"
+msgstr "Текст перед источником"
+
+#: v4/includes/admin-metaboxes.php:113 v4/includes/admin-options-legacy.php:70
+msgid "Link source"
+msgstr "Ссылка на источник"
+
+#: v4/includes/admin-options-legacy.php:80
+msgid "Show date"
+msgstr "Показывать дату"
+
+#: v4/includes/admin-options-legacy.php:84
+msgid "Text preceding date"
+msgstr "Текст перед датой"
+
+#: v4/includes/admin-options-legacy.php:88
+msgid "Date format"
+msgstr "Формат даты"
+
+#: v4/includes/admin-options-legacy.php:92
+msgid "Time ago format"
+msgstr "Формат отображения времени \"назад\""
+
+#: v4/includes/admin-options.php:68 v4/includes/admin.php:29
+msgid "WP RSS Aggregator Settings"
+msgstr "Настройки WP RSS Aggregator"
+
+#: v4/includes/admin-options.php:31 core/js/dist/admin.js:38
+#: core/js/dist/admin.js:108
+msgid "General"
+msgstr "Общие"
+
+#: v4/includes/admin-options.php:49
+msgid "Licenses"
+msgstr "Лицензии"
+
+#: v4/includes/admin-options.php:140
+msgid "Save Settings"
+msgstr "Сохранить настройки"
+
+#: v4/includes/admin-options-legacy.php:110
+msgid "In this section you can find some general options that control how the feed items are displayed."
+msgstr "В этом разделе вы можете найти некоторые общие настройки, которые определяют, как отображаются пункты лент."
+
+#: v4/includes/admin-options-legacy.php:123
+msgid "Options that control how the feed item's source is displayed."
+msgstr "Опции, определяющие, как будет отображаться источник пункта ленты."
+
+#: v4/includes/admin-options-legacy.php:136
+msgid "Options that control how the feed item's date is displayed."
+msgstr "Опции, определяющие, как будет отображаться дата пунктов лент."
+
+#: v4/includes/admin-options.php:449 core/js/dist/admin.js:38
+msgid "If you would like to disable all styles used in this plugin, tick the checkbox."
+msgstr "Если вы хотите отключить все стили, используемые в этом плагине, поставьте галочку."
+
+#: v4/includes/admin-options-legacy.php:215
+#: v4/src/Modules/FeedTemplatesModule.php:536
+msgid "Original page link"
+msgstr "Ссылка на оригинал"
+
+#: v4/includes/admin-options-legacy.php:216
+#: v4/src/Modules/FeedTemplatesModule.php:537
+msgid "Embedded video player link"
+msgstr "Ссылка на встроенный видеопроигрыватель"
+
+#: v4/includes/admin-options-legacy.php:224
+msgid "This will not affect already imported feed items."
+msgstr "Это не повлияет на ранее импортированные пункты лент."
+
+#: core/src/V4/V4SettingsMigrator.php:53
+#: v4/includes/admin-options-legacy.php:273 v4/includes/update.php:133
+msgid "Lightbox"
+msgstr "Лайтбокс"
+
+#: core/src/V4/V4SettingsMigrator.php:51
+#: v4/includes/admin-options-legacy.php:274 v4/includes/update.php:131
+msgid "New window"
+msgstr "Новое окно"
+
+#: core/src/V4/V4SettingsMigrator.php:55
+#: v4/includes/admin-options-legacy.php:275 v4/includes/update.php:135
+msgid "Self"
+msgstr "Это же окно"
+
+#: v4/includes/admin-options-legacy.php:421
+msgid "PHP Date Format Reference"
+msgstr "Формат даты PHP"
+
+#: v4/includes/admin-options-legacy.php:177 v4/includes/admin-options.php:466
+#: core/js/dist/admin.js:37 core/js/dist/admin.js:108
+msgid "No limit"
+msgstr "Без ограничений"
+
+#: v4/includes/admin-options-legacy.php:239
+msgid "\"Older posts\" and \"Newer posts\" links"
+msgstr "Ссылки на \"Предыдущие записи\" и \"Следующие записи\""
+
+#: v4/includes/admin-options-legacy.php:240
+msgid "Page numbers with \"Next\" and \"Previous\" page links"
+msgstr "Номера страниц со ссылками \"Следующая\" и \"Предыдущая\""
+
+#: v4/includes/admin-options.php:517 v4/includes/admin-options.php:690
+msgid "No Limit"
+msgstr "Без ограничений"
+
+#: v4/includes/admin-options.php:888
+msgid "now"
+msgstr "сейчас"
+
+#: core/modules/admin.php:122 v4/includes/admin.php:30
+#: v4/includes/admin.php:130 core/js/dist/admin.js:37 core/js/dist/admin.js:38
+#: core/js/dist/admin.js:114
+msgid "Settings"
+msgstr "Настройки"
+
+#: v4/includes/cpt-feeds.php:86
+msgid "%1$s &raquo; %2$s Feed"
+msgstr "%1$s &raquo; %2$s лента"
+
+#: v4/src/Modules/FeedSourcesModule.php:169
+msgid "Feed Source"
+msgstr "Источник ленты"
+
+#: v4/src/Modules/FeedSourcesModule.php:170
+#: v4/src/Modules/FeedTemplatesModule.php:132
+msgid "Add New"
+msgstr "Добавить новый"
+
+#: v4/src/Modules/FeedSourcesModule.php:172
+msgid "Add New Feed Source"
+msgstr "Добавить новый источник ленты"
+
+#: v4/src/Modules/FeedSourcesModule.php:173
+msgid "Edit Feed Source"
+msgstr "Редактировать источник ленты"
+
+#: v4/src/Modules/FeedSourcesModule.php:174
+msgid "New Feed Source"
+msgstr "Новый источник ленты"
+
+#: v4/src/Modules/FeedSourcesModule.php:175
+msgid "View Feed Source"
+msgstr "Просмотр источника ленты"
+
+#: v4/src/Modules/FeedSourcesModule.php:176
+#: v4/src/Modules/FeedTemplatesModule.php:138
+msgid "Search Feeds"
+msgstr "Поиск лент"
+
+#: v4/src/Modules/FeedSourcesModule.php:177
+msgid "No Feed Sources Found"
+msgstr "Не найдено источников лент"
+
+#: v4/src/Modules/FeedSourcesModule.php:178
+msgid "No Feed Sources Found In Trash"
+msgstr "Не найдено источников лент в корзине"
+
+#: v4/src/Modules/FeedSourcesModule.php:179
+msgid "RSS Aggregator"
+msgstr "RSS Aggregator"
+
+#: core/modules/feedItems.php:32 core/modules/feedItems.php:34
+#: v4/src/Modules/FeedItemsModule.php:152
+#: v4/src/Modules/FeedItemsModule.php:154
+msgid "Feed Items"
+msgstr "Пункты лент"
+
+#: core/modules/feedItems.php:33 v4/src/Modules/FeedItemsModule.php:153
+msgid "Feed Item"
+msgstr "Пункт ленты"
+
+#: core/modules/feedItems.php:40 v4/src/Modules/FeedItemsModule.php:155
+msgid "View Feed Items"
+msgstr "Просмотр пунктов лент"
+
+#: core/modules/feedItems.php:41 v4/src/Modules/FeedItemsModule.php:156
+msgid "Search Feed Items"
+msgstr "Поиск пунктов лент"
+
+#: v4/src/Modules/FeedItemsModule.php:157
+msgid "No Feed Items Found"
+msgstr "Не найдено пунктов лент"
+
+#: v4/src/Modules/FeedItemsModule.php:158
+msgid "No Feed Items Found In Trash"
+msgstr "Не найдено пунктов лент в корзине"
+
+#: v4/includes/feed-blacklist.php:96
+msgid "The item you are trying to blacklist does not exist"
+msgstr "Пункта, который вы пытаетесь добавить в черный список, не существует"
+
+#: v4/includes/feed-blacklist.php:101
+msgid "The item you are trying to blacklist is not valid!"
+msgstr "Пункт, который вы пытаетесь добавить в черный список, некорректный"
+
+#: v4/src/Modules/BlacklistToolModule.php:33 v4/src/Ui/BlacklistTable.php:37
+#: v4/src/Ui/BlacklistTable.php:38
+msgid "Blacklist"
+msgstr "Черный список"
+
+#: v4/includes/feed-blacklist.php:187
+msgid "Delete Permanently & Blacklist"
+msgstr "Удалить навсегда и добавить в черный список"
+
+#: v4/includes/feed-blacklist.php:193
+msgid "The item will be deleted permanently, and its permalink will be recorded in the blacklist"
+msgstr "Пункт будет удален навсегда и его постоянная ссылка будет добавлена в черный список"
+
+#: core/modules/feedItems.php:86 v4/includes/opml-importer.php:202
+#: v4/includes/opml-importer.php:233 core/js/dist/admin.js:37
+msgid "Title"
+msgstr "Название"
+
+#: core/src/Display/LayoutTrait.php:249 v4/includes/legacy-feed-display.php:425
+msgid "No feed items found."
+msgstr "Пункты лент не найдены"
+
+#: core/src/Renderer.php:364 v4/includes/legacy-feed-display.php:479
+msgid "Older posts"
+msgstr "Предыдущие записи"
+
+#: core/src/Renderer.php:375 v4/includes/legacy-feed-display.php:483
+msgid "Newer posts"
+msgstr "Следующие записи"
+
+#: v4/includes/admin-help.php:258
+msgid "Support Forums"
+msgstr "Форумы поддержки"
+
+#: v4/includes/admin-help.php:173
+msgid "Email Support"
+msgstr "Поддержка по эл.почте"
+
+#: v4/includes/admin-help.php:231
+msgid "WP RSS Aggregator log file"
+msgstr "Файл журнала WP RSS Aggregator"
+
+#: v4/includes/admin-help.php:312
+msgid "Please enter a valid email address."
+msgstr "Пожалуйста, введите действительный email адрес."
+
+#: v4/includes/admin-options.php:884
+msgid "%s second"
+msgid_plural "%s seconds"
+msgstr[0] "%s секунда"
+msgstr[1] "%s секунды"
+msgstr[2] "%s секунд"
+
+#: v4/includes/admin-options.php:883
+msgid "%s minute"
+msgid_plural "%s minutes"
+msgstr[0] "%s минута"
+msgstr[1] "%s минуты"
+msgstr[2] "%s минут"
+
+#: v4/includes/admin-options.php:882
+msgid "%s hour"
+msgid_plural "%s hours"
+msgstr[0] "%s час"
+msgstr[1] "%s часа"
+msgstr[2] "%s часов"
+
+#: v4/includes/admin-options.php:881
+msgid "%s day"
+msgid_plural "%s days"
+msgstr[0] "%s день"
+msgstr[1] "%s дня"
+msgstr[2] "%s дней"
+
+#: v4/includes/admin-options.php:880
+msgid "%s week"
+msgid_plural "%s weeks"
+msgstr[0] "%s неделя"
+msgstr[1] "%s недели"
+msgstr[2] "%s недель"
+
+#: v4/includes/admin-options.php:879
+msgid "%s month"
+msgid_plural "%s months"
+msgstr[0] "%s месяц"
+msgstr[1] "%s месяца"
+msgstr[2] "%s месяцев"
+
+#: v4/includes/admin-options.php:878
+msgid "%s year"
+msgid_plural "%s years"
+msgstr[0] "%s год"
+msgstr[1] "%s года"
+msgstr[2] "%s лет"
+
+#: v4/includes/admin-metaboxes.php:95 v4/includes/admin-options.php:156
+msgid "Unique titles only"
+msgstr "Только уникальные заголовки"
+
+#: v4/includes/admin-help.php:226
+msgid "Attachments"
+msgstr "Вложения"
+
+#: v4/includes/admin-help.php:203
+msgid "Replies will be sent to this email address."
+msgstr "Ответы будут отправлены на этот адрес эл.почты."
+
+#: v4/includes/admin-help.php:244
+msgid "Send Message"
+msgstr "Отправить сообщение"
+
+#: v4/includes/admin-help.php:303
+msgid "Please fill out all the fields in the form, including the <strong>%s</strong> field."
+msgstr "Пожалуйста заполните все поля формы, включая поле <strong>%s</strong>."
+
+#: v4/includes/admin-help.php:181
+msgid "From: "
+msgstr "От: "
+
+#: v4/includes/admin-options-legacy.php:59
+msgid "Source Display settings"
+msgstr "Настройки дисплея источника"
+
+#: v4/includes/admin-options-legacy.php:77
+msgid "Date Display settings"
+msgstr "Настройки отображения даты"
+
+#: v4/includes/admin-options.php:191
+msgid "Custom feed title"
+msgstr "Название пользовательского фида"
+
+#: v4/includes/admin-options.php:207 core/js/dist/admin.js:38
+msgid "Disable styles"
+msgstr "Отключить стили"
+
+#: v4.php:513
+msgid "Deactivate WP RSS Aggregator"
+msgstr "Деактивировать WP RSS Aggregator"
+
+#: v4/includes/cron-jobs.php:299
+msgid "Once every 30 minutes"
+msgstr "Раз в 30 минут"
+
+#: v4/includes/cron-jobs.php:303
+msgid "Once every 2 hours"
+msgstr "Раз в 2 часа"
+
+#: v4/includes/feed-access.php:204
+msgid "Certificate path"
+msgstr "Путь к сертификату"
+
+#: v4/includes/cron-jobs.php:295
+msgid "Once every 15 minutes"
+msgstr "Раз в 15 минут"
+
+#: v4/includes/Aventura/Wprss/Core/Plugin.php:78
+msgid "Extensions"
+msgstr "Расширения"
+
+#: v4/includes/admin-ajax-notice.php:474
+msgid "Dismiss this notification"
+msgstr "Игнорировать это уведомление"
+
+#: v4/includes/admin-intro-page.php:29 v4/includes/admin-intro-page.php:30
+msgid "Welcome to WP RSS Aggregator"
+msgstr "Добро пожаловать в WP RSS Aggregator!"
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:244
+msgid "Feeds are being updated in the background."
+msgstr "Ленты обновляются в фоновом режиме."
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:264
+msgid "Feeds deleted and are being re-imported in the background."
+msgstr "Ленты были удалены и заново импортируются в фоновом режиме."
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:284
+msgid "The error log has been cleared."
+msgstr "Журнал ошибок был очищен."
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:304
+#: v4/src/Modules/ResetToolModule.php:101
+msgid "The plugin settings have been reset to default."
+msgstr "Настройки плагина были сброшены."
+
+#: v4/includes/admin-display.php:36 v4/includes/admin-display.php:299
+#: v4/includes/admin-help.php:187 v4/src/Ui/BlacklistTable.php:73
+#: core/js/dist/admin.js:37 core/js/dist/admin.js:108
+msgid "Name"
+msgstr "Название"
+
+#: core/modules/debugInfo.php:27 v4/includes/admin-display.php:33
+#: core/js/dist/admin.js:108
+msgid "State"
+msgstr "Состояние"
+
+#: v4/includes/admin-display.php:41 core/js/dist/admin.js:108
+msgid "Updates"
+msgstr "Обновления"
+
+#: v4/includes/admin-display.php:159
+msgid "This feed source experienced an error during the last feed fetch or validation check. Re-check the feed source URL or check the Error Log in the Debugging page for more details."
+msgstr "Во время последней выборки ленты или проверки валидности произошла ошибка. Еще раз проверьте URL ленты или посмотрите журнал ошибок на странице отладки для более подробной информации."
+
+#: v4/includes/admin-display.php:111 v4/includes/admin-heartbeat.php:38
+msgid "None"
+msgstr "Нет"
+
+#: v4/includes/admin-metaboxes.php:634 core/js/dist/admin.js:108
+msgid "Paused"
+msgstr "Приостановлено"
+
+#: v4/includes/admin-display.php:137
+msgid "%1$s ago"
+msgstr "%1$s назад"
+
+#: v4/includes/admin-metaboxes.php:331
+msgid "Updating feed source"
+msgstr "Обновление источника ленты"
+
+#: v4/includes/admin-display.php:300
+msgid "Permalink"
+msgstr "Постоянная ссылка"
+
+#: v4/includes/admin-display.php:301
+msgid "Date published"
+msgstr "Дата опубликования"
+
+#: core/modules/feedItems.php:88 v4/includes/admin-display.php:302
+#: core/js/dist/admin.js:37
+msgid "Source"
+msgstr "Источник"
+
+#: v4/includes/admin-display.php:399
+msgid "Custom field updated."
+msgstr "Пользовательское поле обновлено."
+
+#: v4/includes/admin-display.php:400
+msgid "Custom field deleted."
+msgstr "Пользовательское поле удалено."
+
+#: v4/includes/admin-display.php:401 v4/includes/admin-display.php:407
+msgid "Feed source updated."
+msgstr "Источник ленты обновлен."
+
+#: v4/includes/admin-display.php:403 v4/includes/admin-display.php:404
+msgid "Feed source saved."
+msgstr "Источник ленты сохранен."
+
+#: v4/includes/admin-display.php:405
+msgid "Feed source submitted."
+msgstr "Источник ленты подан."
+
+#: v4/includes/admin-display.php:431
+msgid "ID: %1$s"
+msgstr "ID: %1$s"
+
+#: v4/includes/admin-display.php:731
+msgid "View Items"
+msgstr "Просмотр пунктов"
+
+#: v4/src/Modules/FeedSourcesModule.php:168
+#: v4/src/Modules/FeedSourcesModule.php:171
+msgid "Feed Sources"
+msgstr "Источники лент"
+
+#: v4/includes/admin-editor.php:134
+msgid "All feed sources"
+msgstr "Все источники лент"
+
+#: v4/includes/admin-editor.php:142
+msgid "Exclude"
+msgstr "Исключить"
+
+#: v4/includes/admin-editor.php:222
+msgid "Add shortcode"
+msgstr "Добавить шорткод"
+
+#: v4/includes/admin-help-settings.php:105
+msgid "The maximum number of feed items in the custom feed."
+msgstr "Максимальное число пунктов в пользовательской ленте."
+
+#: v4/includes/admin-help-settings.php:112
+#: v4/src/Modules/FeedTemplatesModule.php:466
+msgid "Check this box to make the feed item titles link to the original article."
+msgstr "Установите этот флажок, чтобы сделать заголовки пунктов лент ссылками на оригиналы статей."
+
+#: v4/includes/admin-help-settings.php:121
+#: v4/src/Modules/FeedTemplatesModule.php:472
+msgid "Check this box to show the author for each feed item, if it is available."
+msgstr "Установите этот флажок, чтобы показать автора каждого пункта ленты, если он доступен."
+
+#: v4/includes/admin-help-settings.php:123
+msgid "For feed items from YouTube, Vimeo or Dailymotion, you can choose whether you want to have the items link to the original page link, or a link to the embedded video player only."
+msgstr "Для пунктов лент из YouTube, Vimeo или Dailymotion, вы можете выбрать, хотите ли Вы, чтобы пункты ссылались на оригинальную страницу, или только на встроенный видео-плеер."
+
+#: v4/includes/admin-help-settings.php:144
+#: v4/src/Modules/FeedTemplatesModule.php:478
+msgid "Choose how you want links to be opened. This applies to the feed item title and the source link."
+msgstr "Выберите, как вы хотите, чтобы открывались ссылки. Это относится и к заголовку пункта ленты, и к ссылке на источник."
+
+#: v4/includes/admin-help-settings.php:160
+#: v4/src/Modules/FeedTemplatesModule.php:469
+msgid "Enable this option to show the feed source name for each feed item."
+msgstr "Включите эту опцию, чтобы показать имя источника ленты в каждом пункте этой ленты."
+
+#: v4/includes/admin-help-settings.php:162
+#: v4/src/Modules/FeedTemplatesModule.php:470
+msgid "Enter the text that you want to show before the source name. A space is automatically added between this text and the feed source name."
+msgstr "Введите текст, который должен отображаться перед именем источника. Между этим текстом и именем источника автоматически добавляется пробел."
+
+#: v4/includes/admin-help-settings.php:167
+#: v4/src/Modules/FeedTemplatesModule.php:471
+msgid "Enable this option to link the feed source name to the RSS feed's source site."
+msgstr "Включите эту опцию, чтобы поставить ссылку с имени источника ленты на сайт этого источника."
+
+#: v4/includes/admin-help-settings.php:173
+#: v4/src/Modules/FeedTemplatesModule.php:474
+msgid "Enable this to show the feed item's date."
+msgstr "Включите эту опцию, чтобы показывать дату в пунктах ленты."
+
+#: v4/includes/admin-help-settings.php:175
+#: v4/src/Modules/FeedTemplatesModule.php:475
+msgid "Enter the text that you want to show before the feed item date. A space is automatically added between this text and the date."
+msgstr "Введите текст, который должен отображаться перед датой. Между этим текстом и датой автоматически добавляется пробел."
+
+#: v4/includes/admin-help-settings.php:180
+#: v4/src/Modules/FeedTemplatesModule.php:476
+msgid "The format to use for the feed item dates, as a PHP date format."
+msgstr "Формат даты в пунктах ленты (в формате PHP)."
+
+#: v4/includes/admin-help.php:25 v4/includes/admin.php:40
+#: v4/includes/admin.php:41
+msgid "Help & Support"
+msgstr "Помощь и Поддержка"
+
+#: v4/includes/scripts.php:52 core/js/dist/admin.js:37 core/js/dist/admin.js:38
+#: core/js/dist/admin.js:108 core/js/dist/admin.js:112
+#: core/js/dist/admin.js:114
+msgid "Activate"
+msgstr "Активировать"
+
+#: v4/includes/OPML.php:43
+msgid "An error occurred: The file might not be a valid OPML file or is corrupt. "
+msgstr "Ошибка: файл поврежден или не является корректным файлом OPML. "
+
+#: v4/includes/Aventura/Wprss/Core/Model/AdminAjaxNotice/ServiceProvider.php:136
+msgid "Did you know that you can get more RSS features? Excerpts, thumbnails, keyword filtering, importing into posts and more... "
+msgstr "Знаете ли вы, что можно получить больше возможностей RSS? Отрывки, эскизы, фильтр ключевых слов, импорт в записи и много другого... "
+
+#: v4/includes/admin-display.php:398
+msgid "Feed source updated. "
+msgstr "Источник ленты обновлен. "
+
+#: v4/includes/admin-display.php:207 core/js/dist/admin.js:38
+#: core/js/dist/admin.js:108
+msgid "Delete items"
+msgstr "Удалите элементы"
