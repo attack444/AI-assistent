@@ -307,4 +307,72 @@
     }
     restart();
   });
+
+  // —— ЮKassa: фиксированный пакет услуги ——
+  document.querySelectorAll("[data-mb2-pay]").forEach(function (box) {
+    var btn = box.querySelector("[data-pay-submit]");
+    var note = box.querySelector("[data-pay-note]");
+    var input = box.querySelector('input[name="pay_email"]');
+    if (input && window.MB2 && MB2.user && MB2.user.email) {
+      input.value = MB2.user.email;
+    }
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var email = (input && input.value ? input.value : "").trim();
+      var pkg = box.getAttribute("data-package") || "";
+      if (!email || email.indexOf("@") < 0) {
+        if (note) {
+          note.hidden = false;
+          note.textContent = "Укажите email для чека и связи";
+        }
+        return;
+      }
+      if (!pkg) return;
+      btn.disabled = true;
+      if (note) {
+        note.hidden = false;
+        note.textContent = "Открываю оплату ЮKassa…";
+      }
+      var api = (window.MB2 && MB2.payApi) || "https://neobrain.site/api";
+      var thanks = (window.MB2 && MB2.thanks) || (location.origin + "/spasibo/");
+      var sep = thanks.indexOf("?") >= 0 ? "&" : "?";
+      fetch(api + "/public/pay/package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email,
+          package: pkg,
+          return_url: thanks + sep + "paid=1&package=" + encodeURIComponent(pkg),
+        }),
+      })
+        .then(function (r) {
+          return r.json().then(function (d) {
+            return { ok: r.ok, status: r.status, data: d || {} };
+          });
+        })
+        .then(function (res) {
+          if (res.data.confirmation_url) {
+            location.href = res.data.confirmation_url;
+            return;
+          }
+          var msg =
+            res.data.error ||
+            (res.status === 503
+              ? "Оплата картой ещё подключается. Можно по реквизитам."
+              : "Не удалось создать платёж");
+          if (note) {
+            note.hidden = false;
+            note.textContent = msg;
+          }
+          btn.disabled = false;
+        })
+        .catch(function () {
+          if (note) {
+            note.hidden = false;
+            note.textContent = "Сеть недоступна. Попробуйте позже или реквизиты.";
+          }
+          btn.disabled = false;
+        });
+    });
+  });
 })();

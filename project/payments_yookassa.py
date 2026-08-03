@@ -1,8 +1,10 @@
 """
-ЮKassa — фиксированные тарифы NeoBrain (Starter/Pro), оплата картой.
+ЮKassa — фиксированные цены:
+  NeoBrain: тарифы Starter/Pro
+  5MB2: пакеты SEO (аудит, продвижение, Local, техника)
 
 Ключи: панель → Настройки (shopId + secret) или .env
-Webhook: https://neobrain.site/api/public/pay/webhook
+Webhook (один на магазин): https://neobrain.site/api/public/pay/webhook
 """
 from __future__ import annotations
 
@@ -21,6 +23,46 @@ PAYMENTS_FILE = DATA_DIR / "yookassa_payments.jsonl"
 
 API_URL = "https://api.yookassa.ru/v3/payments"
 WEBHOOK_PATH = "/api/public/pay/webhook"
+
+# Фиксированные пакеты 5MB2 (входная цена «от» = цена стандартного пакета картой)
+PACKAGES: Dict[str, Dict[str, Any]] = {
+    "mb2-seo-audit": {
+        "id": "mb2-seo-audit",
+        "brand": "5MB2",
+        "name": "SEO-аудит",
+        "price_rub": 29000,
+        "period": "once",
+        "service_slug": "seo-audit",
+        "blurb": "Разовый стандартный аудит",
+    },
+    "mb2-seo-monthly": {
+        "id": "mb2-seo-monthly",
+        "brand": "5MB2",
+        "name": "SEO-продвижение — 1 месяц",
+        "price_rub": 55000,
+        "period": "month",
+        "service_slug": "prodvizhenie",
+        "blurb": "Стартовый месяц продвижения",
+    },
+    "mb2-local-seo": {
+        "id": "mb2-local-seo",
+        "brand": "5MB2",
+        "name": "Local SEO — 1 месяц",
+        "price_rub": 40000,
+        "period": "month",
+        "service_slug": "local-seo",
+        "blurb": "Локальное SEO, 1 месяц",
+    },
+    "mb2-tech-seo": {
+        "id": "mb2-tech-seo",
+        "brand": "5MB2",
+        "name": "Техническое SEO",
+        "price_rub": 35000,
+        "period": "once",
+        "service_slug": "tech-seo",
+        "blurb": "Разовый технический пакет",
+    },
+}
 
 
 def _site() -> str:
@@ -66,12 +108,33 @@ def status() -> Dict[str, Any]:
         "webhook_url": site + WEBHOOK_PATH,
         "self_serve": True,
         "currency": "RUB",
+        "packages": list_packages(),
+        "brands": ["NeoBrain", "5MB2"],
         "hint": None
         if configured()
         else "Панель → Настройки: shopId и секретный ключ. Webhook: "
         + site
         + WEBHOOK_PATH,
     }
+
+
+def list_packages() -> list:
+    return [
+        {
+            "id": p["id"],
+            "brand": p["brand"],
+            "name": p["name"],
+            "price_rub": p["price_rub"],
+            "period": p["period"],
+            "service_slug": p.get("service_slug") or "",
+            "blurb": p.get("blurb") or "",
+        }
+        for p in PACKAGES.values()
+    ]
+
+
+def _package_info(package_id: str) -> Optional[Dict[str, Any]]:
+    return PACKAGES.get((package_id or "").strip().lower())
 
 
 def _auth_header() -> str:
@@ -111,69 +174,38 @@ def _send_receipt() -> bool:
     return os.environ.get("YOOKASSA_SEND_RECEIPT", "1").strip() not in {"0", "false", "no"}
 
 
-def create_payment(
+def _create_yookassa_payment(
     *,
     email: str,
-    plan_id: str,
-    return_url: str = "",
+    amount: int,
+    description: str,
+    return_url: str,
+    metadata: Dict[str, str],
+    receipt_title: str,
 ) -> Dict[str, Any]:
-    """Создать платёж на фиксированную сумму тарифа → redirect на ЮKassa."""
-    email = (email or "").strip().lower()
-    plan_id = (plan_id or "").strip().lower()
-    info = _plan_info(plan_id)
-    if not email or "@" not in email:
-        raise ValueError("Нужен email аккаунта")
-    if not info:
-        raise ValueError("Оплата только для фиксированных тарифов Starter / Pro")
-
-    amount = int(info["price_rub"])
-    plan_name = str(info["name"])
-    site = _site()
-
     if not configured():
-        rec = {
-            "at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "status": "pending_keys",
-            "email": email,
-            "plan": plan_id,
-            "amount_rub": amount,
-        }
-        _append(rec)
+        site = _site()
         return {
             "ok": False,
             "mode": "not_configured",
             "error": "ЮKassa ещё не подключена в панели (shopId + секретный ключ).",
             "amount_rub": amount,
-            "plan": plan_id,
             "rekvizity_url": site + "/rekvizity/",
         }
-
-    ret = (return_url or f"{site}/?paid=1#start").strip()
-    if not ret.startswith("http"):
-        ret = f"{site}/?paid=1#start"
-
-    amount_value = f"{amount}.00"
-    description = f"NeoBrain {plan_name} — 1 месяц ({amount} ₽)"
+    amount_value = f"{int(amount)}.00"
     body: Dict[str, Any] = {
         "amount": {"value": amount_value, "currency": "RUB"},
-        "confirmation": {"type": "redirect", "return_url": ret},
+        "confirmation": {"type": "redirect", "return_url": return_url},
         "capture": True,
         "description": description[:128],
-        "metadata": {
-            "email": email,
-            "plan": plan_id,
-            "brand": "NeoBrain",
-            "period": "month",
-            "amount_rub": str(amount),
-        },
+        "metadata": metadata,
     }
     if _send_receipt():
-        # vat_code 1 = без НДС (НПД)
         body["receipt"] = {
             "customer": {"email": email},
             "items": [
                 {
-                    "description": f"NeoBrain {plan_name} — 1 месяц"[ :128],
+                    "description": receipt_title[:128],
                     "quantity": "1.00",
                     "amount": {"value": amount_value, "currency": "RUB"},
                     "vat_code": 1,
@@ -182,7 +214,6 @@ def create_payment(
                 }
             ],
         }
-
     idem = str(uuid.uuid4())
     req = urllib.request.Request(
         API_URL,
@@ -204,26 +235,130 @@ def create_payment(
     conf = (data.get("confirmation") or {}).get("confirmation_url") or ""
     if not conf:
         raise RuntimeError("ЮKassa не вернула confirmation_url")
-
-    _append({
-        "at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "status": data.get("status") or "pending",
-        "payment_id": data.get("id"),
-        "email": email,
-        "plan": plan_id,
-        "amount_rub": amount,
-        "confirmation_url": conf,
-    })
     return {
         "ok": True,
         "mode": "yookassa",
         "payment_id": data.get("id"),
         "confirmation_url": conf,
-        "amount_rub": amount,
-        "plan": plan_id,
-        "plan_name": plan_name,
+        "amount_rub": int(amount),
         "description": description,
+        "status": data.get("status") or "pending",
     }
+
+
+def create_payment(
+    *,
+    email: str,
+    plan_id: str,
+    return_url: str = "",
+) -> Dict[str, Any]:
+    """NeoBrain: фиксированный тариф Starter/Pro."""
+    email = (email or "").strip().lower()
+    plan_id = (plan_id or "").strip().lower()
+    info = _plan_info(plan_id)
+    if not email or "@" not in email:
+        raise ValueError("Нужен email аккаунта")
+    if not info:
+        raise ValueError("Оплата только для фиксированных тарифов Starter / Pro")
+
+    amount = int(info["price_rub"])
+    plan_name = str(info["name"])
+    site = _site()
+    ret = (return_url or f"{site}/?paid=1#start").strip()
+    if not ret.startswith("http"):
+        ret = f"{site}/?paid=1#start"
+    description = f"NeoBrain {plan_name} — 1 месяц ({amount} ₽)"
+
+    result = _create_yookassa_payment(
+        email=email,
+        amount=amount,
+        description=description,
+        return_url=ret,
+        metadata={
+            "email": email,
+            "plan": plan_id,
+            "package": "",
+            "brand": "NeoBrain",
+            "period": "month",
+            "amount_rub": str(amount),
+        },
+        receipt_title=f"NeoBrain {plan_name} — 1 месяц",
+    )
+    if not result.get("ok"):
+        result["plan"] = plan_id
+        return result
+    _append({
+        "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": result.get("status") or "pending",
+        "payment_id": result.get("payment_id"),
+        "email": email,
+        "brand": "NeoBrain",
+        "plan": plan_id,
+        "amount_rub": amount,
+        "confirmation_url": result.get("confirmation_url"),
+    })
+    result["plan"] = plan_id
+    result["plan_name"] = plan_name
+    return result
+
+
+def create_package_payment(
+    *,
+    email: str,
+    package_id: str,
+    return_url: str = "",
+) -> Dict[str, Any]:
+    """5MB2: фиксированный пакет услуги → ЮKassa."""
+    email = (email or "").strip().lower()
+    package_id = (package_id or "").strip().lower()
+    info = _package_info(package_id)
+    if not email or "@" not in email:
+        raise ValueError("Нужен email")
+    if not info:
+        raise ValueError("Неизвестный пакет. Доступны: " + ", ".join(PACKAGES.keys()))
+
+    amount = int(info["price_rub"])
+    name = str(info["name"])
+    site_5mb2 = os.environ.get("MB2_SITE_URL", "https://5mb2.ru").rstrip("/")
+    ret = (return_url or f"{site_5mb2}/spasibo/?paid=1&package={package_id}").strip()
+    if not ret.startswith("http"):
+        ret = f"{site_5mb2}/spasibo/?paid=1&package={package_id}"
+    period = "1 месяц" if info.get("period") == "month" else "разово"
+    description = f"5MB2 {name} — {period} ({amount} ₽)"
+
+    result = _create_yookassa_payment(
+        email=email,
+        amount=amount,
+        description=description,
+        return_url=ret,
+        metadata={
+            "email": email,
+            "plan": "",
+            "package": package_id,
+            "brand": "5MB2",
+            "period": str(info.get("period") or "once"),
+            "service_slug": str(info.get("service_slug") or ""),
+            "amount_rub": str(amount),
+        },
+        receipt_title=f"5MB2 {name}",
+    )
+    if not result.get("ok"):
+        result["package"] = package_id
+        result["rekvizity_url"] = site_5mb2 + "/rekvizity/"
+        return result
+    _append({
+        "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": result.get("status") or "pending",
+        "payment_id": result.get("payment_id"),
+        "email": email,
+        "brand": "5MB2",
+        "package": package_id,
+        "amount_rub": amount,
+        "confirmation_url": result.get("confirmation_url"),
+    })
+    result["package"] = package_id
+    result["package_name"] = name
+    return result
 
 
 def apply_paid_plan(email: str, plan_id: str) -> Dict[str, Any]:
@@ -248,8 +383,36 @@ def fetch_payment(payment_id: str) -> Dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _notify_owner_5mb2(email: str, package_id: str, amount: str, payment_id: str) -> None:
+    info = _package_info(package_id) or {}
+    name = info.get("name") or package_id
+    try:
+        import mailer
+
+        owner = os.environ.get("OWNER_EMAIL", "").strip() or "hello@5mb2.ru"
+        try:
+            import owner_settings as osset
+
+            owner = (osset.get_raw().get("owner_email") or owner).strip() or owner
+        except Exception:
+            pass
+        mailer.send_mail(
+            to=owner,
+            subject=f"5MB2 оплата: {name}",
+            body=(
+                f"Оплачен пакет 5MB2.\n\n"
+                f"Пакет: {name} ({package_id})\n"
+                f"Сумма: {amount} ₽\n"
+                f"Клиент: {email}\n"
+                f"Payment ID: {payment_id}\n"
+            ),
+        )
+    except Exception:
+        pass
+
+
 def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Notification payment.succeeded → активация тарифа после GET-верификации."""
+    """payment.succeeded → NeoBrain план или уведомление по пакету 5MB2."""
     event = (payload.get("event") or "").strip()
     obj = payload.get("object") or {}
     if event != "payment.succeeded":
@@ -265,7 +428,27 @@ def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "error": f"status={verified.get('status')}"}
     meta = verified.get("metadata") or obj.get("metadata") or {}
     email = (meta.get("email") or "").strip().lower()
+    brand = (meta.get("brand") or "NeoBrain").strip()
     plan = (meta.get("plan") or "").strip().lower()
+    package = (meta.get("package") or "").strip().lower()
+    amount = (meta.get("amount_rub") or "").strip()
+
+    if brand == "5MB2" or package.startswith("mb2-"):
+        if not email or package not in PACKAGES:
+            return {"ok": False, "error": "metadata email/package missing"}
+        _notify_owner_5mb2(email, package, amount, payment_id)
+        _append({
+            "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "paid_5mb2",
+            "payment_id": payment_id,
+            "email": email,
+            "brand": "5MB2",
+            "package": package,
+            "amount_rub": amount,
+            "verified": True,
+        })
+        return {"ok": True, "brand": "5MB2", "package": package, "verified": True}
+
     if not email or plan not in {"starter", "pro"}:
         return {"ok": False, "error": "metadata email/plan missing"}
     result = apply_paid_plan(email, plan)
@@ -274,6 +457,7 @@ def handle_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         "status": "activated",
         "payment_id": payment_id,
         "email": email,
+        "brand": "NeoBrain",
         "plan": plan,
         "verified": True,
     })

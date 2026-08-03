@@ -58,7 +58,8 @@ if (!$svc) {
       </div>
       <aside class="service-aside reveal" id="order">
         <h2>Заказать услугу</h2>
-        <p class="muted tiny">Оставьте заявку — ответим с оценкой и следующим шагом.</p>
+        <?php if (function_exists('mb2_render_pay_box')) { mb2_render_pay_box($slug); } ?>
+        <p class="muted tiny" style="margin-top:18px">Нужен другой объём — заявка, ответим с оценкой.</p>
         <?php mb2_render_lead_form($slug); ?>
       </aside>
     </div>

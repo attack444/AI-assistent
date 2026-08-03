@@ -97,7 +97,7 @@ class SystemHealthTests(unittest.TestCase):
     def test_theme_version_constant(self):
         fn = PROJECT / "sites/5mb2/wp-content/themes/5mb2-dark/functions.php"
         text = fn.read_text(encoding="utf-8")
-        self.assertIn("MB2_THEME_VER', '1.9.9'", text)
+        self.assertIn("MB2_THEME_VER', '1.10.0'", text)
         self.assertIn("admin_init", text)
         self.assertIn("mb2_structure_lock", text)
         # seed больше не на фронтовом init

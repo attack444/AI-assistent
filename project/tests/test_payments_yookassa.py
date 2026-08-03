@@ -35,6 +35,23 @@ class PayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pay.create_payment(email="test@example.com", plan_id="free")
 
+    def test_packages_listed(self):
+        pkgs = pay.list_packages()
+        ids = {p["id"] for p in pkgs}
+        self.assertIn("mb2-seo-audit", ids)
+        self.assertEqual(
+            next(p for p in pkgs if p["id"] == "mb2-seo-audit")["price_rub"], 29000
+        )
+
+    def test_create_package_without_keys(self):
+        with mock.patch.object(pay, "_creds", return_value=("", "")):
+            r = pay.create_package_payment(
+                email="client@example.com", package_id="mb2-seo-audit"
+            )
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["mode"], "not_configured")
+        self.assertEqual(r["amount_rub"], 29000)
+
     def test_create_builds_receipt(self):
         captured = {}
 

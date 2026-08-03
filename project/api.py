@@ -160,6 +160,8 @@ _PUBLIC_PATHS = {
     "/public/feedback",
     "/public/pay/status",
     "/public/pay/create",
+    "/public/pay/package",
+    "/public/pay/packages",
     "/public/pay/webhook",
     "/public/config",
 }
@@ -752,7 +754,7 @@ class APIHandler(BaseHTTPRequestHandler):
             "auth_required": _auth_enabled(),
             "max_upload_bytes": MAX_UPLOAD_BYTES,
             "upload_chunk_size": CHUNK_SIZE,
-            "version": "2.17.0",
+            "version": "2.17.1",
             "brand": "NeoBrain",
             "public_site": os.environ.get("PUBLIC_SITE_URL", "https://neobrain.site"),
             "panel_domain": os.environ.get(
@@ -1801,6 +1803,45 @@ class APIHandler(BaseHTTPRequestHandler):
 
         self._send(200, _json(pay.status()))
 
+    def _get_public_pay_packages(self):
+        import payments_yookassa as pay
+
+        self._send(200, _json({
+            "ok": True,
+            "configured": pay.configured(),
+            "packages": pay.list_packages(),
+            "webhook_url": pay.status().get("webhook_url"),
+        }))
+
+    def _post_public_pay_package(self):
+        """5MB2 (и др.): оплата фиксированного пакета без логина NeoBrain."""
+        import payments_yookassa as pay
+        import spam_guard as sg
+
+        try:
+            body = self._read_body()
+            ip = self._public_ip()
+            ts = sg.verify_turnstile(
+                (body.get("turnstile") or body.get("cf-turnstile-response") or ""),
+                ip=ip,
+            )
+            if not ts.get("ok"):
+                self._send(400, _json({"error": ts.get("error") or "антибот"}))
+                return
+            result = pay.create_package_payment(
+                email=(body.get("email") or "").strip(),
+                package_id=(body.get("package") or body.get("package_id") or "").strip(),
+                return_url=(body.get("return_url") or "").strip(),
+            )
+            if result.get("ok") is False and result.get("mode") == "not_configured":
+                self._send(503, _json(result))
+                return
+            self._send(200, _json(result))
+        except ValueError as exc:
+            self._send(400, _json({"error": str(exc)}))
+        except Exception as exc:
+            self._send(500, _json({"error": str(exc)}))
+
     def _post_public_pay_create(self):
         import payments_yookassa as pay
         import spam_guard as sg
@@ -2195,7 +2236,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 "ollama": ost.reachable,
                 "free_llm": True,
                 "llm_prefer_free": fl.prefer_free(),
-                "version": "2.17.0",
+                "version": "2.17.1",
                 "brand": "NeoBrain",
                 "allowed_roots": [str(r) for r in ALLOWED_ROOTS],
                 "sites_root": str(SITES_ROOT),
@@ -2584,6 +2625,9 @@ class APIHandler(BaseHTTPRequestHandler):
         if path == "/public/pay/status":
             self._get_public_pay_status()
             return
+        if path == "/public/pay/packages":
+            self._get_public_pay_packages()
+            return
         if path == "/public/config":
             self._get_public_config()
             return
@@ -2696,6 +2740,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return
         if path == "/public/pay/create":
             self._post_public_pay_create()
+            return
+        if path == "/public/pay/package":
+            self._post_public_pay_package()
             return
         if path == "/public/pay/webhook":
             self._post_public_pay_webhook()

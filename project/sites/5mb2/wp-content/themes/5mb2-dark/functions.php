@@ -6,10 +6,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MB2_THEME_VER', '1.9.9');
+define('MB2_THEME_VER', '1.10.0');
 
 $mb2_inc = get_template_directory() . '/inc';
-foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php', 'analytics.php'] as $mb2_file) {
+foreach (['services.php', 'legal.php', 'seo.php', 'projects.php', 'seed.php', 'leads-admin.php', 'feedback.php', 'analytics.php', 'payments.php'] as $mb2_file) {
     $mb2_path = $mb2_inc . '/' . $mb2_file;
     if (is_readable($mb2_path)) {
         require $mb2_path;
@@ -69,6 +69,7 @@ add_action('wp_enqueue_scripts', function () {
         'nonce'   => wp_create_nonce('mb2_auth'),
         'home'    => home_url('/'),
         'thanks'  => home_url('/spasibo/'),
+        'payApi'  => function_exists('mb2_pay_api_base') ? mb2_pay_api_base() : 'https://neobrain.site/api',
         'user'    => is_user_logged_in() ? [
             'name'  => wp_get_current_user()->display_name,
             'email' => wp_get_current_user()->user_email,

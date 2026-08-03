@@ -14,7 +14,9 @@ function mb2_services_catalog() {
         'seo-audit' => [
             'title'   => 'SEO-аудит',
             'short'   => 'Техника, индекс, скорость, конкуренты. Приоритетный план правок.',
-            'price'   => 'от 29 000 ₽',
+            'price'   => '29 000 ₽',
+            'price_rub' => 29000,
+            'pay_package' => 'mb2-seo-audit',
             'term'    => '5–10 рабочих дней',
             'image'   => $img . '/service-audit.jpg',
             'bullets' => [
@@ -28,7 +30,9 @@ function mb2_services_catalog() {
         'prodvizhenie' => [
             'title'   => 'SEO-продвижение',
             'short'   => 'Семантика, структура, контент, ссылки. Ежемесячная работа на трафик и заявки.',
-            'price'   => 'от 55 000 ₽/мес',
+            'price'   => '55 000 ₽/мес',
+            'price_rub' => 55000,
+            'pay_package' => 'mb2-seo-monthly',
             'term'    => 'от 3 месяцев',
             'image'   => $img . '/service-growth.jpg',
             'bullets' => [
@@ -42,7 +46,9 @@ function mb2_services_catalog() {
         'local-seo' => [
             'title'   => 'Local SEO',
             'short'   => 'Карты, региональная выдача, карточки — заявки из вашего города.',
-            'price'   => 'от 40 000 ₽/мес',
+            'price'   => '40 000 ₽/мес',
+            'price_rub' => 40000,
+            'pay_package' => 'mb2-local-seo',
             'term'    => 'от 1–2 месяцев',
             'image'   => $img . '/service-local.jpg',
             'bullets' => [
@@ -56,7 +62,9 @@ function mb2_services_catalog() {
         'tech-seo' => [
             'title'   => 'Техническое SEO',
             'short'   => 'Core Web Vitals, индексация, разметка, миграции без просадки.',
-            'price'   => 'от 35 000 ₽',
+            'price'   => '35 000 ₽',
+            'price_rub' => 35000,
+            'pay_package' => 'mb2-tech-seo',
             'term'    => 'по объёму',
             'image'   => $img . '/service-tech.jpg',
             'bullets' => [
