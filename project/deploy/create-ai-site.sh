@@ -30,6 +30,9 @@ if [ -n "$SRC" ]; then
       cp "${DIR_SRC}/${f}" "$ROOT/${f}"
     fi
   done
+  if [ -f "${DIR_SRC}/contacts.html" ]; then
+    cp -f "${DIR_SRC}/contacts.html" "$ROOT/contacts.html"
+  fi
   if [ -d "${DIR_SRC}/contacts" ]; then
     mkdir -p "$ROOT/contacts"
     cp -f "${DIR_SRC}/contacts/"*.html "$ROOT/contacts/" 2>/dev/null || true
