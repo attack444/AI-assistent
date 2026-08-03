@@ -88,17 +88,24 @@ if command -v openssl >/dev/null 2>&1; then
 fi
 
 echo "======== Пишем nginx HTTP+HTTPS ========"
-# убрать чужие битые 443 для этого домена
+# Убрать только stale/broken vhost'ы ДЛЯ ЭТОГО домена (битый pem или старый cert path).
+# Нельзя снимать любой listen 443 — на VPS с несколькими сайтами это гасит чужой HTTPS.
 for f in /etc/nginx/sites-enabled/*; do
   [ -e "$f" ] || continue
   case "$f" in
     *ai-helper-${SITE_NAME}.conf) continue ;;
   esac
-  if grep -qE "server_name.*${DOMAIN}|listen[[:space:]]+443" "$f" 2>/dev/null; then
-    if grep -qE "ssl_certificate" "$f" 2>/dev/null && ! grep -qF "$CERT" "$f" 2>/dev/null; then
-      echo "  · отключаю конфликтующий vhost: $f"
-      rm -f "$f"
-    fi
+  if ! grep -qE "server_name[[:space:]]+[^;]*${DOMAIN}" "$f" 2>/dev/null; then
+    continue
+  fi
+  cert_line="$(grep -E '^\s*ssl_certificate[[:space:]]+' "$f" 2>/dev/null | head -1 || true)"
+  cert_path="$(printf '%s' "$cert_line" | awk '{print $2}' | tr -d ';')"
+  if [ -z "$cert_path" ]; then
+    continue
+  fi
+  if [ ! -f "$cert_path" ] || { [ -n "$CERT" ] && [ "$cert_path" != "$CERT" ]; }; then
+    echo "  · отключаю конфликтующий/битый vhost для ${DOMAIN}: $f"
+    rm -f "$f"
   fi
 done
 
