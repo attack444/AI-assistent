@@ -1214,6 +1214,18 @@ class APIHandler(BaseHTTPRequestHandler):
                 self._send(400, _json({"error": "Чанк слишком большой"}))
                 return
             data = self.rfile.read(length)
+            if len(data) != length:
+                self._send(
+                    400,
+                    _json(
+                        {
+                            "error": (
+                                f"Неполный чанк: получено {len(data)} из {length} байт"
+                            )
+                        }
+                    ),
+                )
+                return
             result = pup.save_chunk(SITES_ROOT, upload_id, index, data)
             self._send(200, _json(result))
         except Exception as exc:
