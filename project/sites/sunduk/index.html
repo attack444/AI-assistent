@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071018" />
+  <title>SUNDUK — мобильные игры</title>
+  <meta name="description" content="SUNDUK — студия мобильных игр: релизы для iOS и Android, обзоры, анонсы и браузерные демо." />
+  <link rel="canonical" href="https://5mb2.ru/" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/main.css" />
+</head>
+<body data-page="home">
+  <div class="grain" aria-hidden="true"></div>
+  <div id="site-header"></div>
+
+  <main>
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true">
+        <div class="hero-grid"></div>
+        <div class="orb orb-a"></div>
+        <div class="orb orb-b"></div>
+      </div>
+      <div class="wrap hero-content">
+        <p class="hero-brand">SUN<em>DUK</em></p>
+        <h1>Мобильные игры с характером</h1>
+        <p class="lead">Студия Славы Сундукова: аркады и стратегии для iOS и Android — плюс обзоры, анонсы и демо в браузере.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="games/">Каталог игр</a>
+          <a class="btn btn-ghost" href="play/">Играть в Chest Dash</a>
+        </div>
+        <div class="pill-platforms" aria-label="Платформы">
+          <span>iOS</span><span>Android</span><span>Web demo</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <b>SUNDUK</b><span>mobile</span><span>iOS</span><span>Android</span><span>indie</span><span>playtests</span>
+        <b>SUNDUK</b><span>mobile</span><span>iOS</span><span>Android</span><span>indie</span><span>playtests</span>
+      </div>
+    </div>
+
+    <section class="block" id="games">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Игры</h2>
+          <p>Фокус — мобильные сессии: быстро зайти, сложно оторваться.</p>
+        </div>
+        <div class="game-grid" id="home-games"></div>
+        <p style="margin-top:22px" class="reveal"><a class="btn btn-ghost" href="games/">Все игры и фильтры</a></p>
+      </div>
+    </section>
+
+    <section class="block" id="reviews">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Обзоры</h2>
+          <p>Разборы мобильного UX, процессов и чужих релизов.</p>
+        </div>
+        <div class="strip" id="home-reviews"></div>
+      </div>
+    </section>
+
+    <section class="block" id="news">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Анонсы</h2>
+          <p>Даты soft-launch, трейлеры и набор в плейтесты.</p>
+        </div>
+        <div class="strip" id="home-news"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/games-data.js"></script>
+  <script src="assets/js/main.js" data-root="."></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    }
+  </script>
+</body>
+</html>

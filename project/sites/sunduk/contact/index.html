@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Контакт — SUNDUK</title>
+  <meta name="description" content="Связаться со студией SUNDUK: пресса, плейтесты, коллаборации." />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/main.css" />
+</head>
+<body data-page="contact">
+  <div class="grain" aria-hidden="true"></div>
+  <div id="site-header"></div>
+  <header class="page-hero">
+    <div class="wrap">
+      <h1>Контакт</h1>
+      <p>Пресса, плейтесты, издатели, баг-репорты — пишите.</p>
+    </div>
+  </header>
+  <div class="wrap" style="padding:28px 0 72px">
+    <form class="form reveal" id="contact-form" novalidate>
+      <label>Имя
+        <input class="field" name="name" autocomplete="name" required placeholder="Как к вам обращаться" />
+      </label>
+      <label>Email
+        <input class="field" name="email" type="email" autocomplete="email" required placeholder="you@mail.com" />
+      </label>
+      <label>Тема
+        <select class="field" name="topic">
+          <option value="playtest">Плейтест</option>
+          <option value="press">Пресса</option>
+          <option value="biz">Бизнес / издательство</option>
+          <option value="other">Другое</option>
+        </select>
+      </label>
+      <label>Сообщение
+        <textarea class="field" name="message" required placeholder="Коротко суть…"></textarea>
+      </label>
+      <label class="hp" aria-hidden="true">Сайт
+        <input name="website" tabindex="-1" autocomplete="off" />
+      </label>
+      <button class="btn btn-primary" type="submit">Отправить</button>
+      <p class="form-note" id="contact-note" hidden></p>
+      <p class="form-note">Или сразу: <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a></p>
+    </form>
+  </div>
+  <div id="site-footer"></div>
+  <script src="../assets/js/games-data.js"></script>
+  <script src="../assets/js/main.js" data-root=".."></script>
+</body>
+</html>

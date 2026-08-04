@@ -7,7 +7,7 @@
   <meta name="description" content="NeoBrain — AI-платформа для сайтов: деплой, чат с DeepSeek, виджет и панель на своём VPS." />
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href="https://neobrain.site/" />
-  <meta name="yandex-verification" content="1e58779d59cc0fce" />
+  <meta name="yandex-verification" content="30ae2c77f32bcc83" />
   <meta property="og:locale" content="ru_RU" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="NeoBrain — AI-платформа для сайтов" />
@@ -394,9 +394,39 @@
       letter-spacing: -0.03em;
     }
 
+    .topbar-left { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; min-width: 0; }
+    .hub-nav { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.9rem; color: var(--muted); font-weight: 600; }
+    .hub-nav a:hover { color: var(--accent-ink); }
+    .hub-nav a.is-on { color: var(--accent-ink); }
     .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .top-btn { padding: 8px 14px; font-size: 0.9rem; }
     .auth-user { font-size: 0.9rem; color: var(--muted); font-weight: 600; }
+    .hub-dirs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .hub-dir {
+      display: block;
+      padding: 22px 20px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.55);
+      transition: transform 0.25s var(--ease, ease), border-color 0.25s ease;
+    }
+    .hub-dir:hover { transform: translateY(-2px); border-color: rgba(11,127,110,0.35); }
+    .hub-dir strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      margin-bottom: 6px;
+    }
+    .hub-dir span { color: var(--muted); font-size: 0.95rem; }
+    @media (max-width: 760px) {
+      .hub-dirs { grid-template-columns: 1fr; }
+      .hub-nav { width: 100%; gap: 10px; }
+    }
 
     .auth-modal {
       position: fixed;
@@ -918,7 +948,15 @@
   <!-- End Google Tag Manager (noscript) -->
   <noscript><div><img src="https://mc.yandex.ru/watch/111275874" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
   <div class="topbar">
-    <a href="#" class="brand-mini">NeoBrain</a>
+    <div class="topbar-left">
+      <a href="/" class="brand-mini">NeoBrain</a>
+      <nav class="hub-nav" aria-label="Направления">
+        <a class="is-on" href="/">AI</a>
+        <a href="/seo/">SEO</a>
+        <a href="/sunduk/">Игры</a>
+        <a href="/contacts/">Контакты</a>
+      </nav>
+    </div>
     <div class="topbar-actions">
       <span id="auth-user" class="auth-user" hidden></span>
       <button type="button" class="btn btn-ghost top-btn" id="btn-login">Войти</button>
@@ -981,6 +1019,25 @@
       </div>
     </div>
   </header>
+
+  <section class="section" id="directions">
+    <h2>Направления</h2>
+    <p>Один домен — несколько продуктов. Новые услуги добавляем сюда же, игры живут отдельно.</p>
+    <div class="hub-dirs">
+      <a class="hub-dir" href="#deploy">
+        <strong>AI / сайты</strong>
+        <span>Деплой, чат, виджет и панель на своём VPS.</span>
+      </a>
+      <a class="hub-dir" href="/seo/">
+        <strong>SEO 5MB2</strong>
+        <span>Аудит, продвижение, Local и техника — с оплатой картой.</span>
+      </a>
+      <a class="hub-dir" href="/sunduk/">
+        <strong>SUNDUK</strong>
+        <span>Мобильные игры и демо. Скоро — отдельный домен.</span>
+      </a>
+    </div>
+  </section>
 
   <section class="section" id="how">
     <h2>Одна платформа — три действия</h2>
@@ -1190,9 +1247,11 @@
   </section>
 
   <footer>
-    <div>© NeoBrain · платформа AI для сайтов</div>
+    <div>© NeoBrain · хаб продуктов</div>
     <div>
-      <a href="/contacts/">Контакты</a>
+      <a href="/seo/">SEO</a>
+      · <a href="/sunduk/">Игры</a>
+      · <a href="/contacts/">Контакты</a>
       · <a href="/rekvizity/">Реквизиты</a>
       · <a href="#feedback">Идея / ошибка</a>
       · <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>

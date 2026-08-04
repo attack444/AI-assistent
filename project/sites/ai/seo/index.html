@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#eef2f6" />
+  <meta name="description" content="SEO 5MB2 на NeoBrain: аудит, продвижение, Local SEO и техника. Фиксированные пакеты, оплата картой." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://neobrain.site/seo/" />
+  <meta name="yandex-verification" content="30ae2c77f32bcc83" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="SEO — 5MB2 на NeoBrain" />
+  <meta property="og:description" content="Продвижение сайтов по России: аудит, семантика, контент и техника." />
+  <meta property="og:url" content="https://neobrain.site/seo/" />
+  <meta property="og:site_name" content="NeoBrain" />
+  <title>SEO — 5MB2 · NeoBrain</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-3DPQC7HKJL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-3DPQC7HKJL');
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Unbounded:wght@600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #e9f1ef;
+      --ink: #0c1a16;
+      --muted: #3d534c;
+      --line: rgba(12, 26, 22, 0.12);
+      --accent: #0b7f6e;
+      --accent-ink: #04352e;
+      --font-display: "Unbounded", sans-serif;
+      --font-body: "Manrope", sans-serif;
+      --panel: rgba(255,255,255,0.62);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 80% -10%, rgba(11,127,110,0.16), transparent 55%),
+        linear-gradient(165deg, #f4faf8, var(--bg) 40%, #d8e6e1);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    a { color: inherit; text-decoration: none; }
+    .wrap { width: min(1040px, calc(100% - 40px)); margin: 0 auto; }
+    .top {
+      position: sticky; top: 0; z-index: 20;
+      backdrop-filter: blur(10px);
+      background: rgba(233,241,239,0.88);
+      border-bottom: 1px solid var(--line);
+    }
+    .top-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; min-height: 58px; flex-wrap: wrap;
+    }
+    .brand { font-family: var(--font-display); font-weight: 800; }
+    .brand span { color: var(--accent); }
+    .nav { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-weight: 600; font-size: 0.92rem; }
+    .nav a.is-on, .nav a:hover { color: var(--accent-ink); }
+    .hero { padding: 56px 0 28px; }
+    .hero .eyebrow {
+      font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--accent);
+    }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 4vw, 2.7rem);
+      line-height: 1.1; margin: 10px 0 14px; max-width: 16ch;
+    }
+    .hero p { max-width: 52ch; color: var(--muted); font-size: 1.05rem; }
+    .cta-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 12px 18px; border-radius: 12px; font-weight: 700; border: 1px solid transparent;
+      cursor: pointer; font: inherit;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+    .grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+      padding: 10px 0 64px;
+    }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px;
+      display: grid; gap: 10px;
+    }
+    .card h2 { font-family: var(--font-display); font-size: 1.2rem; margin: 0; }
+    .card .price { font-weight: 800; font-size: 1.35rem; color: var(--accent-ink); }
+    .card .term { color: var(--muted); font-size: 0.9rem; }
+    .card ul { margin: 0; padding-left: 1.1em; color: var(--muted); }
+    .card label { display: grid; gap: 6px; font-size: 0.9rem; font-weight: 600; }
+    .card input {
+      width: 100%; padding: 11px 12px; border-radius: 10px;
+      border: 1px solid var(--line); background: #fff; font: inherit;
+    }
+    .note { color: var(--muted); font-size: 0.88rem; min-height: 1.2em; }
+    .note.ok { color: var(--accent-ink); }
+    .note.err { color: #a12b1a; }
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 22px 0 36px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="wrap top-inner">
+      <a class="brand" href="/">Neo<span>Brain</span></a>
+      <nav class="nav" aria-label="Направления">
+        <a href="/">AI</a>
+        <a class="is-on" href="/seo/">SEO</a>
+        <a href="/sunduk/">Игры</a>
+        <a href="/contacts/">Контакты</a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">5MB2 · направление NeoBrain</p>
+      <h1>SEO, которое приводит клиентов</h1>
+      <p>Аудит, продвижение, Local и техника — фиксированные пакеты. Оплата картой через ЮKassa, без магии в презентациях.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#packages">Пакеты и оплата</a>
+        <a class="btn btn-ghost" href="mailto:hello@5mb2.ru?subject=SEO%20заявка">Написать</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="packages">
+    <div class="grid" id="pkg-grid"></div>
+  </main>
+
+  <footer class="wrap">
+    <div>© NeoBrain · SEO 5MB2</div>
+    <div>
+      <a href="/">AI</a> ·
+      <a href="/sunduk/">Игры</a> ·
+      <a href="/rekvizity/">Реквизиты</a> ·
+      <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a>
+    </div>
+  </footer>
+
+  <script>
+    const PACKAGES = [
+      {
+        id: "mb2-seo-audit",
+        title: "SEO-аудит",
+        price: "29 000 ₽",
+        term: "5–10 рабочих дней",
+        blurb: "Техника, индекс, конкуренты, приоритетный план правок.",
+        bullets: ["Технический аудит", "Сравнение с конкурентами", "План правок", "Рекомендации по контенту"],
+      },
+      {
+        id: "mb2-seo-monthly",
+        title: "SEO-продвижение",
+        price: "55 000 ₽/мес",
+        term: "от 3 месяцев",
+        blurb: "Семантика, структура, контент — ежемесячная работа на трафик.",
+        bullets: ["Семантическое ядро", "Структура и ТЗ", "Контент", "Отчёт в кабинете"],
+      },
+      {
+        id: "mb2-local-seo",
+        title: "Local SEO",
+        price: "40 000 ₽/мес",
+        term: "от 1–2 месяцев",
+        blurb: "Карты, карточки, региональная выдача — заявки из вашего города.",
+        bullets: ["Карты и карточки", "Региональные посадочные", "Отзывы и NAP", "Локальные факторы"],
+      },
+      {
+        id: "mb2-tech-seo",
+        title: "Техническое SEO",
+        price: "35 000 ₽",
+        term: "по объёму",
+        blurb: "Скорость, индексация, разметка, миграции без просадки.",
+        bullets: ["Core Web Vitals", "robots и sitemap", "Schema", "Миграции"],
+      },
+    ];
+
+    const grid = document.getElementById("pkg-grid");
+    grid.innerHTML = PACKAGES.map((p) => `
+      <article class="card" data-package="${p.id}">
+        <h2>${p.title}</h2>
+        <div class="price">${p.price}</div>
+        <div class="term">${p.term}</div>
+        <p>${p.blurb}</p>
+        <ul>${p.bullets.map((b) => `<li>${b}</li>`).join("")}</ul>
+        <label>Email для чека
+          <input type="email" name="email" required placeholder="you@mail.com" autocomplete="email" />
+        </label>
+        <button class="btn btn-primary" type="button" data-pay>Оплатить</button>
+        <p class="note" data-note></p>
+      </article>
+    `).join("");
+
+    grid.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-pay]");
+      if (!btn) return;
+      const card = btn.closest(".card");
+      const pkg = card.getAttribute("data-package");
+      const email = (card.querySelector('input[name="email"]') || {}).value || "";
+      const note = card.querySelector("[data-note]");
+      note.className = "note";
+      note.textContent = "Создаём оплату…";
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/public/pay/package", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            package: pkg,
+            email: email.trim(),
+            return_url: location.origin + "/seo/?paid=1&package=" + encodeURIComponent(pkg),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || "Не удалось создать оплату");
+        }
+        const url = data.confirmation_url || (data.confirmation && data.confirmation.confirmation_url);
+        if (!url) throw new Error(data.message || "ЮKassa не вернула ссылку — проверьте ключи в панели");
+        note.className = "note ok";
+        note.textContent = "Переходим в ЮKassa…";
+        location.href = url;
+      } catch (err) {
+        note.className = "note err";
+        note.textContent = err.message || String(err);
+        btn.disabled = false;
+      }
+    });
+
+    if (new URLSearchParams(location.search).get("paid") === "1") {
+      const tip = document.createElement("p");
+      tip.className = "note ok";
+      tip.style.padding = "0 0 18px";
+      tip.textContent = "Если оплата прошла — напишите на hello@5mb2.ru, подтвердим пакет и сроки.";
+      grid.before(tip);
+    }
+  </script>
+</body>
+</html>
