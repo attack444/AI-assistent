@@ -117,17 +117,6 @@ def _safe_member(name: str) -> bool:
     return ext in _ALLOWED_EXT
 
 
-def _clear_root(root: Path) -> None:
-    if root.exists():
-        for child in root.iterdir():
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink(missing_ok=True)
-    else:
-        root.mkdir(parents=True, exist_ok=True)
-
-
 def _swap_staging_into_root(staging: Path, root: Path) -> None:
     """Replace live root with staging only after a fully successful extract."""
     parent = root.parent
@@ -377,42 +366,6 @@ def extract_upload(path: Path, root: Path, filename: str = "") -> Dict[str, Any]
     if fmt == "html":
         return deploy_single_html(path, root)
     raise ValueError("Неизвестный формат")
-
-
-def extract_public_zip(zip_path: Path, root: Path) -> Dict[str, Any]:
-    """Extract allowed static files into root, replacing contents only after success.
-
-    Staging avoids wiping an existing live site when the ZIP is invalid or
-    exceeds limits (critical for redeploy).
-    """
-    root = root.resolve()
-    parent = root.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    staging = parent / f".staging-{root.name}-{secrets.token_hex(8)}"
-    if staging.exists():
-        shutil.rmtree(staging)
-
-    try:
-        stats = _extract_zip_into(zip_path, staging)
-        # Swap staging into place only after a fully successful extract.
-        if root.exists():
-            backup = parent / f".backup-{root.name}-{secrets.token_hex(8)}"
-            root.rename(backup)
-            try:
-                staging.rename(root)
-            except Exception:
-                # Roll back so the previous site stays available.
-                if not root.exists() and backup.exists():
-                    backup.rename(root)
-                raise
-            shutil.rmtree(backup, ignore_errors=True)
-        else:
-            staging.rename(root)
-        return stats
-    except Exception:
-        if staging.exists():
-            shutil.rmtree(staging, ignore_errors=True)
-        raise
 
 
 def create_deployment(
