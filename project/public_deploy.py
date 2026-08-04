@@ -159,6 +159,22 @@ def _ensure_index(root: Path) -> None:
     (root / ".user.ini").write_text("auto_prepend_file =\n", encoding="utf-8")
 
 
+def _is_under_root(path: Path, root: Path) -> bool:
+    """True if path is root or a real descendant (not a prefix sibling like root+'x')."""
+    try:
+        resolved = path.resolve()
+        root_resolved = root.resolve()
+    except OSError:
+        return False
+    if resolved == root_resolved:
+        return True
+    try:
+        resolved.relative_to(root_resolved)
+        return True
+    except ValueError:
+        return False
+
+
 def _write_member(root: Path, rel: str, data: bytes, *, kept: int, total_bytes: int) -> Tuple[int, int]:
     if not _safe_member(rel):
         return kept, total_bytes
@@ -168,9 +184,12 @@ def _write_member(root: Path, rel: str, data: bytes, *, kept: int, total_bytes: 
     if total_bytes > MAX_UNCOMPRESSED:
         raise ValueError(f"Распаковка > {MAX_UNCOMPRESSED // (1024*1024)} МБ")
     target = (root / rel).resolve()
-    if not str(target).startswith(str(root.resolve())):
+    if not _is_under_root(target, root):
         raise PermissionError(f"Небезопасный путь: {rel}")
     target.parent.mkdir(parents=True, exist_ok=True)
+    # Refuse writing through a symlink that escapes the site root
+    if target.exists() and target.is_symlink():
+        raise PermissionError(f"Симлинк запрещён: {rel}")
     target.write_bytes(data)
     kept += 1
     if kept > MAX_FILES:
@@ -313,6 +332,8 @@ def create_deployment(
     user_id: str = "",
     user_email: str = "",
     filename: str = "",
+    *,
+    attach: bool = True,
 ) -> Dict[str, Any]:
     if zip_path.stat().st_size > MAX_ZIP:
         raise ValueError(f"Файл больше {MAX_ZIP // (1024*1024)} МБ")
@@ -336,7 +357,9 @@ def create_deployment(
     }
     save_meta(name, meta)
 
-    if user_email:
+    # Prefer API-level reserve_site_slot + commit_site_slot (atomic). attach=True
+    # remains as a fallback for callers that do not reserve first.
+    if attach and user_email:
         try:
             import public_users as pu
             pu.attach_site(user_email, name)
@@ -391,10 +414,12 @@ def read_file(name: str, token: str, rel: str) -> Dict[str, Any]:
     rel = (rel or "").lstrip("/").replace("\\", "/")
     if not rel or ".." in rel.split("/"):
         raise ValueError("Некорректный путь")
-    path = (SITES_ROOT / name / rel).resolve()
     root = (SITES_ROOT / name).resolve()
-    if not str(path).startswith(str(root)) or not path.is_file():
+    path = (SITES_ROOT / name / rel).resolve()
+    if not _is_under_root(path, root) or not path.is_file():
         raise FileNotFoundError("Файл не найден")
+    if path.is_symlink():
+        raise PermissionError("Симлинк нельзя читать через редактор")
     if path.suffix.lower() not in _ALLOWED_EXT and path.name.lower() not in {"makefile", "license", "readme"}:
         raise ValueError("Этот тип файла нельзя читать здесь")
     data = path.read_bytes()
@@ -415,13 +440,18 @@ def write_file(name: str, token: str, rel: str, content: str) -> Dict[str, Any]:
         raise ValueError("Некорректный путь")
     if not _safe_member(rel):
         raise ValueError("Этот тип файла нельзя записать")
-    path = (SITES_ROOT / name / rel).resolve()
     root = (SITES_ROOT / name).resolve()
-    if not str(path).startswith(str(root)):
+    path = (SITES_ROOT / name / rel).resolve()
+    if not _is_under_root(path, root):
         raise PermissionError("Путь вне сайта")
+    if path.exists() and path.is_symlink():
+        raise PermissionError("Симлинк запрещён")
+    # Also ensure no symlink parent escapes (resolve already did; re-check under root)
     raw = (content or "").encode("utf-8")
     if len(raw) > 500_000:
         raise ValueError("Файл > 500 КБ")
     path.parent.mkdir(parents=True, exist_ok=True)
+    if not _is_under_root(path.parent, root) and path.parent != root:
+        raise PermissionError("Путь вне сайта")
     path.write_bytes(raw)
     return {"ok": True, "path": rel, "bytes": len(raw)}
