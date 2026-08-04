@@ -48,6 +48,35 @@ class DnsToolsTests(unittest.TestCase):
         self.assertFalse(r["points_to_vps"])
         self.assertTrue(any("hosting.reg.ru" in x for x in r["issues"]))
 
+    def test_lookup_missing_a_records_reports_issue(self):
+        with mock.patch.object(dt, "_dig", return_value=[]), mock.patch.object(
+            dt, "_socket_a", return_value=[]
+        ):
+            r = dt.lookup_domain("example.com", expected_ip="80.78.248.195")
+        self.assertTrue(r["ok"])
+        self.assertFalse(r["points_to_vps"])
+        self.assertTrue(any("Нет A/AAAA" in x for x in r["issues"]))
+        self.assertFalse(r["healthy"])
+
+    def test_lookup_many_dedups_and_skips_empty(self):
+        calls = []
+
+        def fake_lookup(domain, expected_ip=""):
+            calls.append(domain)
+            return {"ok": True, "domain": domain}
+
+        with mock.patch.object(dt, "lookup_domain", side_effect=fake_lookup):
+            out = dt.lookup_many(
+                ["https://A.ru/x", "a.ru", "", "B.ru", "https://b.ru"],
+                expected_ip="1.2.3.4",
+            )
+        self.assertEqual([x["domain"] for x in out], ["a.ru", "b.ru"])
+        self.assertEqual(calls, ["a.ru", "b.ru"])
+
+    def test_detect_vps_ip_prefers_env(self):
+        with mock.patch.dict("os.environ", {"VPS_PUBLIC_IP": "203.0.113.10"}):
+            self.assertEqual(dt.detect_vps_ip(), "203.0.113.10")
+
 
 class OverviewTests(unittest.TestCase):
     def test_build_overview(self):
