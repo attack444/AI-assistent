@@ -93,6 +93,19 @@ def _clean_cred(raw: str) -> str:
     return val
 
 
+def secret_looks_masked(secret: str) -> bool:
+    """ЛК часто показывает test_*… / test_•••• — такие строки нельзя слать в API."""
+    s = secret or ""
+    if not s:
+        return False
+    if "*" in s or "•" in s or "…" in s or "..." in s:
+        return True
+    # test_**** / live_xxxx маски
+    if s.startswith(("test_", "live_")) and set(s[5:]) <= set("*•xX"):
+        return True
+    return False
+
+
 def normalize_creds(shop: str, secret: str) -> tuple[str, str]:
     """shopId = цифры; secret = test_/live_… Если вставили shop:secret в одно поле — разделим."""
     shop = _clean_cred(shop)
@@ -115,6 +128,42 @@ def normalize_creds(shop: str, secret: str) -> tuple[str, str]:
     return shop, secret
 
 
+def validate_api_creds(shop: str, secret: str) -> Optional[str]:
+    """Человекочитаемая ошибка до запроса в ЮKassa, или None если формат ок."""
+    shop, secret = normalize_creds(shop, secret)
+    if not shop or not secret:
+        return "Нужны оба поля: shopId (цифры) и секретный ключ test_… / live_…"
+    if not shop.isdigit():
+        return "shopId должен быть только цифрами (как в ЛК ЮKassa)."
+    if secret_looks_masked(secret):
+        return (
+            "Секрет похож на МАСКУ из личного кабинета (есть * или •). "
+            "Так API не примет. В ЛК: Интеграция → API → «Выпустить ключ» "
+            "и скопируйте ПОЛНУЮ строку test_…/live_… без звёздочек "
+            "(показывается один раз). Пример выплаты из документации — это не ключ."
+        )
+    if not secret.startswith(("test_", "live_")):
+        return (
+            "Нужен именно «Секретный ключ» API (начинается с test_ или live_), "
+            "не OAuth, не ключ для мобильного SDK и не пароль от ЛК."
+        )
+    if len(secret) < 30:
+        return (
+            f"Секрет слишком короткий ({len(secret)} символов) — похоже, скопировали не целиком. "
+            "Перевыпустите ключ и вставьте всю строку."
+        )
+    # Допустимые символы секрета ЮKassa
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-=+")
+    bad = sorted({c for c in secret if c not in allowed})
+    if bad:
+        return (
+            "В секрете недопустимые символы: "
+            + " ".join(repr(c) for c in bad[:8])
+            + ". Скопируйте ключ заново из ЛК (без пробелов и масок)."
+        )
+    return None
+
+
 def fingerprint(shop: str = "", secret: str = "") -> Dict[str, Any]:
     """Отпечаток ключей без раскрытия секрета — чтобы видеть, что реально сохранилось."""
     if shop or secret:
@@ -133,7 +182,14 @@ def fingerprint(shop: str = "", secret: str = "") -> Dict[str, Any]:
         "secret_prefix": prefix,
         "secret_len": len(secret),
         "secret_tail": secret[-4:] if len(secret) >= 4 else "",
-        "format_ok": bool(shop and shop.isdigit() and prefix in {"test_", "live_"} and len(secret) >= 20),
+        "format_ok": bool(
+            shop
+            and shop.isdigit()
+            and prefix in {"test_", "live_"}
+            and len(secret) >= 30
+            and not secret_looks_masked(secret)
+        ),
+        "secret_masked": secret_looks_masked(secret),
     }
 
 
@@ -174,7 +230,7 @@ def creds_diagnostics() -> Dict[str, Any]:
             if fp.get("format_ok")
             else (
                 "Нужны: shopId (только цифры) + секретный ключ API, "
-                "начинающийся на test_ или live_ (длина ≥ 20)."
+                "начинающийся на test_ или live_ (длина ≥ 30, без *)."
             )
         ),
     }
@@ -239,11 +295,14 @@ def _friendly_http_error(code: int, detail: str) -> str:
     if code == 401 or "invalid_credentials" in low:
         if "authentication type is not allowed" in low:
             return (
-                "ЮKassa: Authentication type is not allowed — магазин не принимает эти ключи для API. "
-                "В ЛК ЮKassa нужен магазин с интеграцией «API» и именно «Секретный ключ» "
-                "(test_… / live_…), не OAuth-токен и не ключ SDK. "
-                "Выпустите новый секретный ключ и вставьте в панель вместе с shopId (цифры). "
-                "Проверка: Настройки → «Проверить ЮKassa»."
+                "ЮKassa: Authentication type is not allowed.\n"
+                "Магазин не принимает HTTP Basic (shopId + секрет) для API платежей.\n"
+                "Что сделать в ЛК yookassa.ru:\n"
+                "1) Откройте нужный магазин → «Интеграция» / «API» (не модуль CMS, не SDK).\n"
+                "2) Выпустите новый «Секретный ключ» — полная строка test_… или live_… без *.\n"
+                "3) shopId и секрет — от ОДНОГО магазина.\n"
+                "4) В панели NeoBrain: «Сохранить и проверить ЮKassa».\n"
+                "Cloudflare тут ни при чём: ошибку возвращает сам api.yookassa.ru."
             )
         return (
             "ЮKassa HTTP 401: неверные shopId/секретный ключ. "
@@ -306,29 +365,10 @@ def verify_connection(
         shop, secret = _creds()
     diag = fingerprint(shop, secret)
     diag["shop_id_digits"] = shop.isdigit() if shop else False
-    if not shop or not secret:
-        return {"ok": False, "error": "Нет shopId или секретного ключа", **diag}
-    if not shop.isdigit():
-        return {
-            "ok": False,
-            "error": "shopId должен быть числом (скопируйте «shopId» из ЛК ЮKassa)",
-            **diag,
-        }
-    if not secret.startswith(("test_", "live_")):
-        return {
-            "ok": False,
-            "error": (
-                "Секретный ключ должен начинаться с test_ или live_. "
-                f"Сейчас prefix={diag.get('secret_prefix')!r}, длина={diag.get('secret_len')}."
-            ),
-            **diag,
-        }
-    if len(secret) < 20:
-        return {
-            "ok": False,
-            "error": f"Секрет слишком короткий ({len(secret)} символов) — похоже, скопировали не целиком.",
-            **diag,
-        }
+    diag["secret_masked"] = secret_looks_masked(secret)
+    pre = validate_api_creds(shop, secret)
+    if pre:
+        return {"ok": False, "error": pre, **diag}
     try:
         result = _yookassa_request("GET", "/v3/me", shop=shop, secret=secret)
     except Exception as exc:
@@ -374,13 +414,17 @@ def save_and_verify(shop_id: str, secret_key: str) -> Dict[str, Any]:
     """Сохранить пару ключей и сразу проверить через /v3/me."""
     shop, secret = normalize_creds(shop_id, secret_key)
     fp = fingerprint(shop, secret)
+    fp["secret_masked"] = secret_looks_masked(secret)
+    pre = validate_api_creds(shop, secret)
+    if pre:
+        return {"ok": False, "saved": False, "error": pre, **fp}
     if not fp.get("format_ok"):
         return {
             "ok": False,
             "saved": False,
             "error": (
                 "Ключи не похожи на ЮKassa API: shopId=цифры, секрет test_/live_ "
-                f"длиной ≥20. Сейчас: shop={shop!r} (len={fp['shop_id_len']}), "
+                f"длиной ≥30. Сейчас: shop={shop!r} (len={fp['shop_id_len']}), "
                 f"prefix={fp['secret_prefix']!r}, secret_len={fp['secret_len']}."
             ),
             **fp,

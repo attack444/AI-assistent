@@ -70,7 +70,7 @@ class PayTests(unittest.TestCase):
             }
 
         with mock.patch.object(
-            pay, "_creds", return_value=("123456", "test_secretkeyxxxxxxxx")
+            pay, "_creds", return_value=("123456", "test_secretkeyxxxxxxxxxxxxxxxxxxxx")
         ), mock.patch.object(pay, "_append"), mock.patch.object(
             pay, "_yookassa_request", side_effect=fake_yk
         ):
@@ -110,11 +110,26 @@ class PayTests(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertFalse(r.get("saved"))
 
+    def test_rejects_masked_secret_with_star(self):
+        r = pay.save_and_verify(
+            "1428273",
+            "test_*gpwStZPZ37x0lF2Ydb33MTmhdhRTqJwP6jA_pLlQQQbs",
+        )
+        self.assertFalse(r["ok"])
+        self.assertFalse(r.get("saved"))
+        self.assertTrue(r.get("secret_masked"))
+        self.assertIn("МАСК", (r.get("error") or "").upper())
+
+    def test_validate_api_creds_masked(self):
+        err = pay.validate_api_creds("1428273", "test_*abcDEFGHIJKLMNOPQRSTUVWXYZ0123")
+        self.assertIsNotNone(err)
+        self.assertIn("МАСК", err.upper())
+
     def test_fingerprint_hides_secret(self):
-        fp = pay.fingerprint("998877", "test_ABCDEFGHIJKLMNOPQRSTUV")
+        fp = pay.fingerprint("998877", "test_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")
         self.assertEqual(fp["shop_id"], "998877")
         self.assertEqual(fp["secret_prefix"], "test_")
-        self.assertEqual(fp["secret_tail"], "STUV")
+        self.assertEqual(fp["secret_tail"], "2345")
         self.assertTrue(fp["format_ok"])
         self.assertNotIn("ABCDEF", json.dumps(fp))
 

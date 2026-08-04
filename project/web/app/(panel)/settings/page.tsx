@@ -90,10 +90,33 @@ export default function SettingsPage() {
   const [ykBusy, setYkBusy] = useState(false);
   const [ykMsg, setYkMsg] = useState("");
   const [ykFp, setYkFp] = useState("");
+  const [ykPasteHint, setYkPasteHint] = useState("");
 
   // Uncontrolled: React НЕ владеет value — нечему «заменять» вставку
   const shopRef = useRef<HTMLInputElement>(null);
   const secretRef = useRef<HTMLTextAreaElement>(null);
+
+  function refreshYkPasteHint() {
+    const shop = (shopRef.current?.value || "").trim();
+    const secret = (secretRef.current?.value || "").trim().replace(/\s+/g, "");
+    if (!shop && !secret) {
+      setYkPasteHint("");
+      return;
+    }
+    const parts: string[] = [];
+    parts.push(shop ? `shopId=${shop} (${shop.length} симв., ${/^\d+$/.test(shop) ? "цифры ок" : "нужны только цифры"})` : "shopId пуст");
+    if (!secret) {
+      parts.push("секрет пуст");
+    } else {
+      const prefix = secret.startsWith("test_") ? "test_" : secret.startsWith("live_") ? "live_" : "???";
+      const masked = /[*•…]|\.\.\./.test(secret);
+      parts.push(
+        `секрет ${prefix}…${secret.slice(-4)} · длина ${secret.length}` +
+          (masked ? " · ⚠ есть * или • — это МАСКА, API отклонит" : secret.length >= 30 ? " · длина ок" : " · слишком короткий"),
+      );
+    }
+    setYkPasteHint(parts.join(" · "));
+  }
 
   const load = useCallback(() => {
     setError("");
@@ -128,9 +151,18 @@ export default function SettingsPage() {
     setOk("");
     try {
       const shop = (shopRef.current?.value || "").trim();
-      const secret = (secretRef.current?.value || "").trim();
+      const secret = (secretRef.current?.value || "").trim().replace(/\s+/g, "");
+      refreshYkPasteHint();
       if (!shop || !secret) {
         setError("Вставьте shopId и полный секретный ключ в поля ЮKassa ниже.");
+        setYkBusy(false);
+        return;
+      }
+      if (/[*•…]|\.\.\./.test(secret)) {
+        setError(
+          "В секрете есть * или • — это маска из ЛК, не настоящий ключ. " +
+            "Выпустите новый «Секретный ключ» в разделе Интеграция → API и скопируйте ПОЛНУЮ строку (один раз показывают без звёздочек).",
+        );
         setYkBusy(false);
         return;
       }
@@ -232,14 +264,20 @@ export default function SettingsPage() {
       <div className="panel" style={{ padding: 20, marginBottom: 16, display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: "1.15rem" }}>ЮKassa — оплата картой</h2>
         <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
-          ЛК ЮKassa → магазин с интеграцией <strong>API</strong> → скопируйте{" "}
-          <strong>shopId</strong> (цифры) и <strong>Секретный ключ</strong> (
-          <code>test_…</code> или <code>live_…</code>). Webhook:{" "}
+          ЛК → магазин → <strong>Интеграция → API</strong> → <strong>Выпустить ключ</strong>.
+          Нужны <strong>shopId</strong> (цифры) и полный <strong>Секретный ключ</strong>{" "}
+          <code>test_…</code>/<code>live_…</code> <em>без звёздочек</em>. Не берите пример
+          «выплаты» из документации и не ключ SDK. Webhook:{" "}
           <code>https://neobrain.site/api/public/pay/webhook</code>
         </p>
         {ykFp ? (
           <p className="mono" style={{ margin: 0, fontSize: "0.85rem" }}>
             {ykFp}
+          </p>
+        ) : null}
+        {ykPasteHint ? (
+          <p className="mono" style={{ margin: 0, fontSize: "0.85rem", color: ykPasteHint.includes("⚠") ? "#c44" : undefined }}>
+            Сейчас в полях: {ykPasteHint}
           </p>
         ) : null}
 
@@ -257,8 +295,9 @@ export default function SettingsPage() {
             data-1p-ignore="true"
             data-lpignore="true"
             data-form-type="other"
-            placeholder="только цифры"
+            placeholder="только цифры, напр. 1428273"
             defaultValue=""
+            onInput={refreshYkPasteHint}
           />
         </label>
 
@@ -275,8 +314,9 @@ export default function SettingsPage() {
             data-1p-ignore="true"
             data-lpignore="true"
             data-form-type="other"
-            placeholder="test_… или live_… — вставьте целиком; текст должен остаться без замены"
+            placeholder="test_XXXX… целиком, без символа * внутри"
             defaultValue=""
+            onInput={refreshYkPasteHint}
             style={{
               fontFamily: "IBM Plex Mono, ui-monospace, monospace",
               fontSize: "0.9rem",
