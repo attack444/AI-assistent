@@ -17,7 +17,7 @@
 
 ## Этапы (без спешки)
 
-1. **Сейчас:** студия в репо `project/sites/sunduk/`, превью: `https://neobrain.site/sites/sunduk/` (после `create-sunduk-site.sh`).
+1. **Сейчас:** студия в репо `project/sites/sunduk/`, превью: `https://neobrain.site/sunduk/` (корень домена = `sites/ai`, скрипт `announce-sunduk.sh`).
 2. **Перенос SEO:** страницы услуг/кейсов → раздел на NeoBrain; редиректы со старых URL 5mb2.
 3. **DNS 5mb2.ru → SUNDUK:** когда контент SEO перенесён, `enable-sunduk.sh` вешает студию на `5mb2.ru` (или новый домен, если решите иначе).
 4. **Редиректы:** старые коммерческие URL 5mb2 → соответствующие страницы NeoBrain.
@@ -47,10 +47,9 @@
 
 ```bash
 cd /opt/ai-helper && git pull origin cursor/sunduk-studio-17f9
-cd project/deploy
-bash create-sunduk-site.sh
-# открыть: https://neobrain.site/sites/sunduk/
-# или:    http://IP/sites/sunduk/
+bash project/deploy/announce-sunduk.sh
+# https://neobrain.site/          ← полоска анонса
+# https://neobrain.site/sunduk/   ← студия
 ```
 
 На домен 5mb2.ru — только после переноса SEO (скрипт `enable-sunduk.sh`).
