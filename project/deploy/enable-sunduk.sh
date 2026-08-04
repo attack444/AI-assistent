@@ -39,10 +39,15 @@ server {
     index index.html;
 
     location / {
-        try_files \$uri \$uri/ /index.html;
+        try_files \$uri \$uri/ =404;
     }
 
-    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2)\$ {
+    location = /sw.js {
+        add_header Cache-Control "no-cache";
+        try_files \$uri =404;
+    }
+
+    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2|webmanifest)\$ {
         expires 7d;
         add_header Cache-Control "public";
         try_files \$uri =404;

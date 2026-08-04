@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-# Витрина игровой студии SUNDUK → /var/ai-helper/sites/sunduk
-#   bash project/deploy/create-sunduk-site.sh
+# Создаёт/обновляет превью студии SUNDUK:
+#   https://neobrain.site/sites/sunduk/
+# Полный многостраничный сайт (игры, обзоры, новости, PWA).
 set -euo pipefail
 
-NAME="${SITE_NAME:-sunduk}"
-ROOT="${SITES_DIR:-/var/ai-helper/sites}/$NAME"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_SRC="$SCRIPT_DIR/../sites/sunduk"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+SRC="$ROOT/project/sites/sunduk"
+DEST="${SITES_ROOT:-/var/ai-helper/sites}/sunduk"
+WEB_USER="${WEB_USER:-www-data}"
 
-mkdir -p "$ROOT"
-
-if [ ! -f "$REPO_SRC/index.html" ]; then
-  echo "[ERR] Нет $REPO_SRC/index.html — git pull ветку со студией"
+if [[ ! -d "$SRC" ]]; then
+  echo "ERROR: source not found: $SRC" >&2
   exit 1
 fi
 
-cp -f "$REPO_SRC/index.html" "$ROOT/index.html"
-for f in robots.txt sitemap.xml; do
-  if [ -f "$REPO_SRC/$f" ]; then
-    cp -f "$REPO_SRC/$f" "$ROOT/$f"
-  fi
-done
+mkdir -p "$DEST"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete \
+    --exclude '.DS_Store' \
+    "$SRC/" "$DEST/"
+else
+  find "$DEST" -mindepth 1 -delete 2>/dev/null || true
+  cp -a "$SRC/." "$DEST/"
+fi
 
-printf 'auto_prepend_file =\n' > "$ROOT/.user.ini" || true
-chmod -R a+rX "$ROOT"
-chown -R www-data:www-data "$ROOT" 2>/dev/null || true
+chown -R "$WEB_USER:$WEB_USER" "$DEST" 2>/dev/null || true
+find "$DEST" -type d -exec chmod 755 {} +
+find "$DEST" -type f -exec chmod 644 {} +
 
-IP=$(curl -s --max-time 3 ifconfig.me 2>/dev/null || echo "IP")
-echo "============================================"
-echo "  SUNDUK preview: http://${IP}/sites/${NAME}/"
-echo "  или: https://neobrain.site/sites/${NAME}/"
-echo "  На 5mb2.ru — после переноса SEO: enable-sunduk.sh"
-echo "============================================"
+echo "OK: SUNDUK studio published -> $DEST"
+echo "Preview: https://neobrain.site/sites/sunduk/"
+echo "Pages: / /play/ /games/ /reviews/ /news/ /about/ /contact/ /press/"
+echo "Next (after SEO migrate off 5mb2): bash project/deploy/enable-sunduk.sh"

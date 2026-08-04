@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071018" />
+  <title>Игры — SUNDUK</title>
+  <meta name="description" content="Каталог мобильных игр SUNDUK: iOS, Android, веб-демо. Фильтры по платформе и жанру." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/main.css" />
+</head>
+<body data-page="games">
+  <div class="grain" aria-hidden="true"></div>
+  <div id="site-header"></div>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <h1>Каталог мобильных игр</h1>
+      <p>iOS, Android и браузерные демо. Ищите по платформе, статусу и жанру.</p>
+    </div>
+  </header>
+
+  <div class="wrap" style="padding: 28px 0 72px">
+    <div class="toolbar reveal">
+      <input class="field" id="games-q" type="search" placeholder="Поиск…" autocomplete="off" />
+      <select class="field" id="games-platform" aria-label="Платформа">
+        <option value="all">Все платформы</option>
+        <option value="ios">iOS</option>
+        <option value="android">Android</option>
+        <option value="web">Web</option>
+      </select>
+      <select class="field" id="games-status" aria-label="Статус">
+        <option value="all">Любой статус</option>
+        <option value="play">Можно играть</option>
+        <option value="soon">Скоро</option>
+      </select>
+    </div>
+    <div class="chip-row reveal" style="margin-bottom: 22px">
+      <button type="button" class="chip is-on" data-genre="all">Все жанры</button>
+      <button type="button" class="chip" data-genre="arcade">Arcade</button>
+      <button type="button" class="chip" data-genre="casual">Casual</button>
+      <button type="button" class="chip" data-genre="runner">Runner</button>
+      <button type="button" class="chip" data-genre="action">Action</button>
+      <button type="button" class="chip" data-genre="strategy">Strategy</button>
+      <button type="button" class="chip" data-genre="cards">Cards</button>
+      <button type="button" class="chip" data-genre="idle">Idle</button>
+      <button type="button" class="chip" data-genre="rpg">RPG</button>
+    </div>
+    <div class="game-grid" id="games-catalog"></div>
+  </div>
+
+  <div id="site-footer"></div>
+  <script src="../assets/js/games-data.js"></script>
+  <script src="../assets/js/main.js" data-root=".."></script>
+</body>
+</html>

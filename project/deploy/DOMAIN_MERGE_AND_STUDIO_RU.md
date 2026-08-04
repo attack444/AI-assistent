@@ -24,7 +24,24 @@
 
 ## Бренд студии
 
-**SUNDUK** — короткая вывеска (от «Сундуков»). Меняется в `index.html` (title, `.brand`, JSON-LD).
+**SUNDUK** — короткая вывеска (от «Сундуков»). Специализация: **мобильные игры** (iOS / Android) + web-демо.
+
+## Структура сайта (`project/sites/sunduk/`)
+
+| Раздел | Путь | Что внутри |
+|---|---|---|
+| Главная | `/` | Hero, игры, обзоры, анонсы |
+| Каталог | `/games/` | Поиск, фильтры платформа/статус/жанр |
+| Карточки игр | `/games/<slug>/` | Chest Dash (+ canvas), Neon Alley, Signal Deck, Pocket Forge |
+| Играть | `/play/` | Браузерное демо Chest Dash |
+| Обзоры | `/reviews/` + статьи | UX / процесс / подборки |
+| Анонсы | `/news/` + статьи | Soft-launch, трейлеры, плейтесты |
+| Студия | `/about/` | Специализация и принципы |
+| Контакт | `/contact/` | Форма → mailto |
+| Пресса | `/press/` | Press kit |
+| PWA | `manifest.webmanifest`, `sw.js` | Установка на домашний экран |
+
+Общий chrome: `assets/js/main.js` + `assets/css/main.css` (Syne / Figtree, lime–ember–teal).
 
 ## Деплой превью
 
