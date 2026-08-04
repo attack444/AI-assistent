@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071018" />
+  <title>SUNDUK — игровая студия</title>
+  <meta name="description" content="SUNDUK — студия игр: релизы, обзоры, анонсы и экспериментальные плейбл-проекты." />
+  <link rel="canonical" href="https://5mb2.ru/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #071018;
+      --ink-2: #0e1a24;
+      --mist: #d7e2ec;
+      --paper: #eef3f7;
+      --lime: #c6f135;
+      --ember: #ff5a36;
+      --teal: #3ecfcf;
+      --muted: rgba(215, 226, 236, 0.68);
+      --line: rgba(215, 226, 236, 0.14);
+      --font-display: "Syne", sans-serif;
+      --font-body: "Figtree", sans-serif;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --max: 1120px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      color: var(--mist);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(62, 207, 207, 0.18), transparent 55%),
+        radial-gradient(900px 500px at 90% 0%, rgba(198, 241, 53, 0.12), transparent 50%),
+        linear-gradient(180deg, #071018 0%, #0b1520 45%, #071018 100%);
+      background-attachment: fixed;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    button, input { font: inherit; }
+
+    .grain {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      opacity: 0.09;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .wrap {
+      width: min(var(--max), calc(100% - 40px));
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* —— Topbar —— */
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(14px);
+      background: rgba(7, 16, 24, 0.72);
+      border-bottom: 1px solid var(--line);
+    }
+    .top-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
+    }
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      font-size: 1.15rem;
+    }
+    .brand span { color: var(--lime); }
+    .nav {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .nav a:hover { color: var(--lime); }
+
+    /* —— Hero (one composition) —— */
+    .hero {
+      position: relative;
+      min-height: min(100vh, 860px);
+      display: grid;
+      align-items: end;
+      padding: 48px 0 72px;
+      overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background:
+        linear-gradient(180deg, transparent 30%, rgba(7, 16, 24, 0.92) 88%),
+        radial-gradient(ellipse 80% 55% at 70% 40%, rgba(255, 90, 54, 0.22), transparent 60%),
+        radial-gradient(ellipse 60% 50% at 20% 60%, rgba(62, 207, 207, 0.2), transparent 55%),
+        linear-gradient(135deg, #0a1622, #122433 40%, #071018);
+    }
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(215, 226, 236, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(215, 226, 236, 0.05) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 70% 60% at 60% 45%, #000 20%, transparent 75%);
+      animation: gridDrift 28s linear infinite;
+    }
+    @keyframes gridDrift {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(-48px, -48px, 0); }
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(2px);
+      animation: floatY 7s var(--ease) infinite alternate;
+    }
+    .orb-a {
+      width: 280px; height: 280px;
+      right: 8%; top: 18%;
+      background: radial-gradient(circle at 35% 35%, var(--lime), transparent 65%);
+      opacity: 0.35;
+    }
+    .orb-b {
+      width: 220px; height: 220px;
+      left: 12%; top: 35%;
+      background: radial-gradient(circle at 40% 40%, var(--teal), transparent 65%);
+      opacity: 0.28;
+      animation-delay: -2s;
+    }
+    @keyframes floatY {
+      from { transform: translateY(0); }
+      to { transform: translateY(-18px); }
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 720px;
+      animation: riseIn 1s var(--ease) both;
+    }
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(28px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hero-brand {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: clamp(3.4rem, 12vw, 7.5rem);
+      line-height: 0.9;
+      letter-spacing: -0.03em;
+      margin: 0 0 18px;
+      text-shadow: 0 10px 60px rgba(198, 241, 53, 0.15);
+    }
+    .hero-brand em {
+      font-style: normal;
+      color: var(--lime);
+    }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.35rem, 3.2vw, 2rem);
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 0 0 12px;
+      max-width: 18ch;
+    }
+    .hero p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 1.08rem;
+      max-width: 36ch;
+    }
+    .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+      padding: 0 20px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.25s var(--ease), background 0.25s, border-color 0.25s;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary {
+      background: var(--lime);
+      color: #0a1208;
+    }
+    .btn-primary:hover { background: #d8ff5a; }
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--line);
+      color: var(--mist);
+    }
+    .btn-ghost:hover { border-color: var(--teal); color: var(--teal); }
+
+    /* —— Sections —— */
+    section {
+      padding: 88px 0;
+      border-top: 1px solid var(--line);
+    }
+    .sec-head {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 36px;
+      max-width: 560px;
+    }
+    .sec-head h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+    .sec-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+    }
+    .reveal.is-in {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* Games — interaction list, not decorative cards-for-cards */
+    .game-list {
+      display: grid;
+      gap: 14px;
+    }
+    .game {
+      display: grid;
+      grid-template-columns: 88px 1fr auto;
+      gap: 18px;
+      align-items: center;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(14, 26, 36, 0.9), rgba(7, 16, 24, 0.55));
+      transition: border-color 0.25s, transform 0.25s var(--ease);
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      width: 100%;
+    }
+    .game:hover, .game:focus-visible {
+      border-color: rgba(198, 241, 53, 0.45);
+      transform: translateX(4px);
+      outline: none;
+    }
+    .game-art {
+      width: 88px;
+      height: 88px;
+      border-radius: 12px;
+      background:
+        linear-gradient(145deg, rgba(198, 241, 53, 0.35), transparent 50%),
+        linear-gradient(320deg, rgba(255, 90, 54, 0.4), rgba(62, 207, 207, 0.25));
+      position: relative;
+      overflow: hidden;
+    }
+    .game-art::after {
+      content: "";
+      position: absolute;
+      inset: 18% 22%;
+      border: 2px solid rgba(7, 16, 24, 0.55);
+      border-radius: 8px;
+      background: rgba(7, 16, 24, 0.25);
+    }
+    .game h3 {
+      font-family: var(--font-display);
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+    }
+    .game p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .tag {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink);
+      background: var(--teal);
+      padding: 6px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .tag.soon { background: var(--ember); color: #fff; }
+    .tag.live { background: var(--lime); }
+
+    /* Play arena */
+    .play-shell {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1.2fr 0.8fr;
+      align-items: start;
+    }
+    @media (max-width: 860px) {
+      .play-shell { grid-template-columns: 1fr; }
+      .game { grid-template-columns: 72px 1fr; }
+      .game .tag { grid-column: 2; justify-self: start; }
+    }
+    .canvas-wrap {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #04080d;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+    }
+    #game {
+      display: block;
+      width: 100%;
+      height: auto;
+      touch-action: none;
+      cursor: none;
+    }
+    .play-side {
+      display: grid;
+      gap: 14px;
+      padding: 8px 0;
+    }
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(14, 26, 36, 0.65);
+    }
+    .stat strong {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      color: var(--lime);
+    }
+    .hint { color: var(--muted); font-size: 0.92rem; margin: 0; }
+
+    /* Reviews / news — one purpose each */
+    .strip {
+      display: grid;
+      gap: 0;
+    }
+    .strip article {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 20px;
+      padding: 22px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .strip time {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--teal);
+      font-size: 0.95rem;
+    }
+    .strip h3 {
+      margin: 0 0 6px;
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+    }
+    .strip p { margin: 0; color: var(--muted); }
+
+    .marquee {
+      overflow: hidden;
+      border-block: 1px solid var(--line);
+      background: rgba(14, 26, 36, 0.5);
+      padding: 14px 0;
+    }
+    .marquee-track {
+      display: flex;
+      gap: 48px;
+      width: max-content;
+      animation: marquee 28s linear infinite;
+      font-family: var(--font-display);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .marquee-track span { color: var(--lime); }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    footer {
+      padding: 48px 0 64px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+    }
+    footer .brand { margin-bottom: 10px; display: inline-block; }
+    footer p { margin: 0; max-width: 40ch; }
+
+    @media (max-width: 640px) {
+      .nav { display: none; }
+      .hero { min-height: 86vh; padding-bottom: 56px; }
+      .strip article { grid-template-columns: 1fr; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <a class="brand" href="#">SUN<span>DUK</span></a>
+      <nav class="nav" aria-label="Разделы">
+        <a href="#games">Игры</a>
+        <a href="#play">Играть</a>
+        <a href="#reviews">Обзоры</a>
+        <a href="#news">Анонсы</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="top">
+      <div class="hero-bg" aria-hidden="true">
+        <div class="hero-grid"></div>
+        <div class="orb orb-a"></div>
+        <div class="orb orb-b"></div>
+      </div>
+      <div class="wrap hero-content">
+        <p class="hero-brand">SUN<em>DUK</em></p>
+        <h1>Игры, обзоры и анонсы из одной мастерской</h1>
+        <p>Студия Славы Сундукова: релизы, плейтесты и новости — с характером, без шума.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#play">Играть прямо сейчас</a>
+          <a class="btn btn-ghost" href="#games">Смотреть игры</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span>SUNDUK</span><span>инди</span><span>релизы</span><span>обзоры</span><span>плейбл</span><span>анонсы</span>
+        <span>SUNDUK</span><span>инди</span><span>релизы</span><span>обзоры</span><span>плейбл</span><span>анонсы</span>
+      </div>
+    </div>
+
+    <section id="games">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Игры студии</h2>
+          <p>Линейка проектов — от браузерных прототипов до полноценных релизов.</p>
+        </div>
+        <div class="game-list">
+          <button class="game reveal" type="button" data-scroll="#play">
+            <div class="game-art" aria-hidden="true"></div>
+            <div>
+              <h3>Chest Dash</h3>
+              <p>Поймай монеты сундуком. Реакция, ритм, рекорд на одной сессии.</p>
+            </div>
+            <span class="tag live">Play</span>
+          </button>
+          <a class="game reveal" href="#news">
+            <div class="game-art" style="background: linear-gradient(145deg, rgba(62,207,207,.4), rgba(255,90,54,.35));" aria-hidden="true"></div>
+            <div>
+              <h3>Neon Alley</h3>
+              <p>Раннер по ночному району. В разработке — первый трейлер скоро.</p>
+            </div>
+            <span class="tag soon">Soon</span>
+          </a>
+          <a class="game reveal" href="#news">
+            <div class="game-art" style="background: linear-gradient(145deg, rgba(255,90,54,.45), rgba(198,241,53,.25));" aria-hidden="true"></div>
+            <div>
+              <h3>Signal Deck</h3>
+              <p>Карточный тактический скетч. Закрытый прототип для тестеров.</p>
+            </div>
+            <span class="tag soon">Soon</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="play">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Chest Dash</h2>
+          <p>Двигай сундук — лови монеты, уворачивайся от помех. Рекорд сохраняется в браузере.</p>
+        </div>
+        <div class="play-shell reveal">
+          <div class="canvas-wrap">
+            <canvas id="game" width="720" height="420" aria-label="Игра Chest Dash"></canvas>
+          </div>
+          <div class="play-side">
+            <div class="stat"><span>Счёт</span><strong id="score">0</strong></div>
+            <div class="stat"><span>Рекорд</span><strong id="best">0</strong></div>
+            <p class="hint">Мышь / палец — позиция сундука. Пробел или тап по кнопке — рестарт после конца.</p>
+            <button class="btn btn-primary" type="button" id="restart">Заново</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="reviews">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Обзоры</h2>
+          <p>Короткие разборы игр — что цепляет, что нет, без воды.</p>
+        </div>
+        <div class="strip">
+          <article class="reveal">
+            <time datetime="2026-08-01">01 авг</time>
+            <div>
+              <h3>Почему короткий цикл важнее «большой идеи»</h3>
+              <p>Как мы проверяем механику за вечер и не закапываемся в арт до плейтеста.</p>
+            </div>
+          </article>
+          <article class="reveal">
+            <time datetime="2026-07-20">20 июл</time>
+            <div>
+              <h3>Инди, которые держат ритм</h3>
+              <p>Подборка проектов с честной сложностью и сильным первым экраном.</p>
+            </div>
+          </article>
+          <article class="reveal">
+            <time datetime="2026-07-05">05 июл</time>
+            <div>
+              <h3>Контроллеры в браузере</h3>
+              <p>Что работает на тач и мыши без отдельных билдов — заметки со студии.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="news">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <h2>Анонсы</h2>
+          <p>Новости студии и даты, когда можно поиграть в новое.</p>
+        </div>
+        <div class="strip">
+          <article class="reveal">
+            <time datetime="2026-08-04">сегодня</time>
+            <div>
+              <h3>Запуск витрины SUNDUK</h3>
+              <p>Первая публичная страница студии: игры, обзоры и браузерный Chest Dash.</p>
+            </div>
+          </article>
+          <article class="reveal">
+            <time datetime="2026-08-15">15 авг</time>
+            <div>
+              <h3>Трейлер Neon Alley</h3>
+              <p>Короткий ролик геймплея и музыкальный тизер — следите за обновлением.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <a class="brand" href="#">SUN<span>DUK</span></a>
+      <p>Игровая студия. Связь: <a href="mailto:hello@5mb2.ru">hello@5mb2.ru</a></p>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // Reveal on scroll
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-in");
+            io.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.14 });
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+      document.querySelectorAll("[data-scroll]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const sel = btn.getAttribute("data-scroll");
+          const t = sel && document.querySelector(sel);
+          if (t) t.scrollIntoView({ behavior: "smooth" });
+        });
+      });
+
+      // —— Chest Dash ——
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const scoreEl = document.getElementById("score");
+      const bestEl = document.getElementById("best");
+      const restartBtn = document.getElementById("restart");
+      const W = canvas.width;
+      const H = canvas.height;
+      const BEST_KEY = "sunduk-chest-dash-best";
+
+      let best = Number(localStorage.getItem(BEST_KEY) || 0);
+      bestEl.textContent = String(best);
+
+      let pointerX = W / 2;
+      let running = true;
+      let score = 0;
+      let time = 0;
+      let items = [];
+      let shake = 0;
+
+      const chest = { x: W / 2, y: H - 58, w: 74, h: 40 };
+
+      function spawn() {
+        const good = Math.random() > 0.28;
+        items.push({
+          x: 40 + Math.random() * (W - 80),
+          y: -24,
+          r: good ? 10 + Math.random() * 6 : 12,
+          vy: 2.2 + Math.random() * 2.4 + Math.min(3, score / 40),
+          good,
+        });
+      }
+
+      function reset() {
+        score = 0;
+        time = 0;
+        items = [];
+        running = true;
+        scoreEl.textContent = "0";
+        spawn();
+      }
+
+      function end() {
+        running = false;
+        if (score > best) {
+          best = score;
+          localStorage.setItem(BEST_KEY, String(best));
+          bestEl.textContent = String(best);
+        }
+        shake = 10;
+      }
+
+      function drawBg() {
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, "#0a1520");
+        g.addColorStop(1, "#04080d");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "rgba(215,226,236,0.06)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 40) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        }
+      }
+
+      function drawChest() {
+        const x = chest.x - chest.w / 2;
+        const y = chest.y - chest.h / 2;
+        ctx.fillStyle = "#c6f135";
+        ctx.fillRect(x, y + 10, chest.w, chest.h - 10);
+        ctx.fillStyle = "#9fca18";
+        ctx.fillRect(x, y, chest.w, 14);
+        ctx.fillStyle = "#071018";
+        ctx.fillRect(x + chest.w / 2 - 6, y + 16, 12, 10);
+      }
+
+      function frame(ts) {
+        if (!frame.prev) frame.prev = ts;
+        const dt = Math.min(32, ts - frame.prev);
+        frame.prev = ts;
+        time += dt;
+
+        const ox = shake ? (Math.random() - 0.5) * shake : 0;
+        const oy = shake ? (Math.random() - 0.5) * shake : 0;
+        if (shake > 0) shake *= 0.9;
+
+        ctx.save();
+        ctx.translate(ox, oy);
+        drawBg();
+
+        chest.x += (pointerX - chest.x) * 0.22;
+
+        if (running && time > 480) {
+          time = 0;
+          spawn();
+          if (score > 12 && Math.random() > 0.55) spawn();
+        }
+
+        for (let i = items.length - 1; i >= 0; i--) {
+          const it = items[i];
+          if (running) it.y += it.vy * (dt / 16);
+
+          ctx.beginPath();
+          ctx.arc(it.x, it.y, it.r, 0, Math.PI * 2);
+          if (it.good) {
+            ctx.fillStyle = "#ffd84a";
+            ctx.fill();
+            ctx.strokeStyle = "#ff5a36";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = "#ff5a36";
+            ctx.fill();
+          }
+
+          if (running) {
+            const nearX = Math.abs(it.x - chest.x) < chest.w * 0.48;
+            const nearY = it.y > chest.y - chest.h * 0.55 && it.y < chest.y + chest.h * 0.35;
+            if (nearX && nearY) {
+              items.splice(i, 1);
+              if (it.good) {
+                score += 1;
+                scoreEl.textContent = String(score);
+              } else {
+                end();
+              }
+              continue;
+            }
+            if (it.y > H + 30) items.splice(i, 1);
+          }
+        }
+
+        drawChest();
+
+        if (!running) {
+          ctx.fillStyle = "rgba(7,16,24,0.55)";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#eef3f7";
+          ctx.font = "800 36px Syne, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("Конец партии", W / 2, H / 2 - 8);
+          ctx.fillStyle = "#c6f135";
+          ctx.font = "700 18px Figtree, sans-serif";
+          ctx.fillText("Пробел или «Заново»", W / 2, H / 2 + 28);
+        }
+
+        ctx.restore();
+        requestAnimationFrame(frame);
+      }
+
+      function setPointer(clientX) {
+        const rect = canvas.getBoundingClientRect();
+        const scale = W / rect.width;
+        pointerX = Math.max(40, Math.min(W - 40, (clientX - rect.left) * scale));
+      }
+
+      canvas.addEventListener("pointermove", (e) => setPointer(e.clientX));
+      canvas.addEventListener("pointerdown", (e) => {
+        canvas.setPointerCapture(e.pointerId);
+        setPointer(e.clientX);
+        if (!running) reset();
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          reset();
+        }
+      });
+      restartBtn.addEventListener("click", reset);
+
+      reset();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
