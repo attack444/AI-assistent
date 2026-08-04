@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 import time
 import uuid
 import zipfile
@@ -15,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 META_NAME = "meta.json"
 CHUNK_DIR = "chunks"
+_meta_lock = threading.RLock()
 
 
 def uploads_root(sites_root: Path) -> Path:
@@ -97,24 +99,26 @@ def save_chunk(
     index: int,
     data: bytes,
 ) -> Dict[str, Any]:
-    upload_dir, meta = load_meta(sites_root, upload_id)
-    total = int(meta["total_chunks"])
-    if index < 0 or index >= total:
-        raise ValueError(f"Неверный индекс чанка: {index} (всего {total})")
-    chunk_path = upload_dir / CHUNK_DIR / f"{index:06d}.part"
-    chunk_path.write_bytes(data)
-    received = set(meta.get("received") or [])
-    received.add(index)
-    meta["received"] = sorted(received)
-    save_meta(upload_dir, meta)
-    return {
-        "ok": True,
-        "upload_id": upload_id,
-        "index": index,
-        "received": len(meta["received"]),
-        "total_chunks": total,
-        "complete": len(meta["received"]) >= total,
-    }
+    # Serialize meta load/modify/save — parallel chunk uploads otherwise lose indices.
+    with _meta_lock:
+        upload_dir, meta = load_meta(sites_root, upload_id)
+        total = int(meta["total_chunks"])
+        if index < 0 or index >= total:
+            raise ValueError(f"Неверный индекс чанка: {index} (всего {total})")
+        chunk_path = upload_dir / CHUNK_DIR / f"{index:06d}.part"
+        chunk_path.write_bytes(data)
+        received = set(meta.get("received") or [])
+        received.add(index)
+        meta["received"] = sorted(received)
+        save_meta(upload_dir, meta)
+        return {
+            "ok": True,
+            "upload_id": upload_id,
+            "index": index,
+            "received": len(meta["received"]),
+            "total_chunks": total,
+            "complete": len(meta["received"]) >= total,
+        }
 
 
 def status(sites_root: Path, upload_id: str) -> Dict[str, Any]:

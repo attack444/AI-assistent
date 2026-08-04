@@ -38,6 +38,7 @@ import io
 import json
 import os
 import re
+import secrets
 import shutil
 import sys
 import tempfile
@@ -156,6 +157,13 @@ def _is_under(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _temp_file(suffix: str = ".bin") -> Path:
+    """Create a temp file path without leaking the mkstemp file descriptor."""
+    fd, name = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    return Path(name)
 
 
 def _resolve_safe(path_str: str, *, must_exist: bool = False) -> Path:
@@ -531,17 +539,55 @@ class APIHandler(BaseHTTPRequestHandler):
                 out.write(data)
                 written += len(data)
                 remaining -= len(data)
+        if written != length:
+            raise ValueError(
+                f"Файл получен не полностью: {written} из {length} байт"
+            )
         return written
 
     def _extract_zip_file(self, zip_path: Path, root: Path) -> None:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            for member in zf.infolist():
-                target = (root / member.filename).resolve()
-                if not _is_under(target, root) and target != root.resolve():
-                    raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
-            zf.extractall(root)
-        _flatten_hosting_layout(root)
-        _fix_site_perms(root)
+        """Extract ZIP into root via staging so a failed extract cannot half-overwrite a live site."""
+        if not zipfile.is_zipfile(zip_path):
+            raise ValueError("Нужен ZIP-архив")
+        root = root.resolve()
+        parent = root.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        staging = parent / f".staging-{root.name}-{secrets.token_hex(8)}"
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True, exist_ok=True)
+        backup: Optional[Path] = None
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                for member in zf.infolist():
+                    target = (staging / member.filename).resolve()
+                    if not _is_under(target, staging) and target != staging.resolve():
+                        raise PermissionError(f"Небезопасный путь в ZIP: {member.filename}")
+                zf.extractall(staging)
+            _flatten_hosting_layout(staging)
+            _fix_site_perms(staging)
+            if root.exists():
+                backup = parent / f".backup-{root.name}-{secrets.token_hex(8)}"
+                root.rename(backup)
+                try:
+                    staging.rename(root)
+                except Exception:
+                    if not root.exists() and backup.exists():
+                        backup.rename(root)
+                    raise
+                shutil.rmtree(backup, ignore_errors=True)
+                backup = None
+            else:
+                staging.rename(root)
+        except Exception:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+            if backup is not None and backup.exists() and not root.exists():
+                try:
+                    backup.rename(root)
+                except OSError:
+                    pass
+            raise
 
     def _qs(self) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items() if v}
@@ -964,7 +1010,7 @@ class APIHandler(BaseHTTPRequestHandler):
                 raw = base64.b64decode(body.get("content_b64", ""))
                 if len(raw) > MAX_UPLOAD_BYTES:
                     raise ValueError("Файл слишком большой")
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = _temp_file(".zip")
                 tmp.write_bytes(raw)
             else:
                 if not _SAFE_NAME.match(name):
@@ -972,7 +1018,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     return
                 root = _ensure_sites_root() / name
                 root.mkdir(parents=True, exist_ok=True)
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = _temp_file(".zip")
                 self._stream_body_to_file(tmp)
 
             if str(filename).lower().endswith(".zip") or zipfile.is_zipfile(tmp):
@@ -1016,13 +1062,13 @@ class APIHandler(BaseHTTPRequestHandler):
                     raise ValueError(
                         f"Файл слишком большой (лимит {MAX_UPLOAD_BYTES // (1024 * 1024)} МБ)"
                     )
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = _temp_file(".zip")
                 tmp.write_bytes(raw)
             else:
                 if not _SAFE_NAME.match(name):
                     self._send(400, _json({"error": "Имя: латиница, цифры, _ и - (?name=)"}))
                     return
-                tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+                tmp = _temp_file(".zip")
                 self._stream_body_to_file(tmp)
 
             root = _ensure_sites_root() / name
@@ -1523,8 +1569,9 @@ class APIHandler(BaseHTTPRequestHandler):
             return user
         if not pu.AUTH_REQUIRED:
             return {"id": "", "email": "", "name": "guest", "guest": True}
-        # Guest widget chat (5mb2.ru etc.) — no platform login
-        if allow_widget_guest and getattr(pu, "WIDGET_GUEST", True):
+        # Guest widget chat — only when Origin/Referer is allowlisted.
+        # Body field source=widget|guest alone must NOT bypass login.
+        if allow_widget_guest and pu.widget_guest_allowed(self):
             return {"id": "", "email": "", "name": "widget-guest", "guest": True}
         self._send(401, _json({
             "error": "Нужен вход",
@@ -1614,6 +1661,8 @@ class APIHandler(BaseHTTPRequestHandler):
         try:
             result = pu.set_plan(body.get("email") or "", body.get("plan") or "")
             self._send(200, _json(result))
+        except PermissionError as exc:
+            self._send(403, _json({"error": str(exc)}))
         except Exception as exc:
             self._send(400, _json({"error": str(exc)}))
 
@@ -1632,15 +1681,16 @@ class APIHandler(BaseHTTPRequestHandler):
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
+        # Rate limit first — do not burn daily plan quota on IP 429
+        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
+        if not ok:
+            self._send(429, _json({"error": why}))
+            return
         if user.get("email"):
             ok_q, why_q, _ = pu.consume_quota(user["email"], "chat")
             if not ok_q:
                 self._send(429, _json({"error": why_q, "upgrade": True}))
                 return
-        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
-        if not ok:
-            self._send(429, _json({"error": why}))
-            return
         parts: List[str] = []
         err = ""
         for ev in pch.stream_public_chat(
@@ -1677,15 +1727,15 @@ class APIHandler(BaseHTTPRequestHandler):
         if not message:
             self._send(400, _json({"error": "Нужно поле message"}))
             return
+        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
+        if not ok:
+            self._send(429, _json({"error": why}))
+            return
         if user.get("email"):
             ok_q, why_q, _ = pu.consume_quota(user["email"], "chat")
             if not ok_q:
                 self._send(429, _json({"error": why_q, "upgrade": True}))
                 return
-        ok, why = pch.check_rate_limit(pch.client_ip(self), guest=bool(user.get("guest")))
-        if not ok:
-            self._send(429, _json({"error": why}))
-            return
 
         self.close_connection = True
         self.send_response(200)
@@ -1715,33 +1765,39 @@ class APIHandler(BaseHTTPRequestHandler):
         if user is None:
             return
         tmp: Optional[Path] = None
+        reservation_id = ""
+        deploy_bumped = False
+        email = (user.get("email") or "").strip()
         try:
-            if user.get("email"):
-                ok_s, why_s, _ = pu.consume_quota(user["email"], "site")
-                if not ok_s:
-                    self._send(429, _json({"error": why_s, "upgrade": True}))
-                    return
             ok, why = pd.check_rate_limit(self._public_ip())
             if not ok:
                 self._send(429, _json({"error": why}))
                 return
+            if email:
+                ok_s, why_s, reservation_id = pu.reserve_site_slot(email)
+                if not ok_s:
+                    self._send(429, _json({"error": why_s, "upgrade": True}))
+                    return
+                ok_d, why_d, _ = pu.consume_quota(email, "deploy")
+                if not ok_d:
+                    self._send(429, _json({"error": why_d, "upgrade": True}))
+                    return
+                deploy_bumped = True
             ctype = (self.headers.get("Content-Type") or "").lower()
             filename = (
                 self.headers.get("X-Filename")
                 or self._qs().get("filename")
                 or "site.zip"
             )
-            tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
+            tmp = _temp_file(".bin")
             if "json" in ctype:
                 body = self._read_body()
                 filename = body.get("filename") or filename
                 raw = base64.b64decode(body.get("content_b64") or "")
                 if not raw:
-                    self._send(400, _json({"error": "Нужен файл (content_b64): ZIP / tar.gz / HTML"}))
-                    return
+                    raise ValueError("Нужен файл (content_b64): ZIP / tar.gz / HTML")
                 if len(raw) > pd.MAX_ZIP:
-                    self._send(400, _json({"error": f"Файл > {pd.MAX_ZIP // (1024*1024)} МБ"}))
-                    return
+                    raise ValueError(f"Файл > {pd.MAX_ZIP // (1024*1024)} МБ")
                 tmp.write_bytes(raw)
             else:
                 self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
@@ -1749,26 +1805,43 @@ class APIHandler(BaseHTTPRequestHandler):
                 tmp,
                 ip=self._public_ip(),
                 user_id=user.get("id") or "",
-                user_email=user.get("email") or "",
+                user_email=email,
                 filename=str(filename),
+                attach=not bool(reservation_id),
             )
-            if user.get("email"):
-                pu.consume_quota(user["email"], "deploy")
+            if email and reservation_id:
+                pu.commit_site_slot(email, reservation_id, result.get("name") or "")
+                reservation_id = ""
             self._send(200, _json(result))
         except Exception as exc:
-            self._send(400, _json({"error": str(exc)}))
+            if email and deploy_bumped:
+                try:
+                    pu.refund_quota(email, "deploy")
+                except Exception:
+                    pass
+            code = 429 if "лимит" in str(exc).lower() else 400
+            self._send(code, _json({"error": str(exc), "upgrade": code == 429}))
         finally:
+            if email and reservation_id:
+                try:
+                    pu.release_site_slot(email, reservation_id)
+                except Exception:
+                    pass
             if tmp and tmp.exists():
                 tmp.unlink(missing_ok=True)
 
     def _post_public_redeploy(self):
         import public_deploy as pd
+        import public_users as pu
 
         tmp: Optional[Path] = None
+        deploy_bumped = False
+        owner_email = ""
         try:
             qs = self._qs()
             name = (qs.get("name") or "").strip()
-            token = (qs.get("token") or self.headers.get("X-Public-Token") or "").strip()
+            # Token must not travel in query string (nginx/access logs / Referer leaks).
+            token = (self.headers.get("X-Public-Token") or "").strip()
             ctype = (self.headers.get("Content-Type") or "").lower()
             filename = self.headers.get("X-Filename") or qs.get("filename") or "site.zip"
             if "json" in ctype:
@@ -1778,16 +1851,45 @@ class APIHandler(BaseHTTPRequestHandler):
                 filename = body.get("filename") or filename
                 raw = base64.b64decode(body.get("content_b64") or "")
                 if not raw:
-                    self._send(400, _json({"error": "Нужен файл (ZIP / tar.gz / HTML)"}))
-                    return
-                tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
+                    raise ValueError("Нужен файл (ZIP / tar.gz / HTML)")
+                if len(raw) > pd.MAX_ZIP:
+                    raise ValueError(f"Файл > {pd.MAX_ZIP // (1024*1024)} МБ")
+                tmp = _temp_file(".bin")
                 tmp.write_bytes(raw)
             else:
-                tmp = Path(tempfile.mkstemp(suffix=".bin")[1])
+                tmp = _temp_file(".bin")
                 self._stream_body_to_file(tmp, max_bytes=pd.MAX_ZIP)
+            if not token:
+                raise PermissionError(
+                    "Нужен token в JSON body или заголовке X-Public-Token (не в URL)"
+                )
+            ok, why = pd.check_rate_limit(self._public_ip())
+            if not ok:
+                self._send(429, _json({"error": why}))
+                return
+            meta = pd.load_meta(name) or {}
+            owner_email = (meta.get("user_email") or "").strip().lower()
+            if owner_email:
+                ok_d, why_d, _ = pu.consume_quota(owner_email, "deploy")
+                if not ok_d:
+                    self._send(429, _json({"error": why_d, "upgrade": True}))
+                    return
+                deploy_bumped = True
             result = pd.redeploy(name, token, tmp, filename=str(filename))
             self._send(200, _json(result))
+        except PermissionError as exc:
+            if owner_email and deploy_bumped:
+                try:
+                    pu.refund_quota(owner_email, "deploy")
+                except Exception:
+                    pass
+            self._send(403, _json({"error": str(exc)}))
         except Exception as exc:
+            if owner_email and deploy_bumped:
+                try:
+                    pu.refund_quota(owner_email, "deploy")
+                except Exception:
+                    pass
             code = 403 if "token" in str(exc).lower() or "Неверный" in str(exc) else 400
             self._send(code, _json({"error": str(exc)}))
         finally:
