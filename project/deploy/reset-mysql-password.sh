@@ -53,23 +53,42 @@ if printf '%s' "$PASS$ROOT_PASS" | grep -q '[^ -~]'; then
   echo "[OK] Новые пароли записаны в .env:"
   echo "    MYSQL_ROOT_PASSWORD=$ROOT_PASS"
   echo "    MYSQL_PASSWORD=$PASS"
-  REINIT=1
+  echo "    Пробую ALTER USER без wipe тома (если не выйдет — см. --reinit)."
+  # Do NOT set REINIT=1 here: Cyrillic in .env must not destroy an existing DB.
 fi
 
 sql_escape() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
 
+_mysql_data_volume() {
+  # Prefer the volume actually mounted on this project's container.
+  local vol=""
+  vol="$(docker inspect ai-helper-mysql \
+    --format '{{ range .Mounts }}{{ if eq .Destination "/var/lib/mysql" }}{{ .Name }}{{ end }}{{ end }}' \
+    2>/dev/null || true)"
+  if [ -n "$vol" ]; then
+    printf '%s\n' "$vol"
+    return 0
+  fi
+  # Fallback: compose project name = directory name (usually "deploy") → deploy_mysql_data
+  local project
+  project="$(basename "$COMPOSE_DIR")"
+  printf '%s\n' "${project}_mysql_data"
+}
+
 if [ "$REINIT" -eq 1 ]; then
-  echo "[!!] REINIT: удаляю том MySQL (база будет пустой — потом импорт SQL)."
+  echo "[!!] REINIT: удаляю том MySQL ЭТОГО compose-проекта (база будет пустой — потом импорт SQL)."
   cd "$COMPOSE_DIR"
   docker compose -f docker-compose.prod.yml stop mysql app || true
   docker compose -f docker-compose.prod.yml rm -f mysql || true
-  # volume name varies — wipe all project mysql volumes
-  for vol in $(docker volume ls -q | grep -E 'mysql_data|deploy_mysql' || true); do
-    echo "[>>] docker volume rm $vol"
-    docker volume rm "$vol" 2>/dev/null || true
-  done
+  VOL="$(_mysql_data_volume)"
+  if [ -n "$VOL" ] && docker volume inspect "$VOL" >/dev/null 2>&1; then
+    echo "[>>] docker volume rm $VOL"
+    docker volume rm "$VOL"
+  else
+    echo "[!!] Том MySQL не найден (${VOL:-?}) — пропускаю volume rm"
+  fi
   docker compose -f docker-compose.prod.yml up -d mysql
   echo "[>>] Жду готовности MySQL…"
   for i in $(seq 1 60); do

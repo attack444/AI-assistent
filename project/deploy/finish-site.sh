@@ -74,12 +74,15 @@ fi
 ensure_env_kv MYSQL_DATABASE "${MYSQL_DATABASE:-wordpress}"
 ensure_env_kv MYSQL_USER "${MYSQL_USER:-wp}"
 
-# If Cyrillic still in .env — force reinit via reset script
-if grep -E '^MYSQL_(PASSWORD|ROOT_PASSWORD)=.*[^ -~]' "$ENV_FILE" >/dev/null 2>&1; then
-  echo "[>>] Кириллица в MYSQL_* — reset --reinit"
-  bash "$DEPLOY/reset-mysql-password.sh" --reinit
-else
-  bash "$DEPLOY/reset-mysql-password.sh" || bash "$DEPLOY/reset-mysql-password.sh" --reinit
+# Sync MySQL user/password from .env. Never auto --reinit: that wipes the
+# volume and can destroy WordPress data (and unrelated mysql_* volumes).
+# Same policy as apply-5mb2.sh.
+echo "[>>] MySQL sync (без wipe тома)…"
+if ! bash "$DEPLOY/reset-mysql-password.sh"; then
+  echo "[!!] Обычный reset не вышел — НЕ делаю --reinit автоматически (чтобы не стереть БД)."
+  echo "    Если база пустая / том битый и SQL ещё не залит — вручную:"
+  echo "      bash $DEPLOY/reset-mysql-password.sh --reinit"
+  exit 1
 fi
 
 # Reload only MySQL vars (не source весь .env — gsk_/sk- ключи ломают bash)

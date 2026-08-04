@@ -111,16 +111,20 @@ def check_and_bump(
     user_record: dict,
     kind: str,
     plan_id: str,
+    *,
+    bump: bool = True,
 ) -> Tuple[bool, str, dict]:
     """
     kind: chat | deploy | site
     Returns (ok, error, usage_snapshot)
+    bump=False → read-only check (no counter increment).
     """
     plan = limits_for(plan_id)
     usage = ensure_usage(user_record)
 
     if kind == "site":
         max_sites = int(plan.get("max_sites") or 0)
+        # pending:* reservations count toward the cap (closes TOCTOU races)
         sites = list(user_record.get("sites") or [])
         if max_sites >= 0 and len(sites) >= max_sites:
             return (
@@ -142,8 +146,9 @@ def check_and_bump(
             f"Дневной лимит тарифа {plan['name']}: {limit} ({kind}). Завтра обновится или апгрейд.",
             usage,
         )
-    usage[key] = used + 1
-    user_record["usage"] = usage
+    if bump:
+        usage[key] = used + 1
+        user_record["usage"] = usage
     return True, "", usage
 
 

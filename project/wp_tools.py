@@ -452,6 +452,126 @@ def test_db() -> Dict[str, Any]:
         }
 
 
+_SQL_DDL_DML_RE = re.compile(
+    r"(?i)\b(CREATE\s+TABLE|INSERT\s+INTO)\b",
+)
+
+
+def validate_sql_dump_for_import(sql_path: Path) -> Optional[str]:
+    """Return an error string if the dump must not wipe/import the live DB.
+
+    Cheap content checks only — call BEFORE DROP TABLE.
+    """
+    if not sql_path.is_file():
+        return f"SQL-файл не найден: {sql_path}"
+    size = sql_path.stat().st_size
+    if size < 2048:
+        return f"SQL-файл слишком маленький ({size} байт) — не полный дамп сайта."
+
+    raw = sql_path.read_bytes()
+    sample = raw[:200_000].decode("utf-8", errors="ignore")
+    if len(raw) > 200_000:
+        sample += "\n" + raw[-8_000:].decode("utf-8", errors="ignore")
+    lower = sample.lower()
+
+    if not _SQL_DDL_DML_RE.search(sample):
+        return (
+            "В файле нет CREATE TABLE / INSERT INTO — это не SQL-дамп сайта. "
+            "Живая БД не очищена."
+        )
+
+    looks_wp = (
+        "wp0w_" in lower
+        or "create table `wp_" in lower
+        or "create table wp_" in lower
+        or "insert into `wp_" in lower
+        or "insert into wp_" in lower
+    )
+    if "information_schema" in lower and not looks_wp:
+        return (
+            "Дамп похож на information_schema, не на WordPress. "
+            "Нужна база сайта (таблицы wp_* / wp0w_*). Живая БД не очищена."
+        )
+    return None
+
+
+def _prepare_cleaned_sql_dump(sql_path: Path, target_db: str) -> Tuple[Path, str]:
+    """Rewrite DEFINER/USE/CREATE DATABASE into a temp file. Closes mkstemp FD."""
+    import tempfile
+
+    fd, name = tempfile.mkstemp(prefix="wpimp-", suffix=".sql")
+    os.close(fd)
+    cleaned = Path(name)
+    try:
+        data = sql_path.read_bytes()
+        # Prefer utf-8; never latin-1 (corrupts Cyrillic). Invalid bytes → replace.
+        text = data.decode("utf-8", errors="replace")
+        used_encoding = "utf-8"
+
+        text = re.sub(
+            r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"DEFINER\s*=\s*'[^']+'@'[^']+'",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"CREATE\s+DATABASE\s+.*?;",
+            f"CREATE DATABASE IF NOT EXISTS `{target_db}` "
+            "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(
+            r"USE\s+`[^`]+`\s*;",
+            f"USE `{target_db}`;",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"USE\s+[a-zA-Z0-9_]+\s*;",
+            f"USE `{target_db}`;",
+            text,
+            flags=re.IGNORECASE,
+        )
+        cleaned.write_text(text, encoding="utf-8")
+        return cleaned, used_encoding
+    except Exception:
+        try:
+            cleaned.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _drop_all_tables(target_db: str) -> None:
+    """DROP every table in target_db. Call only after dump validation + prep."""
+    root_conn = None
+    for root_pass in _root_password_candidates():
+        root_conn, _err = _try_login("root", root_pass, None)
+        if root_conn is not None:
+            break
+    conn = root_conn or _get_connection(None)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"CREATE DATABASE IF NOT EXISTS `{target_db}` "
+            "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        )
+        cur.execute(f"USE `{target_db}`")
+        cur.execute("SET FOREIGN_KEY_CHECKS=0")
+        cur.execute("SHOW TABLES")
+        tables = [r[0] for r in cur.fetchall()]
+        for tbl in tables:
+            cur.execute(f"DROP TABLE IF EXISTS `{tbl}`")
+        cur.execute("SET FOREIGN_KEY_CHECKS=1")
+    conn.close()
+
+
 def import_sql_file(
     sql_path: Path,
     database: Optional[str] = None,
@@ -461,7 +581,6 @@ def import_sql_file(
     """Import a .sql dump into MySQL. Prefer mysql CLI (correct encoding + quotes)."""
     import shutil
     import subprocess
-    import tempfile
 
     if not sql_path.is_file():
         raise FileNotFoundError(str(sql_path))
@@ -478,112 +597,47 @@ def import_sql_file(
         }
 
     size = sql_path.stat().st_size
-    if size < 2048:
+    # Validate dump BEFORE any DROP — garbage/truncated files must not wipe live DB.
+    bad = validate_sql_dump_for_import(sql_path)
+    if bad:
         return {
             "ok": False,
             "statements": 0,
-            "errors": [
-                f"SQL-файл слишком маленький ({size} байт) — не полный дамп сайта."
-            ],
+            "errors": [bad],
             "path": str(sql_path),
             "size_bytes": size,
         }
 
-    raw_head = sql_path.read_bytes()[:8000]
-    head = raw_head.decode("utf-8", errors="ignore").lower()
-    if "information_schema" in head and "wp0w_" not in head and "`wp_" not in head:
-        # peek a bit more for wp tables later in file — cheap check only on head
-        sample = sql_path.read_bytes()[:200_000].decode("utf-8", errors="ignore").lower()
-        if "wp0w_" not in sample and "create table `wp_" not in sample:
-            return {
-                "ok": False,
-                "statements": 0,
-                "errors": [
-                    "Дамп похож на information_schema, не на WordPress. "
-                    "Нужна база сайта (таблицы wp0w_*)."
-                ],
-                "path": str(sql_path),
-                "size_bytes": size,
-            }
-
     params = mysql_connect_params()
     target_db = database or params["database"]
 
-    if drop_existing:
-        try:
-            # Prefer root to DROP/CREATE database cleanly
-            root_conn = None
-            for root_pass in _root_password_candidates():
-                root_conn, _err = _try_login("root", root_pass, None)
-                if root_conn is not None:
-                    break
-            conn = root_conn or _get_connection(None)
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"CREATE DATABASE IF NOT EXISTS `{target_db}` "
-                    "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-                )
-                cur.execute(f"USE `{target_db}`")
-                cur.execute("SET FOREIGN_KEY_CHECKS=0")
-                cur.execute("SHOW TABLES")
-                tables = [r[0] for r in cur.fetchall()]
-                for tbl in tables:
-                    cur.execute(f"DROP TABLE IF EXISTS `{tbl}`")
-                cur.execute("SET FOREIGN_KEY_CHECKS=1")
-            conn.close()
-        except Exception as exc:
-            return {
-                "ok": False,
-                "statements": 0,
-                "errors": [f"Не удалось очистить БД перед импортом: {exc}"],
-                "path": str(sql_path),
-            }
+    # Prepare cleaned SQL before DROP so I/O / decode failures leave DB intact.
+    try:
+        cleaned, used_encoding = _prepare_cleaned_sql_dump(sql_path, target_db)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "statements": 0,
+            "errors": [f"Не удалось подготовить SQL перед импортом: {exc}"],
+            "path": str(sql_path),
+            "size_bytes": size,
+        }
 
-    mysql_bin = shutil.which("mysql")
-    cli_error = ""
-    if mysql_bin:
-        # Stream-clean DEFINER / USE into a temp file, then mysql < file
-        cleaned = Path(tempfile.mkstemp(prefix="wpimp-", suffix=".sql")[1])
-        try:
-            with sql_path.open("rb") as src, cleaned.open("wb") as dst:
-                # Keep original bytes (utf8). Only rewrite ASCII markers.
-                data = src.read()
-            # Prefer utf-8; never latin-1 (corrupts Cyrillic). Invalid bytes → replace.
-            text = data.decode("utf-8", errors="replace")
-            used_encoding = "utf-8"
+    try:
+        if drop_existing:
+            try:
+                _drop_all_tables(target_db)
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "statements": 0,
+                    "errors": [f"Не удалось очистить БД перед импортом: {exc}"],
+                    "path": str(sql_path),
+                }
 
-            text = re.sub(
-                r"DEFINER\s*=\s*`[^`]+`@`[^`]+`",
-                "",
-                text,
-                flags=re.IGNORECASE,
-            )
-            text = re.sub(
-                r"DEFINER\s*=\s*'[^']+'@'[^']+'",
-                "",
-                text,
-                flags=re.IGNORECASE,
-            )
-            text = re.sub(
-                r"CREATE\s+DATABASE\s+.*?;",
-                f"CREATE DATABASE IF NOT EXISTS `{target_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
-                text,
-                flags=re.IGNORECASE | re.DOTALL,
-            )
-            text = re.sub(
-                r"USE\s+`[^`]+`\s*;",
-                f"USE `{target_db}`;",
-                text,
-                flags=re.IGNORECASE,
-            )
-            text = re.sub(
-                r"USE\s+[a-zA-Z0-9_]+\s*;",
-                f"USE `{target_db}`;",
-                text,
-                flags=re.IGNORECASE,
-            )
-            cleaned.write_text(text, encoding="utf-8")
-
+        mysql_bin = shutil.which("mysql")
+        cli_error = ""
+        if mysql_bin:
             cmd = [
                 mysql_bin,
                 "-h", str(params["host"]),
@@ -630,23 +684,25 @@ def import_sql_file(
                     "healed": bool(heal.get("healed")),
                 }
             # Fall through to pymysql if CLI failed (e.g. SSL) or too few tables
-            cli_error = "; ".join(err_lines[:3]) or f"mysql exit {proc.returncode}, tables={len(tables)}"
-        finally:
-            try:
-                cleaned.unlink()
-            except OSError:
-                pass
-    # Fallback: pymysql with quote-aware splitter + utf-8
-    result = _import_sql_pymysql(
-        sql_path,
-        target_db=target_db,
-        size=size,
-        heal=heal,
-    )
-    if cli_error:
-        result["cli_error"] = cli_error
-        result["method"] = f"pymysql-fallback"
-    return result
+            cli_error = "; ".join(err_lines[:3]) or (
+                f"mysql exit {proc.returncode}, tables={len(tables)}"
+            )
+        # Fallback: pymysql with quote-aware splitter + utf-8
+        result = _import_sql_pymysql(
+            sql_path,
+            target_db=target_db,
+            size=size,
+            heal=heal,
+        )
+        if cli_error:
+            result["cli_error"] = cli_error
+            result["method"] = "pymysql-fallback"
+        return result
+    finally:
+        try:
+            cleaned.unlink()
+        except OSError:
+            pass
 
 
 def _split_sql_statements(text: str) -> List[str]:

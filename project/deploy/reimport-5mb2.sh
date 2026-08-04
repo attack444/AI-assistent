@@ -37,6 +37,22 @@ fi
 echo "[>>] DUMP=$DUMP ($(stat -c%s "$DUMP") bytes)"
 echo "[>>] MySQL user=$USER db=$DB (пароли из .env, API-ключи не трогаем)"
 
+# Validate + prepare cleaned dump BEFORE DROP — otherwise a bad dump wipes prod DB.
+TMP=$(mktemp /tmp/wpimp-XXXX.sql)
+trap 'rm -f "$TMP"' EXIT
+echo "[>>] Чищу DEFINER / USE…"
+sed -E \
+  -e 's/DEFINER[ ]*=[ ]*`[^`]+`@`[^`]+`//Ig' \
+  -e "s/DEFINER[ ]*=[ ]*'[^']+'@'[^']+'//Ig" \
+  -e "s/USE[[:space:]]+\`[^\`]+\`/USE \`$DB\`/Ig" \
+  -e "s/USE[[:space:]]+[a-zA-Z0-9_]+/USE \`$DB\`/Ig" \
+  "$DUMP" > "$TMP"
+
+if ! grep -Eiq 'CREATE[[:space:]]+TABLE|INSERT[[:space:]]+INTO' "$TMP"; then
+  echo "[!!] В дампе нет CREATE TABLE / INSERT INTO — отменяю. Живая БД не тронута."
+  exit 1
+fi
+
 echo "[>>] Очищаю таблицы $DB…"
 docker exec -i ai-helper-mysql mysql -uroot -p"$ROOT_PASS" --ssl-mode=DISABLED -e "
 SET FOREIGN_KEY_CHECKS=0;
@@ -50,16 +66,6 @@ SET FOREIGN_KEY_CHECKS=1;
 GRANT ALL PRIVILEGES ON \`$DB\`.* TO '$USER'@'%';
 FLUSH PRIVILEGES;
 "
-
-TMP=$(mktemp /tmp/wpimp-XXXX.sql)
-trap 'rm -f "$TMP"' EXIT
-echo "[>>] Чищу DEFINER / USE…"
-sed -E \
-  -e 's/DEFINER[ ]*=[ ]*`[^`]+`@`[^`]+`//Ig' \
-  -e "s/DEFINER[ ]*=[ ]*'[^']+'@'[^']+'//Ig" \
-  -e "s/USE[[:space:]]+\`[^\`]+\`/USE \`$DB\`/Ig" \
-  -e "s/USE[[:space:]]+[a-zA-Z0-9_]+/USE \`$DB\`/Ig" \
-  "$DUMP" > "$TMP"
 
 echo "[>>] Import (это может занять несколько минут)…"
 docker exec -i ai-helper-mysql mysql -u"$USER" -p"$PASS" --ssl-mode=DISABLED --default-character-set=utf8mb4 "$DB" < "$TMP"

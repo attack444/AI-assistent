@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 import time
 import uuid
 import zipfile
@@ -15,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 META_NAME = "meta.json"
 CHUNK_DIR = "chunks"
+_meta_lock = threading.RLock()
 
 
 def uploads_root(sites_root: Path) -> Path:
@@ -91,30 +93,50 @@ def save_meta(upload_dir: Path, meta: Dict[str, Any]) -> None:
     _meta_path(upload_dir).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def expected_chunk_length(meta: Dict[str, Any], index: int) -> int:
+    """Exact byte length required for chunk index (last chunk may be shorter)."""
+    total = int(meta["total_chunks"])
+    if index < 0 or index >= total:
+        raise ValueError(f"Неверный индекс чанка: {index} (всего {total})")
+    chunk_size = int(meta.get("chunk_size") or 0)
+    expected_size = int(meta["size"])
+    if chunk_size <= 0:
+        raise ValueError("В meta отсутствует chunk_size")
+    start = index * chunk_size
+    if start >= expected_size:
+        raise ValueError(f"Чанк {index} за пределами файла ({expected_size} байт)")
+    return min(chunk_size, expected_size - start)
+
+
 def save_chunk(
     sites_root: Path,
     upload_id: str,
     index: int,
     data: bytes,
 ) -> Dict[str, Any]:
-    upload_dir, meta = load_meta(sites_root, upload_id)
-    total = int(meta["total_chunks"])
-    if index < 0 or index >= total:
-        raise ValueError(f"Неверный индекс чанка: {index} (всего {total})")
-    chunk_path = upload_dir / CHUNK_DIR / f"{index:06d}.part"
-    chunk_path.write_bytes(data)
-    received = set(meta.get("received") or [])
-    received.add(index)
-    meta["received"] = sorted(received)
-    save_meta(upload_dir, meta)
-    return {
-        "ok": True,
-        "upload_id": upload_id,
-        "index": index,
-        "received": len(meta["received"]),
-        "total_chunks": total,
-        "complete": len(meta["received"]) >= total,
-    }
+    # Serialize meta load/modify/save — parallel chunk uploads otherwise lose indices.
+    with _meta_lock:
+        upload_dir, meta = load_meta(sites_root, upload_id)
+        total = int(meta["total_chunks"])
+        expected_len = expected_chunk_length(meta, index)
+        if len(data) != expected_len:
+            raise ValueError(
+                f"Чанк {index}: получили {len(data)} байт, ждали {expected_len}"
+            )
+        chunk_path = upload_dir / CHUNK_DIR / f"{index:06d}.part"
+        chunk_path.write_bytes(data)
+        received = set(meta.get("received") or [])
+        received.add(index)
+        meta["received"] = sorted(received)
+        save_meta(upload_dir, meta)
+        return {
+            "ok": True,
+            "upload_id": upload_id,
+            "index": index,
+            "received": len(meta["received"]),
+            "total_chunks": total,
+            "complete": len(meta["received"]) >= total,
+        }
 
 
 def status(sites_root: Path, upload_id: str) -> Dict[str, Any]:
@@ -154,9 +176,16 @@ def assemble(sites_root: Path, upload_id: str) -> Path:
             dest.write(part.read_bytes())
     actual = out.stat().st_size
     expected = int(meta["size"])
-    # Allow small mismatch if client used ceil chunks
-    if actual < expected * 0.5:
-        raise ValueError(f"Собранный файл слишком маленький: {actual} байт (ждали ~{expected})")
+    # Last chunk is shorter when size % chunk_size != 0, but total MUST match.
+    if actual != expected:
+        try:
+            out.unlink()
+        except OSError:
+            pass
+        raise ValueError(
+            f"Собранный файл: {actual} байт, заявлено {expected} — "
+            "отклоняю усечённый upload (риск битого ZIP/SQL)."
+        )
     meta["assembled"] = True
     meta["assembled_path"] = str(out)
     save_meta(upload_dir, meta)
