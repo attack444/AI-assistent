@@ -1,0 +1,68 @@
+# =============================================================================
+#  CI: автотесты экосистемы на каждый push/PR.
+#  Поднимает Postgres и Redis как сервисы, гоняет:
+#    - юнит-логику llm-gateway (цена/выбор модели/fallback);
+#    - интеграционные тесты web-API (Jest + Supertest).
+#  Зелёный CI — условие для деплоя (см. deploy.yml).
+# =============================================================================
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: neobrain
+          POSTGRES_PASSWORD: neobrain
+          POSTGRES_DB: neobrain_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U neobrain"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://neobrain:neobrain@127.0.0.1:5432/neobrain_test?schema=public
+      TEST_DATABASE_URL: postgresql://neobrain:neobrain@127.0.0.1:5432/neobrain_test?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      TEST_REDIS_URL: redis://127.0.0.1:6379/15
+
+    defaults:
+      run:
+        working-directory: neobrain
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Юнит-тесты llm-gateway
+        run: node scripts/test-gateway.js
+
+      - name: Установка зависимостей web
+        working-directory: neobrain/services/web
+        run: npm install --no-audit --no-fund
+
+      - name: Prisma generate + миграции тестовой БД
+        working-directory: neobrain/services/web
+        run: |
+          npx prisma generate --schema=../../prisma/schema.prisma
+          npx prisma migrate deploy --schema=../../prisma/schema.prisma
+
+      - name: Интеграционные тесты web (Jest + Supertest)
+        working-directory: neobrain/services/web
+        run: npm test

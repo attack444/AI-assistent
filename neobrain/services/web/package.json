@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "test": "jest --runInBand --forceExit",
     "migrate": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev",
     "seed": "node ../../scripts/seed.js"
@@ -25,6 +26,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "prisma": "^6.2.1"
+    "jest": "^30.4.2",
+    "prisma": "^6.2.1",
+    "supertest": "^7.2.2"
   }
 }

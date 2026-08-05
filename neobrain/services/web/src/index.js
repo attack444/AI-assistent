@@ -4,6 +4,9 @@
 const app = require("./app");
 const config = require("./config");
 
+// Не даём стартовать в проде с небезопасной конфигурацией.
+config.assertSafeConfig();
+
 const server = app.listen(config.port, "0.0.0.0", () => {
   console.log(`[web] слушает http://0.0.0.0:${config.port} (env=${config.nodeEnv})`);
 });
