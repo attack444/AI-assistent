@@ -6,6 +6,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= title %></title>
+  <% if (_site === 'games') { %>
+  <!-- Фирменные шрифты студии: Manrope (текст) + Unbounded (заголовки). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=Unbounded:wght@600;800&display=swap" rel="stylesheet">
+  <% } %>
   <link rel="stylesheet" href="/static/<%= _site %>/css/style.css">
 </head>
 <body class="<%= _site %>">
@@ -16,10 +22,12 @@
     <nav>
       <% if (_site === 'games') { %>
         <a href="/games">Главная</a>
+        <a href="/games/catalog">Игры</a>
         <a href="/games/releases">Релизы</a>
         <a href="/games/blog">Блог</a>
         <a href="/games/gallery">Галерея</a>
         <a href="/games/fun">Приколюшки</a>
+        <a href="/games/about">О студии</a>
       <% } else { %>
         <a href="/neobrain">Главная</a>
         <a href="/neobrain/plans">Тарифы</a>
@@ -31,7 +39,7 @@
     <div class="auth">
       <% if (user) { %>
         <a href="/neobrain/cabinet"><%= user.displayName || user.email %></a>
-        <% if (user.role === 'admin') { %><a href="/neobrain/admin">Админ</a><% } %>
+        <% if (user.role === 'admin') { %><a href="/neobrain/admin">Дашборд</a><a href="/neobrain/admin/cms">CMS</a><% } %>
         <button id="logoutBtn" class="btn-ghost">Выйти</button>
       <% } else { %>
         <a class="btn-ghost" href="/neobrain/login">Вход</a>

@@ -1,15 +1,32 @@
 <%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
-<h1><%= items[0].title %></h1>
-<p class="hint">Игра: <code><%= slug %></code></p>
-<div class="feed">
-  <% items.forEach(function(it){ %>
-    <article class="feed-card reveal">
-      <span class="tag tag-<%= it.kind %>"><%= it.kind %></span>
-      <% if (it.version) { %><span class="ver">v<%= it.version %></span><% } %>
-      <h3><%= it.title %></h3>
-      <p><%- it.body %></p>
-    </article>
-  <% }) %>
+<div class="game-detail">
+  <div class="hero-cover" <% if (game.accent) { %>style="background:linear-gradient(135deg,<%= game.accent %>66,#060806)"<% } %>>
+    <% if (game.coverUrl) { %><img src="<%= game.coverUrl %>" alt="<%= game.title %>"><% } else { %><%= game.title %><% } %>
+  </div>
+
+  <div class="row">
+    <span class="status status-<%= game.status %>"><%= game.status %></span>
+    <h1 style="margin:0"><%= game.title %></h1>
+  </div>
+  <% if (game.tagline) { %><p class="lead"><%= game.tagline %></p><% } %>
+  <% if (game.playUrl) { %><a class="btn" href="<%= game.playUrl %>" target="_blank" rel="noopener">Играть / Скачать</a><% } %>
+
+  <div class="prose" style="margin-top:16px"><%- game.description || '<p class="hint">Описание скоро появится.</p>' %></div>
+
+  <h2>Релизы и патчи</h2>
+  <% if (!releases || releases.length === 0) { %>
+    <p class="hint">Пока нет опубликованных записей по этой игре.</p>
+  <% } %>
+  <div class="timeline">
+    <% (releases||[]).forEach(function(it){ %>
+      <div class="item reveal">
+        <span class="tag tag-<%= it.kind %>"><%= it.kind %></span>
+        <% if (it.version) { %><span class="ver">v<%= it.version %></span><% } %>
+        <h3 style="margin:6px 0"><%= it.title %></h3>
+        <p><%- it.body %></p>
+      </div>
+    <% }) %>
+  </div>
 </div>
 <script src="/static/games/js/anim.js"></script>
 <%- include('../partials/foot') %>

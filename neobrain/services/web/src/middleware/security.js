@@ -12,9 +12,10 @@ function securityHeaders(_req, res, next) {
   // CSP: разрешаем свои скрипты/стили + Chart.js с CDN на дашборде.
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; img-src 'self' data:; " +
+    "default-src 'self'; img-src 'self' data: https:; " +
       "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; " +
-      "style-src 'self' 'unsafe-inline'"
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com"
   );
   next();
 }
