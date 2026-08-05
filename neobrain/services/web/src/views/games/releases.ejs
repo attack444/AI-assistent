@@ -1,0 +1,24 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<h1>Релизы и патчи</h1>
+<h2>Релизы</h2>
+<div class="feed">
+  <% releases.forEach(function(it){ %>
+    <article class="feed-card reveal">
+      <span class="tag tag-release">release</span>
+      <h3><a href="/games/game/<%= it.gameSlug %>"><%= it.title %></a></h3>
+      <p><%- it.body.slice(0,140) %>…</p>
+    </article>
+  <% }) %>
+</div>
+<h2>Патчи</h2>
+<div class="feed">
+  <% patches.forEach(function(it){ %>
+    <article class="feed-card reveal">
+      <span class="tag tag-patch">patch</span> <span class="ver">v<%= it.version %></span>
+      <h3><%= it.title %></h3>
+      <p><%- it.body.slice(0,140) %>…</p>
+    </article>
+  <% }) %>
+</div>
+<script src="/static/games/js/anim.js"></script>
+<%- include('../partials/foot') %>

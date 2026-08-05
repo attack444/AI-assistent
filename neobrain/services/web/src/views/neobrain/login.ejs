@@ -1,0 +1,23 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Вход / Регистрация</h1>
+<div class="cards">
+  <form class="card" id="loginForm">
+    <h3>Вход</h3>
+    <input name="email" type="email" placeholder="email" required>
+    <input name="password" type="password" placeholder="пароль" required>
+    <button class="btn" type="submit">Войти</button>
+    <p class="msg" id="loginMsg"></p>
+  </form>
+
+  <form class="card" id="registerForm">
+    <h3>Регистрация</h3>
+    <input name="displayName" placeholder="имя (необязательно)">
+    <input name="email" type="email" placeholder="email" required>
+    <input name="password" type="password" placeholder="пароль (мин. 6)" required>
+    <button class="btn" type="submit">Создать аккаунт</button>
+    <p class="msg" id="regMsg"></p>
+  </form>
+</div>
+<p class="hint">После входа сессия действует и на 5mb2 (единый вход, SSO).</p>
+<script src="/static/neobrain/js/auth.js"></script>
+<%- include('../partials/foot') %>

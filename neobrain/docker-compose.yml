@@ -1,0 +1,105 @@
+# =============================================================================
+#  NeoBrain — оркестрация всех сервисов на одном VPS.
+#  ЗАПУСК:  docker compose up -d --build
+#  ЛОГИ:    docker compose logs -f web
+#  СТОП:    docker compose down
+#
+#  Сервисы:
+#    postgres     — общая БД для neobrain и 5mb2
+#    redis        — кэш, rate-limit, очереди (BullMQ), хранилище сессий
+#    llm-gateway  — единый вход к LLM: выбор модели, подсчёт токенов, лог, fallback
+#    web          — общий Express API + рендер страниц обоих сайтов
+#    worker       — фоновые тяжёлые задачи (SEO-аудит, деплой, публикация релиза)
+#    nginx        — маршрутизация двух доменов на один web-контейнер
+# =============================================================================
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: neobrain
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neobrain}
+      POSTGRES_DB: neobrain
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck: # web/worker ждут, пока БД реально готова принимать запросы
+      test: ["CMD-SHELL", "pg_isready -U neobrain"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [neobrain-net]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"] # persistence для очередей
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [neobrain-net]
+
+  llm-gateway:
+    build: ./services/llm-gateway
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      GATEWAY_PORT: 8090
+    networks: [neobrain-net]
+    # Наружу порт не публикуем — шлюз доступен только внутри docker-сети.
+
+  web:
+    build:
+      context: .
+      dockerfile: services/web/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      WEB_PORT: 8080
+      DATABASE_URL: postgresql://neobrain:${POSTGRES_PASSWORD:-neobrain}@postgres:5432/neobrain?schema=public
+      REDIS_URL: redis://redis:6379
+      LLM_GATEWAY_URL: http://llm-gateway:8090
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # При старте применяем миграции, потом запускаем сервер.
+    command: sh -c "npx prisma migrate deploy && node src/index.js"
+    networks: [neobrain-net]
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://neobrain:${POSTGRES_PASSWORD:-neobrain}@postgres:5432/neobrain?schema=public
+      REDIS_URL: redis://redis:6379
+      LLM_GATEWAY_URL: http://llm-gateway:8090
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      llm-gateway: { condition: service_started }
+    networks: [neobrain-net]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"   # включи после установки SSL-сертификатов (см. README)
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+    depends_on: [web]
+    networks: [neobrain-net]
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  neobrain-net:
+    driver: bridge

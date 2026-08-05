@@ -1,0 +1,65 @@
+# =============================================================================
+#  CI/CD: при пуше в main собираем образы и деплоим на VPS по SSH.
+#
+#  ЧТО НАСТРОИТЬ (GitHub → Settings → Secrets and variables → Actions):
+#    SSH_HOST        — IP или домен VPS
+#    SSH_USER        — пользователь (напр. deploy)
+#    SSH_KEY         — приватный SSH-ключ (весь текст ключа)
+#    APP_DIR         — путь к проекту на сервере (напр. /opt/neobrain)
+#
+#  Логика: заходим по SSH и запускаем scripts/deploy.sh на сервере.
+#  (Образы собираются на сервере — просто и без registry. Для скорости можно
+#   собирать здесь и пушить в GHCR, см. закомментированный блок.)
+# =============================================================================
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # можно запустить вручную из вкладки Actions
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Быстрая проверка перед деплоем: линт/тесты чистой логики ---------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Проверка llm-gateway (юнит-логика)
+        working-directory: neobrain
+        run: node scripts/test-gateway.js
+
+      # --- Деплой по SSH ---------------------------------------------------
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ${{ secrets.APP_DIR }}
+            APP_DIR=${{ secrets.APP_DIR }} bash scripts/deploy.sh
+
+# -----------------------------------------------------------------------------
+#  Альтернатива: собрать образы в CI и запушить в GitHub Container Registry.
+#  Тогда на сервере делаем только `docker compose pull && up -d`.
+#
+#  - name: Log in to GHCR
+#    uses: docker/login-action@v3
+#    with:
+#      registry: ghcr.io
+#      username: ${{ github.actor }}
+#      password: ${{ secrets.GITHUB_TOKEN }}
+#  - name: Build & push web
+#    uses: docker/build-push-action@v6
+#    with:
+#      context: ./neobrain
+#      file: ./neobrain/services/web/Dockerfile
+#      push: true
+#      tags: ghcr.io/${{ github.repository }}/web:latest
+# -----------------------------------------------------------------------------

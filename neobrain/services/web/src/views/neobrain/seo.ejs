@@ -1,0 +1,22 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>SEO-аудит</h1>
+<p class="lead">Пакетная проверка URL идёт в фоне (worker). API сразу вернёт <code>task_id</code>,
+   а результат подтянется автоматически.</p>
+
+<div class="card">
+  <label>Список URL (по одному на строку)</label>
+  <textarea id="urls" rows="5" placeholder="https://example.com&#10;https://example.com/about"></textarea>
+  <button class="btn" id="auditBtn">Запустить аудит</button>
+  <p class="msg" id="auditMsg"></p>
+  <div id="auditResult" class="list"></div>
+</div>
+
+<div class="card">
+  <h3>Генерация мета-тегов</h3>
+  <textarea id="metaText" rows="4" placeholder="Вставь текст страницы — сгенерируем title и description"></textarea>
+  <button class="btn-ghost" id="metaBtn">Сгенерировать</button>
+  <pre id="metaResult"></pre>
+</div>
+
+<script src="/static/neobrain/js/seo.js"></script>
+<%- include('../partials/foot') %>

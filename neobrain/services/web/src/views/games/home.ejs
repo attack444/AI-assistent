@@ -1,0 +1,22 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<section class="game-hero">
+  <h1 class="glitch" data-text="5mb2 GAMES">5mb2 GAMES</h1>
+  <p class="lead">Инди-игры, анонсы, патчи и приколюшки. Быстро, ярко, без тяжёлых фреймворков.</p>
+</section>
+
+<h2>Свежее</h2>
+<div class="feed">
+  <% if (items.length === 0) { %>
+    <p class="hint">Пока пусто — скоро здесь появятся анонсы. Запусти seed, чтобы увидеть демо-контент.</p>
+  <% } %>
+  <% items.forEach(function(it){ %>
+    <article class="feed-card reveal">
+      <span class="tag tag-<%= it.kind %>"><%= it.kind %></span>
+      <h3><a href="/games/game/<%= it.gameSlug %>"><%= it.title %></a></h3>
+      <% if (it.version) { %><span class="ver">v<%= it.version %></span><% } %>
+      <p><%- it.body.slice(0, 160) %>…</p>
+    </article>
+  <% }) %>
+</div>
+<script src="/static/games/js/anim.js"></script>
+<%- include('../partials/foot') %>

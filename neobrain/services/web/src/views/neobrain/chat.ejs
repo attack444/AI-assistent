@@ -1,0 +1,25 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Чат с AI-агентом</h1>
+<p class="lead">Опиши задачу и (по желанию) вставь <b>git diff</b>. Сначала посмотри цену, потом запускай.</p>
+
+<div class="card">
+  <label>Инструкция</label>
+  <textarea id="instruction" rows="3" placeholder="Напр.: добавь обработку ошибок в контроллер платежей"></textarea>
+
+  <label>git diff (необязательно — тогда шлём только изменения)</label>
+  <textarea id="diffText" rows="6" placeholder="Вставь вывод `git diff` сюда"></textarea>
+
+  <div class="row">
+    <button class="btn-ghost" id="quoteBtn">Показать цену</button>
+    <button class="btn" id="runBtn">Запустить</button>
+    <span class="price-badge" id="priceBadge"></span>
+  </div>
+</div>
+
+<div class="card" id="answerBox" style="display:none">
+  <div class="meta" id="answerMeta"></div>
+  <pre id="answerText"></pre>
+</div>
+
+<script src="/static/neobrain/js/chat.js"></script>
+<%- include('../partials/foot') %>
