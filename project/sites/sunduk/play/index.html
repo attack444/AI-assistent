@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071018" />
+  <title>Играть — SUNDUK</title>
+  <meta name="description" content="Браузерные демо мобильных игр SUNDUK. Chest Dash — прямо сейчас." />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/main.css" />
+</head>
+<body data-page="play">
+  <div class="grain" aria-hidden="true"></div>
+  <div id="site-header"></div>
+  <header class="page-hero">
+    <div class="wrap">
+      <h1>Играть в браузере</h1>
+      <p>Демо мобильных механик без установки. На телефоне — добавьте на домашний экран.</p>
+    </div>
+  </header>
+  <section class="block" style="border-top:0;padding-top:28px">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <h2>Chest Dash</h2>
+        <p>Официальное веб-демо. Полная страница игры — в каталоге.</p>
+      </div>
+      <div class="play-shell reveal">
+        <div class="canvas-wrap">
+          <canvas id="game" class="game-canvas" width="720" height="420" aria-label="Chest Dash"></canvas>
+        </div>
+        <div style="display:grid;gap:12px">
+          <div class="stat"><span>Счёт</span><strong id="score">0</strong></div>
+          <div class="stat"><span>Рекорд</span><strong id="best">0</strong></div>
+          <a class="btn btn-ghost" href="../games/chest-dash/">Страница игры</a>
+          <button class="btn btn-primary" type="button" id="restart">Заново</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div id="site-footer"></div>
+  <script src="../assets/js/games-data.js"></script>
+  <script src="../assets/js/main.js" data-root=".."></script>
+  <script src="../assets/js/chest-dash.js"></script>
+</body>
+</html>
