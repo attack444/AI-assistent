@@ -1,24 +1,7 @@
 {
   "name": "AI Helper",
   "install": "bash .cursor/install.sh",
-  "terminals": [
-    {
-      "name": "ollama",
-      "command": "OLLAMA_HOST=0.0.0.0:11434 ollama serve"
-    },
-    {
-      "name": "api",
-      "command": "cd project && AI_HELPER_API_HOST=0.0.0.0 AI_HELPER_API_PORT=8502 OLLAMA_HOST=http://127.0.0.1:11434 SITES_ROOT=$HOME/.ai-helper/sites HOST_SITES_PATH=$HOME/.ai-helper/sites AI_HELPER_PROJECT=/workspace/project WORKSPACE_ROOTS=/workspace LLM_MODEL=qwen2.5:1.5b FREE_LLM_MODEL=qwen2.5:1.5b FAST_LLM_MODEL=qwen2.5:1.5b LLM_PREFER_FREE=1 .venv/bin/python api.py"
-    },
-    {
-      "name": "streamlit",
-      "command": "cd project && STREAMLIT_BROWSER_GATHER_USAGE_STATS=false STREAMLIT_SERVER_SHOW_EMAIL_PROMPT=false OLLAMA_HOST=http://127.0.0.1:11434 LLM_MODEL=qwen2.5:1.5b FREE_LLM_MODEL=qwen2.5:1.5b FAST_LLM_MODEL=qwen2.5:1.5b LLM_PREFER_FREE=1 .venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true"
-    },
-    {
-      "name": "web",
-      "command": "cd project/web && API_INTERNAL_URL=http://127.0.0.1:8502 npm run dev"
-    }
-  ],
+  "start": "bash .cursor/start.sh",
   "ports": [
     { "name": "streamlit", "port": 8501 },
     { "name": "api", "port": 8502 },
