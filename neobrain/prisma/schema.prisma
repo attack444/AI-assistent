@@ -1,0 +1,167 @@
+// =============================================================================
+//  NeoBrain — схема базы данных (PostgreSQL), одна БД на оба сайта.
+//  Prisma читает DATABASE_URL из окружения. Команды:
+//    npx prisma migrate dev     — создать/применить миграцию (разработка)
+//    npx prisma migrate deploy  — применить миграции (прод)
+//    npx prisma studio          — веб-просмотр данных
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+//  ПОЛЬЗОВАТЕЛИ.
+//  Один аккаунт работает на обоих сайтах (SSO). Роль определяет права:
+//   - visitor : обычный посетитель студии игр 5mb2 (может комментировать/лайкать)
+//   - client  : платящий клиент SaaS neobrain (есть проекты, квоты, биллинг)
+//   - admin   : владелец/администратор (видит дашборд расходов)
+// -----------------------------------------------------------------------------
+enum Role {
+  visitor
+  client
+  admin
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String // bcrypt-хеш, НИКОГДА не храним пароль в открытом виде
+  displayName  String?
+  role         Role     @default(visitor)
+
+  // Экономика: сколько «токенов-денег» осталось у клиента (в рублях).
+  // Списываем при каждой оплачиваемой задаче (pay-per-action).
+  balanceRub   Decimal  @default(0) @db.Decimal(12, 2)
+  // Месячная квота на кол-во тяжёлых задач (SEO-аудит, деплой) — защита от абуза.
+  monthlyQuota Int      @default(50)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  Project[]
+  tokenLogs TokenLog[]
+  sessions  Session[]
+
+  @@map("users")
+}
+
+// -----------------------------------------------------------------------------
+//  ПРОЕКТЫ клиента SaaS (то, что деплоит/аудитит агент).
+//  Нужны, чтобы привязывать задачи, расходы и git-репозиторий к конкретному
+//  проекту клиента и показывать статистику «по проектам».
+// -----------------------------------------------------------------------------
+model Project {
+  id        String   @id @default(uuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  repoUrl   String? // git-репозиторий для автодеплоя и diff-режима
+  domain    String? // домен, куда деплоим
+  createdAt DateTime @default(now())
+
+  tokenLogs TokenLog[]
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+// -----------------------------------------------------------------------------
+//  ЛОГ РАСХОДА ТОКЕНОВ — сердце экономики.
+//  Каждая обращение к LLM пишет сюда строку: сколько токенов, какая модель,
+//  сколько это стоило в рублях. Из этой таблицы строится дашборд расходов
+//  (по дням / проектам / моделям) и биллинг клиента.
+// -----------------------------------------------------------------------------
+model TokenLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  taskType     String // "agent" | "seo-audit" | "meta-gen" ...
+  model        String // "deepseek-chat" | "claude-3-5-sonnet" ...
+  promptTokens Int      @default(0)
+  outputTokens Int      @default(0)
+  costRub      Decimal  @default(0) @db.Decimal(12, 4) // итоговая цена задачи в ₽
+  cached       Boolean  @default(false) // ответ отдан из кэша (стоил 0)
+
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([createdAt])
+  @@index([model])
+  @@map("token_logs")
+}
+
+// -----------------------------------------------------------------------------
+//  РЕЛИЗЫ / ПАТЧИ ИГР для 5mb2.ru.
+//  Динамический контент студии: добавляем новый релиз без правки кода —
+//  просто новая строка (через админку или worker-задачу публикации).
+// -----------------------------------------------------------------------------
+enum ReleaseKind {
+  announce // анонс
+  release // релиз
+  patch // патч/обновление
+  news // новость/блог
+}
+
+model GameRelease {
+  id          String      @id @default(uuid())
+  gameSlug    String // к какой игре относится, напр. "pixel-quest"
+  kind        ReleaseKind @default(news)
+  title       String
+  version     String? // "1.2.0" для патчей
+  body        String // текст (markdown/html) анонса/патча
+  coverUrl    String? // обложка/скриншот
+  published   Boolean     @default(false) // черновик или опубликовано
+  publishedAt DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([gameSlug])
+  @@index([published, publishedAt])
+  @@map("game_releases")
+}
+
+// -----------------------------------------------------------------------------
+//  СТАТИЧЕСКИЕ СТРАНИЦЫ (CMS-подход).
+//  «О студии», «Контакты», лендинги игр и т.п. — редактируем контент из БД,
+//  без деплоя кода. slug = адрес страницы.
+// -----------------------------------------------------------------------------
+model PageStatic {
+  id        String   @id @default(uuid())
+  site      String // "neobrain" | "games" — какому сайту принадлежит
+  slug      String // "about", "contacts", "game/pixel-quest"
+  title     String
+  html      String // готовый HTML тела страницы
+  updatedAt DateTime @updatedAt
+
+  @@unique([site, slug])
+  @@map("pages_static")
+}
+
+// -----------------------------------------------------------------------------
+//  СЕССИИ.
+//  Мы держим сессии в Redis (быстро), но дублируем «якорь» в БД, чтобы
+//  админ мог посмотреть/отозвать активные сессии пользователя и для аудита.
+//  token — случайный id из куки; в Redis по нему лежат данные сессии с TTL.
+// -----------------------------------------------------------------------------
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}

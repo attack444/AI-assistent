@@ -1,0 +1,25 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Личный кабинет</h1>
+<section class="cards">
+  <div class="card">
+    <h3>Баланс</h3>
+    <p class="price"><%= Number(user.balanceRub).toFixed(2) %> ₽</p>
+    <p class="hint">Списывается за каждую оплачиваемую задачу.</p>
+  </div>
+  <div class="card">
+    <h3>Квота</h3>
+    <p class="price"><%= user.monthlyQuota %> / мес</p>
+    <p class="hint">Тяжёлые задачи: SEO-аудит, деплой.</p>
+  </div>
+  <div class="card">
+    <h3>Роль</h3>
+    <p class="price"><%= user.role %></p>
+    <p class="hint">client — доступ к SaaS. admin — дашборд расходов.</p>
+  </div>
+</section>
+<div class="cta">
+  <a class="btn" href="/neobrain/chat">Открыть агента</a>
+  <a class="btn-ghost" href="/neobrain/seo">SEO-аудит</a>
+  <a class="btn-ghost" href="/neobrain/reports">Отчёты</a>
+</div>
+<%- include('../partials/foot') %>

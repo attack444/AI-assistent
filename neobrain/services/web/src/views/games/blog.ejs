@@ -1,0 +1,14 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<h1>Блог / Новости</h1>
+<div class="feed">
+  <% news.forEach(function(it){ %>
+    <article class="feed-card reveal">
+      <span class="tag tag-news">news</span>
+      <h3><%= it.title %></h3>
+      <p><%- it.body %></p>
+    </article>
+  <% }) %>
+  <% if (news.length === 0) { %><p class="hint">Новостей пока нет.</p><% } %>
+</div>
+<script src="/static/games/js/anim.js"></script>
+<%- include('../partials/foot') %>

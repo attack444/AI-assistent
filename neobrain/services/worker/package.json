@@ -1,0 +1,21 @@
+{
+  "name": "neobrain-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Фоновые задачи BullMQ: SEO-аудит, публикация релиза, деплой",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "prisma": {
+    "schema": "../../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "bullmq": "^5.34.5",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.2.1"
+  }
+}

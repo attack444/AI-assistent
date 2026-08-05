@@ -1,0 +1,25 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<h1>Приколюшки</h1>
+<p class="lead">Мини-интерактив на чистом JS — кликай и играйся.</p>
+
+<section class="fun">
+  <div class="card">
+    <h3>🎯 Кликер</h3>
+    <p>Счёт: <b id="score">0</b></p>
+    <button class="btn" id="clickTarget">Тыкни меня!</button>
+  </div>
+
+  <div class="card">
+    <h3>🌈 Конфетти</h3>
+    <button class="btn-ghost" id="confettiBtn">Бабах!</button>
+    <canvas id="confetti" width="320" height="180"></canvas>
+  </div>
+
+  <div class="card">
+    <h3>🐱 Догонялки</h3>
+    <p class="hint">Кнопка убегает от курсора.</p>
+    <div class="runner-area"><button class="btn" id="runner">Поймай</button></div>
+  </div>
+</section>
+<script src="/static/games/js/fun.js"></script>
+<%- include('../partials/foot') %>

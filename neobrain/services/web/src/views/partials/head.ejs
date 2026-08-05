@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!-- Общая «шапка» страниц. Параметры: title, user, site ('neobrain'|'games') -->
+<% var _site = (typeof site !== 'undefined') ? site : 'neobrain'; %>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/static/<%= _site %>/css/style.css">
+</head>
+<body class="<%= _site %>">
+  <header class="topbar">
+    <a class="brand" href="<%= _site === 'games' ? '/games' : '/neobrain' %>">
+      <%= _site === 'games' ? '🎮 5mb2' : '🧠 NeoBrain' %>
+    </a>
+    <nav>
+      <% if (_site === 'games') { %>
+        <a href="/games">Главная</a>
+        <a href="/games/releases">Релизы</a>
+        <a href="/games/blog">Блог</a>
+        <a href="/games/gallery">Галерея</a>
+        <a href="/games/fun">Приколюшки</a>
+      <% } else { %>
+        <a href="/neobrain">Главная</a>
+        <a href="/neobrain/plans">Тарифы</a>
+        <a href="/neobrain/chat">Агент</a>
+        <a href="/neobrain/seo">SEO</a>
+        <a href="/neobrain/projects">Проекты</a>
+      <% } %>
+    </nav>
+    <div class="auth">
+      <% if (user) { %>
+        <a href="/neobrain/cabinet"><%= user.displayName || user.email %></a>
+        <% if (user.role === 'admin') { %><a href="/neobrain/admin">Админ</a><% } %>
+        <button id="logoutBtn" class="btn-ghost">Выйти</button>
+      <% } else { %>
+        <a class="btn-ghost" href="/neobrain/login">Вход</a>
+      <% } %>
+    </div>
+  </header>
+  <main class="container">

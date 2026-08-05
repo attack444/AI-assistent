@@ -1,0 +1,33 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Тарифы</h1>
+<p class="lead">Модель <b>pay-per-action</b>: платишь за задачи, а не за подписку «на всякий случай».</p>
+<section class="cards">
+  <div class="card">
+    <h3>Free</h3>
+    <p class="price">0 ₽</p>
+    <ul>
+      <li>Баланс 100 ₽ на пробу</li>
+      <li>50 тяжёлых задач/мес</li>
+      <li>Дешёвая модель (DeepSeek)</li>
+    </ul>
+  </div>
+  <div class="card featured">
+    <h3>Starter</h3>
+    <p class="price">от 490 ₽</p>
+    <ul>
+      <li>Пополняемый баланс</li>
+      <li>200 задач/мес</li>
+      <li>Кэш ответов</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Pro</h3>
+    <p class="price">от 1490 ₽</p>
+    <ul>
+      <li>Мощная модель (Claude) для сложной логики</li>
+      <li>1000 задач/мес</li>
+      <li>Автодеплой и приоритет очереди</li>
+    </ul>
+  </div>
+</section>
+<%- include('../partials/foot') %>

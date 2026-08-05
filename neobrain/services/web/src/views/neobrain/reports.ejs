@@ -1,0 +1,18 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Отчёты по задачам</h1>
+<p class="lead">История твоих задач и расходов. Полную аналитику по всем клиентам видит админ в дашборде.</p>
+<div id="reportBox" class="list">Загрузка…</div>
+<script>
+  // Простой отчёт: берём агрегаты биллинга (для admin) или свою историю.
+  // Здесь показываем личную сводку через /api/auth/me (баланс) как пример.
+  fetch('/api/auth/me').then(r => r.json()).then(d => {
+    const box = document.getElementById('reportBox');
+    if (!d.user) { box.textContent = 'Нужен вход'; return; }
+    box.innerHTML = `<div class="card">
+      <p>Текущий баланс: <b>${d.user.balanceRub.toFixed(2)} ₽</b></p>
+      <p>Месячная квота: <b>${d.user.monthlyQuota}</b></p>
+      <p class="hint">Детальные логи расходов доступны администратору в дашборде.</p>
+    </div>`;
+  });
+</script>
+<%- include('../partials/foot') %>

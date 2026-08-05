@@ -1,0 +1,26 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Дашборд расходов токенов</h1>
+<p class="lead">Расходы в рублях по дням, моделям и проектам. Данные — из таблицы <code>token_logs</code>.</p>
+
+<div class="row">
+  <label>С <input type="date" id="from"></label>
+  <label>По <input type="date" id="to"></label>
+  <button class="btn" id="reload">Обновить</button>
+</div>
+
+<section class="cards">
+  <div class="card"><h3>Итого</h3><p class="price" id="totalRub">—</p><p class="hint">за период</p></div>
+  <div class="card"><h3>Задач</h3><p class="price" id="tasks">—</p></div>
+  <div class="card"><h3>Из кэша</h3><p class="price" id="cacheRate">—</p><p class="hint">экономия</p></div>
+</section>
+
+<div class="card"><canvas id="byDay" height="120"></canvas></div>
+<div class="cards">
+  <div class="card"><canvas id="byModel" height="160"></canvas></div>
+  <div class="card"><canvas id="byProject" height="160"></canvas></div>
+</div>
+
+<!-- Chart.js с CDN (разрешён в CSP на этой странице). -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="/static/admin/billing.js"></script>
+<%- include('../partials/foot') %>
