@@ -1,0 +1,62 @@
+### AI Helper REST Client
+### Установи расширение "REST Client" (humao.rest-client) чтобы отправлять запросы прямо отсюда
+
+@baseUrl = http://localhost:8502
+
+### Проверить статус
+GET {{baseUrl}}/status
+
+###
+
+### Обычный вопрос
+POST {{baseUrl}}/chat
+Content-Type: application/json
+
+{
+    "message": "Привет! Что умеешь делать?"
+}
+
+###
+
+### Вопрос по проекту
+POST {{baseUrl}}/chat
+Content-Type: application/json
+
+{
+    "message": "Покажи структуру файлов и объясни архитектуру"
+}
+
+###
+
+### AI Smart Commit (только коммит)
+POST {{baseUrl}}/smart-commit
+Content-Type: application/json
+
+{
+    "push": false
+}
+
+###
+
+### AI Smart Commit + Push
+POST {{baseUrl}}/smart-commit
+Content-Type: application/json
+
+{
+    "push": true
+}
+
+###
+
+### Прочитать файл
+POST {{baseUrl}}/project/read
+Content-Type: application/json
+
+{
+    "path": "C:/Users/User/my-project/app.py"
+}
+
+###
+
+### Список файлов проекта
+GET {{baseUrl}}/project/files

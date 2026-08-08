@@ -1,0 +1,17 @@
+<!--
+  AI Helper — ручная вставка (если нет mu-plugin).
+  Лучше: bash project/deploy/install-5mb2-widget.sh
+-->
+<script src="/sites/ai/widget.js" defer></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    if (window.AIHelperChat) {
+      AIHelperChat.mount({
+        title: "Помощник сайта",
+        placeholder: "Спросите про товар или доставку…",
+        site: "5mb2",
+        greeting: "Здравствуйте! Чем помочь?",
+      });
+    }
+  });
+</script>

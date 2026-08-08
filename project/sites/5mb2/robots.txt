@@ -1,0 +1,9 @@
+# 5MB2 Digital — SEO robots
+User-agent: *
+Allow: /
+Disallow: /cabinet/
+Disallow: /spasibo/
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+Sitemap: https://5mb2.ru/sitemap_index.xml

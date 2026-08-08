@@ -1,0 +1,15 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<h1><%= items[0].title %></h1>
+<p class="hint">Игра: <code><%= slug %></code></p>
+<div class="feed">
+  <% items.forEach(function(it){ %>
+    <article class="feed-card reveal">
+      <span class="tag tag-<%= it.kind %>"><%= it.kind %></span>
+      <% if (it.version) { %><span class="ver">v<%= it.version %></span><% } %>
+      <h3><%= it.title %></h3>
+      <p><%- it.body %></p>
+    </article>
+  <% }) %>
+</div>
+<script src="/static/games/js/anim.js"></script>
+<%- include('../partials/foot') %>

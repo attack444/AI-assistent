@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+dist/
+.DS_Store
+# Prisma генерирует клиент в node_modules, миграции — коммитим.

@@ -1,0 +1,30 @@
+{
+  "name": "neobrain-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Общий Express API + рендер страниц neobrain и 5mb2",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "seed": "node ../../scripts/seed.js"
+  },
+  "prisma": {
+    "schema": "../../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.34.5",
+    "cookie-parser": "^1.4.7",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "ioredis": "^5.4.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.2.1"
+  }
+}

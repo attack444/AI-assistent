@@ -1,0 +1,61 @@
+# Где интерфейс сервера
+
+Подставь вместо `IP` адрес своего VPS (тот же, что был у Streamlit).
+
+## Главное
+
+| Что | Адрес |
+|---|---|
+| **Панель (интерфейс сервера)** | **`http://IP/`** |
+| Файлы | `http://IP/files` |
+| Сайты | `http://IP/sites` |
+| Чат | `http://IP/chat` |
+| Твой сайт после деплоя | `http://IP/sites/ИМЯ/` |
+
+Пример: если IP `95.163.xxx.xxx`, открываешь в браузере:
+
+```text
+http://95.163.xxx.xxx/
+```
+
+Это и есть интерфейс «как на хостинге».
+
+## Важно
+
+Пока на VPS **не сделаешь** `git pull` + пересборку Docker — по `http://IP/` ещё старый Streamlit или пусто.  
+После обновления Nginx отдаёт **Next.js-панель** на порту **80**.
+
+Команда обновления:
+
+```bash
+bash /opt/ai-helper/project/deploy/update.sh
+```
+
+Или вручную — см. ниже в `update.sh`.
+
+## Перезапуск API (нет systemd-юнита `ai-helper-api`)
+
+API крутится в Docker (`app` в `docker-compose.prod.yml`), не как `systemctl` сервис.
+
+```bash
+cd /opt/ai-helper/project/deploy
+docker compose -f docker-compose.prod.yml up -d --force-recreate app
+# или всё сразу:
+bash /opt/ai-helper/project/deploy/update.sh
+```
+
+Проверка: `curl -sS http://127.0.0.1:8502/status | head -c 200`
+
+## Другие адреса
+
+| Что | Адрес |
+|---|---|
+| API статус | `http://IP/api/status` |
+| Панель напрямую (без Nginx) | `http://IP:3000` |
+| Старый Streamlit | `http://IP/legacy/` или `http://IP:8501` |
+| API напрямую | `http://IP:8502/status` |
+| Здоровье (панель) | `http://IP/health` |
+| Watchdog | `bash project/deploy/system-watchdog.sh` (см. `SYSTEM_HEALTH_RU.md`) |
+
+Публичные файлы сайтов (`/sites/имя/`) открыты всем.  
+Панель (файлы/чат/управление) — по паролю `PANEL_PASSWORD` из `.env`.

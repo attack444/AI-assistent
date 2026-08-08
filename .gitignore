@@ -1,9 +1,18 @@
-.aider*
-.venv
-AI-assistent
-__pycache__
+# Игнорируем виртуальное окружение и кэш Python
+.venv/
+venv/
+__pycache__/
 *.pyc
-.venv
-AI-assistent
-__pycache__
-*.pyc
+
+# Игнорируем фронтенд (Next.js), если он не нужен в этом репо
+project/web/
+
+# Игнорируем расширение VS Code (скрипты установки и конфиги)
+project/vscode-extension/
+
+# Игнорируем node_modules и кэш Next.js
+node_modules/
+.next/
+
+# Игнорируем файлы с кириллицей в именах (временная защита, пока не переименуете)
+*[А-Яа-я]*

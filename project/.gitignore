@@ -1,0 +1,45 @@
+# .gitignore
+
+# Python
+
+**pycache**/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Secrets / local deploy
+project/.env
+project/deploy/site.env
+project/deploy/*.local.sh
+
+# WordPress site dumps (secrets / huge media) — see sites/5mb2/.gitignore too
+**/wp-config.php
+**/wp-content/uploads/
+**/*.sql
+**/*.sql.gz
+
+# Streamlit (config.toml коммитим, локальные credentials — нет)
+.streamlit/*
+!.streamlit/config.toml
+
+# AI helper storage
+
+.ai-helper/
+
+# OS / IDE
+
+.DS_Store
+Thumbs.db
+.idea/
+# .vscode/ — tracked (contains AI Helper tasks.json integration)

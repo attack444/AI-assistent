@@ -1,0 +1,77 @@
+# План: один VPS → панель + 2 сайта
+
+## Цель
+
+Один сервер:
+
+1. **Панель AI Helper** — сайты, файлы/редактор, чат (DeepSeek)
+2. **Сайт 1: `5mb2.ru`** — перенесённый WordPress
+3. **Сайт 2: `ai` (домен позже)** — витрина AI + среда развёртывания (управление уже в панели)
+
+## Статус
+
+| Шаг | Статус |
+|---|---|
+| VPS + Docker + панель | ок |
+| 5mb2 файлы + БД (103 таблицы) | ок |
+| DNS A → VPS | ок |
+| http://5mb2.ru | **ок** |
+| https://5mb2.ru | **отложено** |
+| Сайт `ai` (витрина) | **публичный лендинг** `/sites/ai/` |
+| Домен сайта 2 | позже (reg.ru) |
+| Публичный чат на ai (DeepSeek) | `/public/chat/stream` + логин |
+| Публичный деплой (статика) | `/public/deploy` + логин + site token |
+| Публичные пользователи | `/public/auth/*` (отдельно от панели) |
+| Тарифы Free/Starter/Pro | лимиты + ручная активация владельцем |
+| Бесплатная модель | Ollama `qwen2.5:1.5b` (install-free-llm.sh) |
+| Панель `/` | только владелец |
+
+### Активация тарифа (владелец)
+
+```bash
+# после входа в панель — токен панели:
+curl -s -X POST http://127.0.0.1:8502/public/admin/set-plan \
+  -H "Authorization: Bearer PANEL_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@mail.ru","plan":"starter"}'
+```
+
+`OWNER_EMAIL` в `.env` получает план `owner` (без лимитов).
+
+## Команды на VPS (root)
+
+### Обновить панель (редактор + чат по сайту)
+
+Найди compose и обнови код (путь зависит от установки):
+
+```bash
+find /root /opt /home /var -name 'docker-compose.prod.yml' 2>/dev/null
+# пример, если репо в /root/AI-assistent:
+cd /root/AI-assistent && git pull origin main
+bash project/deploy/update.sh
+```
+
+Или без локального git — пересобери из GitHub clone в любое место и `docker compose … up -d --build`.
+
+### Заготовка второго сайта
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/attack444/AI-assistent/main/project/deploy/create-ai-site.sh | bash
+```
+
+## Панель
+
+- **Сайты** → у карточки: **Файлы** (редактор этой папки), **Чат** (ассистент в контексте сайта)
+- DeepSeek уже в статусе — без VPN. Ollama на слабом тарифе не нужен.
+
+## Тариф
+
+2–4 GB RAM: панель + 2 сайта + DeepSeek API — нормально.  
+Локальную Ollama (7B) — только при 8+ GB.
+
+## Дальше после HTTPS
+
+1. Проверка 5mb2 (формы, админка, картинки)
+2. Создать сайт `ai`, править в панели
+3. Купить домен → привязать к `ai`
+4. Допилить витрину/редактор по мере задач

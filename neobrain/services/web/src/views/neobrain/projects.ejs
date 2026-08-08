@@ -1,0 +1,11 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>Проекты</h1>
+<form class="card inline" id="projectForm">
+  <input name="name" placeholder="название проекта" required>
+  <input name="repoUrl" placeholder="git-репозиторий (https://...)">
+  <input name="domain" placeholder="домен (example.com)">
+  <button class="btn" type="submit">Добавить</button>
+</form>
+<div id="projectList" class="list">Загрузка…</div>
+<script src="/static/neobrain/js/projects.js"></script>
+<%- include('../partials/foot') %>

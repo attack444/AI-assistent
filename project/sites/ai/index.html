@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#e9f1ef" />
+  <meta name="description" content="AI Helper — деплой статики (ZIP, tar.gz, HTML), чат с AI и виджет для сайтов. Бесплатная локальная модель + DeepSeek для сложных задач." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="/sites/ai/" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AI Helper — деплой и AI для сайтов" />
+  <meta property="og:description" content="Задеплойте статику за минуту, подключите виджет чата и работайте с AI. Бесплатный слой Ollama на сервере." />
+  <meta property="og:url" content="/sites/ai/" />
+  <meta property="og:site_name" content="AI Helper" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <title>AI Helper — деплой статики и AI-чат для сайтов</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "AI Helper",
+    "url": "/sites/ai/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Web",
+    "description": "Публичная платформа: деплой статики, AI-чат и виджет для сайтов.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "RUB" },
+    "inLanguage": "ru"
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #e9f1ef;
+      --bg-deep: #d5e4df;
+      --ink: #0c1a16;
+      --muted: #3d534c;
+      --line: rgba(12, 26, 22, 0.12);
+      --accent: #0b7f6e;
+      --accent-ink: #04352e;
+      --glow: rgba(11, 127, 110, 0.28);
+      --panel: rgba(255, 255, 255, 0.55);
+      --font-display: "Unbounded", sans-serif;
+      --font-body: "Manrope", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--font-body);
+      background: var(--bg);
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* —— Hero: one composition, full-bleed —— */
+    .hero {
+      position: relative;
+      min-height: 100svh;
+      display: grid;
+      align-items: end;
+      padding: clamp(20px, 4vw, 40px);
+      isolation: isolate;
+      overflow: hidden;
+    }
+
+    .hero-visual {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse 90% 70% at 70% 20%, var(--glow), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 10% 90%, rgba(196, 120, 40, 0.14), transparent 50%),
+        linear-gradient(160deg, #f4faf8 0%, var(--bg) 42%, var(--bg-deep) 100%);
+      animation: atmosphere 18s ease-in-out infinite alternate;
+    }
+
+    .hero-visual::before {
+      content: "";
+      position: absolute;
+      inset: 8% -5% -10% 35%;
+      background:
+        linear-gradient(135deg, rgba(12, 26, 22, 0.92) 0%, #134e45 48%, #0b7f6e 100%);
+      border-radius: 28px 0 0 120px;
+      box-shadow: -40px 40px 80px rgba(12, 26, 22, 0.18);
+      transform: skewY(-2deg);
+      animation: plane-in 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .hero-visual::after {
+      content: "";
+      position: absolute;
+      right: 6%;
+      top: 18%;
+      width: min(42vw, 520px);
+      height: min(52vh, 420px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 16px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.08), transparent 30%),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 27px,
+          rgba(255, 255, 255, 0.06) 28px
+        );
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+      animation: editor-in 1.2s 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .hero-inner {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+      padding-bottom: clamp(28px, 6vh, 64px);
+      animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: clamp(2.4rem, 7vw, 4.6rem);
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin: 0 0 18px;
+      max-width: 10ch;
+    }
+
+    .brand span {
+      display: block;
+      font-size: 0.28em;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    .hero h1 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(1.35rem, 3.2vw, 2rem);
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      margin: 0 0 14px;
+      max-width: 16ch;
+    }
+
+    .hero-lead {
+      margin: 0 0 28px;
+      max-width: 34ch;
+      font-size: 1.08rem;
+      line-height: 1.5;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn:hover { transform: translateY(-2px); }
+
+    .btn-primary {
+      background: var(--ink);
+      color: #f3faf7;
+      box-shadow: 0 14px 30px rgba(12, 26, 22, 0.2);
+    }
+
+    .btn-ghost {
+      background: var(--panel);
+      border-color: var(--line);
+      backdrop-filter: blur(8px);
+    }
+
+    /* —— Sections: one job each —— */
+    .section {
+      width: min(960px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: clamp(64px, 10vw, 110px) 0;
+      border-top: 1px solid var(--line);
+      animation: rise 0.8s ease both;
+    }
+
+    .section h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 3vw, 2.1rem);
+      letter-spacing: -0.03em;
+      margin: 0 0 12px;
+      max-width: 18ch;
+    }
+
+    .section > p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.55;
+      max-width: 42rem;
+    }
+
+    .feature-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0;
+    }
+
+    .feature-list li {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 18px;
+      padding: 22px 0;
+      border-top: 1px solid var(--line);
+      align-items: baseline;
+    }
+
+    .feature-list li:last-child { border-bottom: 1px solid var(--line); }
+
+    .feature-list strong {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      letter-spacing: -0.02em;
+    }
+
+    .feature-list span {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .pricing-note {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .tag {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent-ink);
+      background: rgba(11, 127, 110, 0.14);
+      padding: 8px 12px;
+      border-radius: 999px;
+    }
+
+    .chat-preview {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.65);
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(12, 26, 22, 0.06);
+    }
+
+    .chat-preview-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      font-weight: 700;
+      font-size: 0.92rem;
+    }
+
+    .chat-preview-body {
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+
+    .bubble {
+      max-width: 85%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      line-height: 1.45;
+      font-size: 0.95rem;
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      background: var(--ink);
+      color: #f2faf7;
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble.bot {
+      background: #e7f2ee;
+      color: var(--ink);
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-preview form {
+      display: flex;
+      gap: 8px;
+      padding: 14px;
+      border-top: 1px solid var(--line);
+      background: rgba(255,255,255,0.5);
+    }
+
+    .chat-preview input {
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font: inherit;
+      background: #fff;
+    }
+
+    .chat-preview button {
+      border: 0;
+      border-radius: 10px;
+      padding: 0 16px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .chat-preview button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      margin: 14px 0 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px clamp(16px, 4vw, 40px);
+      background: rgba(233, 241, 239, 0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-mini {
+      font-family: var(--font-display);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .top-btn { padding: 8px 14px; font-size: 0.9rem; }
+    .auth-user { font-size: 0.9rem; color: var(--muted); font-weight: 600; }
+
+    .auth-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(12, 26, 22, 0.45);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .auth-modal[hidden] { display: none !important; }
+
+    .auth-card {
+      width: min(420px, 100%);
+      background: #f7fbf9;
+      border-radius: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 60px rgba(12, 26, 22, 0.2);
+    }
+
+    .auth-card h3 {
+      font-family: var(--font-display);
+      margin: 0 0 6px;
+      letter-spacing: -0.02em;
+    }
+
+    .auth-input {
+      width: 100%;
+      margin: 8px 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font: inherit;
+      background: #fff;
+    }
+
+    .auth-error { color: #b42318; font-size: 0.9rem; margin: 6px 0 0; }
+
+    .plans {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .plan {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 16px;
+      background: rgba(255,255,255,0.7);
+    }
+
+    .plan h3 {
+      font-family: var(--font-display);
+      margin: 0 0 6px;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .plan .price {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      margin: 0 0 8px;
+      letter-spacing: -0.03em;
+    }
+
+    .plan .price span { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+    .plan ul { margin: 0; padding-left: 1.1rem; color: var(--muted); line-height: 1.55; }
+    .plan.featured { border-color: rgba(11, 127, 110, 0.45); box-shadow: 0 12px 30px rgba(11,127,110,0.1); }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin-top: 8px;
+    }
+    .matrix th, .matrix td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .matrix th { color: var(--muted); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .matrix td strong { color: var(--accent-ink); }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+    .chip-row button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.75);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--ink);
+    }
+    .chip-row button:hover { border-color: var(--accent); color: var(--accent-ink); }
+
+    .faq details {
+      border-top: 1px solid var(--line);
+      padding: 14px 0;
+    }
+    .faq details:first-child { border-top: none; }
+    .faq summary {
+      cursor: pointer;
+      font-weight: 600;
+      list-style: none;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq details p { margin: 8px 0 0; color: var(--muted); line-height: 1.5; }
+
+    .embed-box {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 14px;
+      background: #0f1714;
+      color: #d7e6df;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
+    .deploy-box {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.65);
+      padding: 20px;
+      box-shadow: 0 20px 50px rgba(12, 26, 22, 0.06);
+    }
+
+    .deploy-box .drop {
+      border: 1.5px dashed rgba(12, 26, 22, 0.22);
+      border-radius: 14px;
+      padding: 28px 18px;
+      text-align: center;
+      background: rgba(255,255,255,0.5);
+    }
+
+    .deploy-box .drop strong { display: block; margin-bottom: 6px; }
+
+    .deploy-result {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      display: none;
+    }
+
+    .deploy-result.show { display: block; }
+
+    .deploy-result .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      background: #eef5f2;
+      padding: 10px 12px;
+      border-radius: 10px;
+    }
+
+    .file-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    .file-list button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .file-list button.active {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+
+    #deploy-editor {
+      width: 100%;
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      resize: vertical;
+      background: #0f1714;
+      color: #e7f0ea;
+    }
+
+    footer {
+      width: min(960px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.92rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      justify-content: space-between;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @keyframes plane-in {
+      from { opacity: 0; transform: skewY(-2deg) translateX(40px); }
+      to { opacity: 1; transform: skewY(-2deg); }
+    }
+
+    @keyframes editor-in {
+      from { opacity: 0; transform: translateY(24px) scale(0.98); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @keyframes atmosphere {
+      from { background-position: 0% 0%, 100% 100%, 0 0; }
+      to { background-position: 8% 4%, 90% 80%, 0 0; }
+    }
+
+    @media (max-width: 800px) {
+      body {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+      .topbar {
+        padding: 10px 14px;
+        padding-top: calc(10px + env(safe-area-inset-top));
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .topbar-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+      .top-btn {
+        min-height: 40px;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+      }
+      .auth-user {
+        width: 100%;
+        order: -1;
+        font-size: 0.82rem;
+      }
+
+      .hero {
+        min-height: 100svh;
+        min-height: 100dvh;
+        padding: calc(72px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+      }
+      .hero-visual::before {
+        inset: 42% 0 -5% 0;
+        border-radius: 40px 40px 0 0;
+        transform: none;
+      }
+      .hero-visual::after {
+        right: 8%;
+        left: 8%;
+        width: auto;
+        top: 48%;
+        height: 28vh;
+      }
+      .hero-inner { max-width: 100%; }
+      .brand { max-width: none; font-size: clamp(2.1rem, 11vw, 3.2rem); }
+      .hero h1 { max-width: none; font-size: clamp(1.2rem, 5.5vw, 1.55rem); }
+      .hero-lead { max-width: none; font-size: 1rem; }
+      .cta-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .cta-row .btn {
+        width: 100%;
+        min-height: 48px;
+      }
+      .btn:hover { transform: none; }
+
+      .section {
+        width: min(960px, calc(100% - 28px));
+        padding: clamp(48px, 12vw, 80px) 0;
+      }
+      .feature-list li {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .plans {
+        grid-template-columns: 1fr;
+      }
+      .matrix {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .matrix th, .matrix td { white-space: nowrap; }
+
+      .chat-preview form {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .chat-preview input,
+      .auth-input {
+        font-size: 16px; /* iOS no-zoom */
+        width: 100%;
+      }
+      .chat-preview button {
+        width: 100%;
+        min-height: 48px;
+      }
+
+      .deploy-box .drop { padding: 22px 16px; }
+      .auth-card {
+        width: min(420px, calc(100% - 28px));
+        margin: 16px;
+        max-height: calc(100svh - 32px);
+        overflow-y: auto;
+      }
+      .auth-modal {
+        align-items: flex-end;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      footer {
+        padding: 28px 16px calc(28px + env(safe-area-inset-bottom));
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+
+
+    /* Need paths + feedback */
+    .need-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .need-card {
+      display: grid;
+      gap: 6px;
+      padding: 16px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      backdrop-filter: blur(8px);
+      transition: border-color .2s, transform .2s;
+      min-height: 92px;
+    }
+    .need-card:hover {
+      border-color: rgba(11, 127, 110, 0.45);
+      transform: translateY(-2px);
+    }
+    .need-card strong {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.98rem;
+    }
+    .need-card span { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+
+    .fb-section-grid {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 22px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    .fb-points {
+      margin: 0;
+      padding-left: 1.15rem;
+      color: var(--muted);
+      display: grid;
+      gap: 10px;
+    }
+    .fb-points strong { color: var(--ink); }
+    .fb-form--section {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+    .fb-fab {
+      position: fixed;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      z-index: 60;
+      border: 1px solid rgba(11, 127, 110, 0.4);
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 12px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(12, 26, 22, 0.16);
+      min-height: 44px;
+    }
+    .fb-backdrop {
+      position: fixed; inset: 0; z-index: 70;
+      background: rgba(12, 26, 22, 0.35);
+    }
+    .fb-panel {
+      position: fixed;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(72px, calc(env(safe-area-inset-bottom) + 64px));
+      z-index: 80;
+      width: min(400px, calc(100vw - 24px));
+      max-height: min(78vh, 640px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f7fbfa;
+      box-shadow: 0 24px 50px rgba(12, 26, 22, 0.18);
+    }
+    .fb-panel[hidden], .fb-backdrop[hidden] { display: none !important; }
+    .fb-panel-head {
+      display: flex; justify-content: space-between; gap: 12px; align-items: flex-start;
+    }
+    .fb-panel-head h3 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+    }
+    .fb-close {
+      border: 0; background: transparent; font-size: 1.5rem; cursor: pointer;
+      color: var(--muted); min-width: 40px; min-height: 40px;
+    }
+    .fb-form { display: grid; gap: 10px; margin-top: 12px; }
+    .fb-form label { display: grid; gap: 6px; color: var(--muted); font-size: 0.9rem; }
+    .fb-form input, .fb-form select, .fb-form textarea {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      font: inherit;
+      font-size: 16px;
+      background: #fff;
+      color: var(--ink);
+    }
+    .fb-form textarea { min-height: 110px; resize: vertical; }
+    .fb-note { margin: 0; min-height: 1.2em; font-size: 0.9rem; }
+    .fb-note.is-ok { color: var(--accent); }
+    .fb-note.is-error { color: #b42318; }
+    .fb-hp { position: absolute; left: -9999px; height: 1px; width: 1px; overflow: hidden; }
+
+    @media (max-width: 480px) {
+      .brand-mini { font-size: 0.95rem; }
+      .topbar-actions .btn-ghost#btn-login { order: 1; }
+    }
+
+    @media (max-width: 900px) {
+      .need-grid { grid-template-columns: 1fr; }
+      .fb-section-grid { grid-template-columns: 1fr; }
+      .fb-panel { left: 12px; right: 12px; width: auto; bottom: max(130px, calc(env(safe-area-inset-bottom) + 120px)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="#" class="brand-mini">AI Helper</a>
+    <div class="topbar-actions">
+      <span id="auth-user" class="auth-user" hidden></span>
+      <button type="button" class="btn btn-ghost top-btn" id="btn-login">Войти</button>
+      <button type="button" class="btn btn-primary top-btn" id="btn-register">Регистрация</button>
+      <button type="button" class="btn btn-ghost top-btn" id="btn-logout" hidden>Выйти</button>
+    </div>
+  </div>
+
+  <div class="auth-modal" id="auth-modal" hidden>
+    <div class="auth-card">
+      <h3 id="auth-title">Вход</h3>
+      <p class="hint" id="auth-hint">Нужен аккаунт для чата и деплоя</p>
+      <form id="auth-form">
+        <input class="auth-input" id="auth-name" type="text" placeholder="Имя (необязательно)" autocomplete="name" hidden />
+        <input class="auth-input" id="auth-email" type="email" placeholder="Email" required autocomplete="email" />
+        <input class="auth-input" id="auth-password" type="password" placeholder="Пароль (от 8 символов)" required minlength="8" autocomplete="current-password" />
+        <p class="auth-error" id="auth-error" hidden></p>
+        <div class="cta-row">
+          <button class="btn btn-primary" type="submit" id="auth-submit">Войти</button>
+          <button class="btn btn-ghost" type="button" id="auth-cancel">Отмена</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <header class="hero">
+    <div class="hero-visual" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <p class="brand"><span>platform</span>AI Helper</p>
+      <h1>Деплой сайта и AI-чат на своём сервере</h1>
+      <p class="hero-lead">Аккаунт → ZIP → превью → вопросы модели. Для правок на живых сайтах — панель владельца и DeepSeek.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#deploy">Задеплоить сайт</a>
+        <a class="btn btn-ghost" href="#models">Чат с AI</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" id="how">
+    <h2>Одна платформа — три действия</h2>
+    <p>Публичная витрина: развернуть статику, править в браузере и спросить модель. Панель владельца — отдельно, для живых сайтов вроде WordPress.</p>
+    <ul class="feature-list">
+      <li>
+        <strong>Деплой</strong>
+        <span>ZIP со статикой → мгновенный превью. Без PHP и без доступа к чужим сайтам.</span>
+      </li>
+      <li>
+        <strong>Код</strong>
+        <span>Редактор в браузере по token: поправил файл — сразу открыл страницу.</span>
+      </li>
+      <li>
+        <strong>Модели</strong>
+        <span>Чат: бесплатная Ollama на сервере. Сложные ответы — DeepSeek, если ключ подключён.</span>
+      </li>
+    </ul>
+  </section>
+
+  <section class="section" id="stack">
+    <h2>Какая модель что умеет</h2>
+    <p>Чтобы не ждать от лёгкой модели правок файлов: честно по задачам.</p>
+    <table class="matrix">
+      <thead>
+        <tr><th>Задача</th><th>Здесь на витрине</th><th>В панели владельца</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Вопросы про деплой и код</td>
+          <td><strong>Ollama 1.5b</strong> (бесплатно)</td>
+          <td>Ollama → DeepSeek</td>
+        </tr>
+        <tr>
+          <td>Правки HTML/CSS/PHP на сайте</td>
+          <td>Редактор по token (вручную)</td>
+          <td><strong>DeepSeek + tools</strong></td>
+        </tr>
+        <tr>
+          <td>WordPress, белый экран, URL</td>
+          <td>—</td>
+          <td><strong>DeepSeek</strong> + проверки сайта</td>
+        </tr>
+        <tr>
+          <td>Чат на клиентском сайте</td>
+          <td colspan="2">Виджет ниже — встраивается в 5mb2 и другие площадки</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section" id="models">
+    <h2>Чат — про деплой и код</h2>
+    <p>Ассистент витрины не читает диск сервера. Для правок живого WordPress — панель владельца или VS Code extension.</p>
+    <div class="chip-row" id="chat-chips">
+      <button type="button" data-q="Как задеплоить ZIP и получить ссылку?">Как задеплоить?</button>
+      <button type="button" data-q="Чем бесплатная модель отличается от DeepSeek?">Ollama vs DeepSeek</button>
+      <button type="button" data-q="Можно ли залить PHP или WordPress через этот деплой?">PHP / WordPress?</button>
+      <button type="button" data-q="Как встроить чат на свой сайт виджетом?">Виджет на сайт</button>
+    </div>
+    <div class="chat-preview" role="group" aria-label="Чат AI Helper">
+      <div class="chat-preview-head">AI Helper · Ollama / DeepSeek <span id="chat-status" style="font-weight:500;color:var(--muted)"></span></div>
+      <div class="chat-preview-body" id="demo-chat">
+        <div class="bubble bot">Привет! Сначала бесплатная Ollama, при необходимости — DeepSeek. Спроси про деплой, тарифы или виджет.</div>
+      </div>
+      <form class="chat-preview form" id="demo-form">
+        <input id="chat-input" type="text" placeholder="Напиши вопрос…" autocomplete="off" maxlength="2000" required />
+        <button type="submit" id="chat-send">Отправить</button>
+      </form>
+    </div>
+    <p class="hint">Нужен аккаунт. Лимит: по тарифу (Free ≈ 30/день) и до 30 сообщений/час с IP.</p>
+  </section>
+
+  <section class="section" id="widget">
+    <h2>Фишка: чат-виджет для своего сайта</h2>
+    <p>Для площадок вроде лендинга или магазина — тот же публичный чат во всплывающем окне. Не открывает панель и не правит файлы.</p>
+    <div class="embed-box" id="embed-snippet">&lt;script src="/sites/ai/widget.js" defer&gt;&lt;/script&gt;
+&lt;script&gt;
+  document.addEventListener("DOMContentLoaded", function () {
+    AIHelperChat.mount({ title: "Помощник", placeholder: "Спросите про заказ…" });
+  });
+&lt;/script&gt;</div>
+    <p class="hint">Гости отвечают без логина (PUBLIC_WIDGET_GUEST=1). На VPS: <code>bash project/deploy/install-5mb2-widget.sh</code></p>
+  </section>
+
+  <section class="section faq" id="faq">
+    <h2>Коротко по делу</h2>
+    <details open>
+      <summary>Почему «исправь сайт» не работает в этом чате?</summary>
+      <p>Витринный чат без доступа к файлам — так безопаснее. Правки делает панель владельца / VS Code с DeepSeek.</p>
+    </details>
+    <details>
+      <summary>Нужен ли DeepSeek?</summary>
+      <p>Для болтовни — нет. Чтобы AI сам правил файлы и чинил WP — да. Ollama 1.5b остаётся бесплатным слоем для простых ответов.</p>
+    </details>
+    <details>
+      <summary>Что с тарифами?</summary>
+      <p>Free после регистрации. Starter/Pro — вручную после оплаты (письмо владельцу). Лимиты — в блоке «Мой лимит».</p>
+    </details>
+    <details>
+      <summary>Какие форматы деплоя?</summary>
+      <p>ZIP, tar.gz / tgz, tar или один HTML. Только статика (HTML/CSS/JS/картинки). PHP и WordPress-бэкапы — через панель владельца.</p>
+    </details>
+    <details>
+      <summary>Как сообщить об ошибке или идее?</summary>
+      <p>Внизу страницы блок «Идея или ошибка?» (#feedback). Сообщения видит владелец в панели сервера → «Обратная связь».</p>
+    </details>
+  </section>
+
+  <section class="section" id="deploy">
+    <h2>Деплой за минуту</h2>
+    <p>Залей статику: <strong>ZIP</strong>, <strong>tar.gz / tgz</strong>, <strong>tar</strong> или один <strong>HTML</strong>. Получишь превью и token для правок. PHP и чужие сайты недоступны.</p>
+    <div class="deploy-box">
+      <div class="drop">
+        <strong>Архив или HTML · до 15 МБ</strong>
+        <span class="hint" style="margin:0">ZIP · tar.gz · tar · index.html</span>
+        <div class="cta-row" style="justify-content:center;margin-top:16px">
+          <label class="btn btn-primary" style="cursor:pointer">
+            Выбрать файл
+            <input id="deploy-file" type="file" accept=".zip,.tar,.gz,.tgz,.html,.htm,application/zip,application/gzip,application/x-tar,text/html" hidden />
+          </label>
+        </div>
+        <p id="deploy-filename" class="hint" style="margin-top:12px"></p>
+      </div>
+      <div id="deploy-progress" class="hint" style="display:none;margin-top:12px">Загружаю…</div>
+      <div class="deploy-result" id="deploy-result">
+        <p style="margin:0 0 8px;font-weight:700">Готово</p>
+        <p class="hint" style="margin:0 0 10px">Превью (открой в новой вкладке):</p>
+        <p class="mono"><a id="deploy-url" href="#" target="_blank" rel="noreferrer"></a></p>
+        <p class="hint" style="margin:14px 0 8px">Token — сохрани, без него не отредактируешь:</p>
+        <p class="mono" id="deploy-token"></p>
+        <div class="cta-row" style="margin-top:14px">
+          <a class="btn btn-primary" id="deploy-open" href="#" target="_blank" rel="noreferrer">Открыть сайт</a>
+          <button class="btn btn-ghost" type="button" id="deploy-load-files">Файлы</button>
+        </div>
+        <div class="file-list" id="deploy-files"></div>
+        <textarea id="deploy-editor" placeholder="Выбери файл выше — правь и сохрани" spellcheck="false"></textarea>
+        <div class="cta-row" style="margin-top:12px">
+          <button class="btn btn-primary" type="button" id="deploy-save" disabled>Сохранить файл</button>
+          <span class="hint" id="deploy-edit-status" style="margin:0;align-self:center"></span>
+        </div>
+      </div>
+    </div>
+    <p class="hint">Нужен аккаунт · лимит деплоев по тарифу (Free ≈ 5/день) · хранение превью ~14 дней · только статика</p>
+  </section>
+
+  <section class="section" id="start">
+    <h2>Тарифы</h2>
+    <p>Регистрация даёт Free. Starter и Pro включаем вручную после оплаты — напиши на почту, владелец активирует план.</p>
+    <div class="plans" id="plans-grid">
+      <p class="hint">Загрузка тарифов…</p>
+    </div>
+    <p class="hint" id="plan-status" style="margin-top:18px"></p>
+    <div class="cta-row" style="margin-top: 22px">
+      <a class="btn btn-primary" href="mailto:slavasundukov887@gmail.com?subject=AI%20Helper%20тариф">Запросить Starter / Pro</a>
+      <button class="btn btn-ghost" type="button" id="btn-show-billing">Мой лимит</button>
+    </div>
+  </section>
+
+
+  <section class="section" id="need">
+    <h2>Что вам нужно?</h2>
+    <p>Короткий путь: деплой, чат, виджет, тариф — или напишите идею / ошибку. Мы делаем продукт вместе с вами.</p>
+    <div class="need-grid">
+      <a class="need-card" href="#deploy"><strong>Задеплоить сайт</strong><span>ZIP / HTML → превью за минуту</span></a>
+      <a class="need-card" href="#models"><strong>Спросить AI</strong><span>Чат про деплой и код</span></a>
+      <a class="need-card" href="#widget"><strong>Виджет на сайт</strong><span>Чат для ваших гостей</span></a>
+      <a class="need-card" href="#start"><strong>Тарифы и лимиты</strong><span>Free после регистрации</span></a>
+      <a class="need-card" href="#how"><strong>Как это устроено</strong><span>Три действия платформы</span></a>
+      <a class="need-card" href="#feedback"><strong>Идея или ошибка</strong><span>Форма ниже на странице</span></a>
+    </div>
+  </section>
+
+
+
+  <section class="section" id="feedback">
+    <h2>Идея или ошибка?</h2>
+    <p>Помогите улучшить AI Helper. Баг на витрине, идея по деплою/чату или «мне нужно…» — форма ниже. Сообщения попадают в панель владельца → «Обратная связь».</p>
+    <div class="fb-section-grid">
+      <ul class="fb-points">
+        <li><strong>Ошибка</strong> — деплой, чат, виджет, мобильная вёрстка</li>
+        <li><strong>Идея</strong> — чего не хватает на витрине</li>
+        <li><strong>Мне нужно…</strong> — опишите задачу, подскажем путь</li>
+      </ul>
+      <form class="fb-form fb-form--section" id="ai-feedback-form">
+        <label class="fb-hp" aria-hidden="true">Сайт<input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+        <label>Тип
+          <select name="type">
+            <option value="idea">Идея / улучшение</option>
+            <option value="bug">Ошибка на сайте</option>
+            <option value="need">Мне нужно…</option>
+            <option value="other">Другое</option>
+          </select>
+        </label>
+        <label>Сообщение
+          <textarea name="message" required minlength="8" maxlength="4000" placeholder="Что улучшить или где ошибка?"></textarea>
+        </label>
+        <label>Email (необязательно)
+          <input type="email" name="email" autocomplete="email" placeholder="если нужен ответ" />
+        </label>
+        <input type="hidden" name="page" id="ai-fb-page" value="" />
+        <p class="fb-note" id="ai-fb-note" hidden></p>
+        <button class="btn btn-primary" type="submit">Отправить сообщение</button>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <div>© AI Helper · витрина среды</div>
+    <div>Панель управления сервером — только для владельца · <a href="#feedback">Идея / ошибка</a></div>
+  </footer>
+
+  <script>
+
+    // —— Feedback (section #feedback) ——
+    (function () {
+      const form = document.getElementById("ai-feedback-form");
+      if (!form) return;
+      const note = document.getElementById("ai-fb-note");
+      const pageInput = document.getElementById("ai-fb-page");
+      if (location.hash === "#feedback") {
+        const sec = document.getElementById("feedback");
+        if (sec) setTimeout(() => sec.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      }
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
+        if (note) { note.hidden = true; note.className = "fb-note"; }
+        if (pageInput) pageInput.value = location.href;
+        const fd = new FormData(form);
+        const body = {
+          type: fd.get("type"),
+          message: fd.get("message"),
+          email: fd.get("email") || "",
+          page: fd.get("page") || location.href,
+          website: fd.get("website") || "",
+          source: "ai-helper",
+        };
+        try {
+          const res = await fetch("/api/public/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Не удалось отправить");
+          if (note) {
+            note.hidden = false;
+            note.className = "fb-note is-ok";
+            note.textContent = data.message || "Спасибо!";
+          }
+          form.reset();
+        } catch (err) {
+          if (note) {
+            note.hidden = false;
+            note.className = "fb-note is-error";
+            note.textContent = err.message || "Ошибка сети";
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    })();
+
+    // Soft reveal
+    const els = document.querySelectorAll(".section, footer");
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.style.animationPlayState = "running";
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    els.forEach((el) => {
+      el.style.animationPlayState = "paused";
+      io.observe(el);
+    });
+
+    // —— Auth ——
+    const AUTH_KEY = "aihelper-user-token";
+    let userToken = localStorage.getItem(AUTH_KEY) || "";
+    let currentUser = null;
+    let authMode = "login";
+
+    const modal = document.getElementById("auth-modal");
+    const authForm = document.getElementById("auth-form");
+    const authTitle = document.getElementById("auth-title");
+    const authHint = document.getElementById("auth-hint");
+    const authName = document.getElementById("auth-name");
+    const authEmail = document.getElementById("auth-email");
+    const authPassword = document.getElementById("auth-password");
+    const authError = document.getElementById("auth-error");
+    const authUserEl = document.getElementById("auth-user");
+    const btnLogin = document.getElementById("btn-login");
+    const btnRegister = document.getElementById("btn-register");
+    const btnLogout = document.getElementById("btn-logout");
+
+    function authHeaders(extra) {
+      const h = Object.assign({ "Content-Type": "application/json" }, extra || {});
+      if (userToken) h.Authorization = "Bearer " + userToken;
+      return h;
+    }
+
+    function setAuthUI() {
+      if (currentUser && currentUser.email) {
+        authUserEl.hidden = false;
+        const plan = (currentUser.plan || "free").toUpperCase();
+        authUserEl.textContent = currentUser.email + " · " + plan;
+        btnLogin.hidden = true;
+        btnRegister.hidden = true;
+        btnLogout.hidden = false;
+        const st = document.getElementById("plan-status");
+        if (st && currentUser.billing) {
+          const u = currentUser.billing.usage || {};
+          const l = currentUser.billing.limits || {};
+          st.textContent =
+            "Сейчас: " + plan +
+            " · чат " + (u.chat || 0) + "/" + (l.chat_per_day < 0 ? "∞" : l.chat_per_day) +
+            " · деплои " + (u.deploy || 0) + "/" + (l.deploy_per_day < 0 ? "∞" : l.deploy_per_day) +
+            " · сайты " + (u.sites || 0) + "/" + (l.max_sites < 0 ? "∞" : l.max_sites);
+        }
+      } else {
+        authUserEl.hidden = true;
+        btnLogin.hidden = false;
+        btnRegister.hidden = false;
+        btnLogout.hidden = true;
+      }
+    }
+
+    function openAuth(mode) {
+      authMode = mode;
+      authError.hidden = true;
+      authError.textContent = "";
+      authTitle.textContent = mode === "register" ? "Регистрация" : "Вход";
+      authHint.textContent = mode === "register"
+        ? "Создай аккаунт — чат и деплой только для пользователей"
+        : "Войди, чтобы пользоваться чатом и деплоем";
+      authName.hidden = mode !== "register";
+      authPassword.autocomplete = mode === "register" ? "new-password" : "current-password";
+      modal.hidden = false;
+      authEmail.focus();
+    }
+
+    function closeAuth() { modal.hidden = true; }
+
+    async function refreshMe() {
+      if (!userToken) {
+        currentUser = null;
+        setAuthUI();
+        return;
+      }
+      try {
+        const res = await fetch("/api/public/auth/me", { headers: authHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          userToken = "";
+          localStorage.removeItem(AUTH_KEY);
+          currentUser = null;
+        } else {
+          currentUser = data.user;
+        }
+      } catch (_) {
+        currentUser = null;
+      }
+      setAuthUI();
+    }
+
+    function ensureAuth() {
+      if (currentUser && userToken) return true;
+      openAuth("login");
+      return false;
+    }
+
+    btnLogin.addEventListener("click", () => openAuth("login"));
+    btnRegister.addEventListener("click", () => openAuth("register"));
+    document.getElementById("auth-cancel").addEventListener("click", closeAuth);
+    modal.addEventListener("click", (e) => { if (e.target === modal) closeAuth(); });
+
+    btnLogout.addEventListener("click", async () => {
+      try {
+        await fetch("/api/public/auth/logout", { method: "POST", headers: authHeaders() });
+      } catch (_) {}
+      userToken = "";
+      currentUser = null;
+      localStorage.removeItem(AUTH_KEY);
+      setAuthUI();
+    });
+
+    authForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      authError.hidden = true;
+      const path = authMode === "register" ? "/api/public/auth/register" : "/api/public/auth/login";
+      const body = {
+        email: authEmail.value.trim(),
+        password: authPassword.value,
+      };
+      if (authMode === "register") body.name = authName.value.trim();
+      try {
+        const res = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        userToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem(AUTH_KEY, userToken);
+        closeAuth();
+        setAuthUI();
+        authPassword.value = "";
+      } catch (err) {
+        authError.hidden = false;
+        authError.textContent = err.message || "Ошибка";
+      }
+    });
+
+    void refreshMe();
+
+    // —— Plans ——
+    async function loadPlans() {
+      const grid = document.getElementById("plans-grid");
+      try {
+        const res = await fetch("/api/public/plans");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "plans");
+        grid.innerHTML = "";
+        (data.plans || []).forEach((p) => {
+          const el = document.createElement("div");
+          el.className = "plan" + (p.id === "starter" ? " featured" : "");
+          const price = p.price_rub
+            ? p.price_rub.toLocaleString("ru-RU") + " ₽<span>/мес</span>"
+            : "0 ₽<span> старт</span>";
+          el.innerHTML =
+            "<h3>" + p.name + "</h3>" +
+            "<p class='price'>" + price + "</p>" +
+            "<p class='hint' style='margin:0 0 10px'>" + (p.blurb || "") + "</p>" +
+            "<ul>" + (p.features || []).map((f) => "<li>" + f + "</li>").join("") + "</ul>";
+          grid.appendChild(el);
+        });
+      } catch (_) {
+        grid.innerHTML = "<p class='hint'>Тарифы появятся после обновления API (bootstrap-update).</p>";
+      }
+    }
+    void loadPlans();
+    document.getElementById("btn-show-billing").addEventListener("click", async () => {
+      if (!ensureAuth()) return;
+      await refreshMe();
+      document.getElementById("start").scrollIntoView({ behavior: "smooth" });
+    });
+
+    // —— Chat ——
+    const chatEl = document.getElementById("demo-chat");
+    const form = document.getElementById("demo-form");
+    const input = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("chat-send");
+    const statusEl = document.getElementById("chat-status");
+    const history = [];
+
+    document.getElementById("chat-chips")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-q]");
+      if (!btn) return;
+      input.value = btn.getAttribute("data-q") || "";
+      input.focus();
+    });
+
+    function addBubble(role, text) {
+      const div = document.createElement("div");
+      div.className = "bubble " + (role === "user" ? "user" : "bot");
+      div.textContent = text;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return div;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!ensureAuth()) return;
+      const text = (input.value || "").trim();
+      if (!text || sendBtn.disabled) return;
+      input.value = "";
+      addBubble("user", text);
+      history.push({ role: "user", content: text });
+      const bot = addBubble("bot", "…");
+      sendBtn.disabled = true;
+      statusEl.textContent = "· думаю";
+
+      let full = "";
+      try {
+        const res = await fetch("/api/public/chat/stream", {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ message: text, history: history.slice(0, -1) }),
+        });
+        if (res.status === 401) {
+          userToken = "";
+          localStorage.removeItem(AUTH_KEY);
+          currentUser = null;
+          setAuthUI();
+          openAuth("login");
+          throw new Error("Нужен вход");
+        }
+        if (!res.ok || !res.body) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ("HTTP " + res.status));
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop() || "";
+          for (const chunk of parts) {
+            const line = chunk.trim();
+            if (!line.startsWith("data:")) continue;
+            let ev;
+            try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+            if (ev.type === "text") {
+              full += ev.content || "";
+              bot.textContent = full;
+              chatEl.scrollTop = chatEl.scrollHeight;
+            } else if (ev.type === "info" && ev.content) {
+              statusEl.textContent = "· " + ev.content;
+            } else if (ev.type === "error") {
+              throw new Error(ev.content || "Ошибка чата");
+            }
+          }
+        }
+        if (!full) throw new Error("Пустой ответ — обнови API (bootstrap-update)");
+        history.push({ role: "assistant", content: full });
+        statusEl.textContent = "";
+      } catch (err) {
+        bot.textContent = err.message || "Ошибка";
+        statusEl.textContent = "";
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    });
+
+    // —— Deploy ——
+    const fileInput = document.getElementById("deploy-file");
+    const fnameEl = document.getElementById("deploy-filename");
+    const progEl = document.getElementById("deploy-progress");
+    const resultEl = document.getElementById("deploy-result");
+    const urlA = document.getElementById("deploy-url");
+    const openA = document.getElementById("deploy-open");
+    const tokenEl = document.getElementById("deploy-token");
+    const filesEl = document.getElementById("deploy-files");
+    const editor = document.getElementById("deploy-editor");
+    const saveBtn = document.getElementById("deploy-save");
+    const editStatus = document.getElementById("deploy-edit-status");
+    let pub = { name: "", token: "", path: "" };
+
+    try {
+      const saved = JSON.parse(localStorage.getItem("aihelper-public-deploy") || "null");
+      if (saved && saved.name && saved.token) {
+        pub = saved;
+        resultEl.classList.add("show");
+        urlA.href = saved.url;
+        urlA.textContent = location.origin + saved.url;
+        openA.href = saved.url;
+        tokenEl.textContent = saved.token;
+      }
+    } catch (_) {}
+
+    async function deployZip(file) {
+      if (!file) return;
+      if (!ensureAuth()) return;
+      const lower = (file.name || "").toLowerCase();
+      const okExt = [".zip", ".tar", ".tar.gz", ".tgz", ".html", ".htm"].some((ext) =>
+        lower.endsWith(ext)
+      );
+      if (!okExt) {
+        progEl.style.display = "block";
+        progEl.textContent = "Нужен ZIP, tar.gz, tar или HTML";
+        return;
+      }
+      fnameEl.textContent = file.name + " · " + Math.round(file.size / 1024) + " КБ";
+      progEl.style.display = "block";
+      progEl.textContent = "Загружаю…";
+      try {
+        const headers = {
+          "Content-Type": "application/octet-stream",
+          "X-Filename": file.name.replace(/[^\x20-\x7E]/g, "_"),
+        };
+        if (userToken) headers.Authorization = "Bearer " + userToken;
+        const res = await fetch("/api/public/deploy", { method: "POST", headers, body: file });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          openAuth("login");
+          throw new Error("Нужен вход");
+        }
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        pub = { name: data.name, token: data.token, url: data.url, path: "" };
+        localStorage.setItem("aihelper-public-deploy", JSON.stringify(pub));
+        resultEl.classList.add("show");
+        urlA.href = data.url;
+        urlA.textContent = location.origin + data.url;
+        openA.href = data.url;
+        tokenEl.textContent = data.token;
+        filesEl.innerHTML = "";
+        editor.value = "";
+        saveBtn.disabled = true;
+        progEl.textContent =
+          "Ок · файлов: " + ((data.stats && data.stats.files_kept) || "?") +
+          (data.stats && data.stats.files_skipped ? " · пропущено: " + data.stats.files_skipped : "");
+      } catch (err) {
+        progEl.textContent = err.message || "Ошибка деплоя";
+      }
+    }
+
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      void deployZip(f);
+    });
+
+    document.getElementById("deploy-load-files").addEventListener("click", async () => {
+      if (!pub.name || !pub.token) return;
+      editStatus.textContent = "Загрузка списка…";
+      try {
+        const res = await fetch("/api/public/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pub.name, token: pub.token }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка");
+        filesEl.innerHTML = "";
+        (data.files || []).forEach((f) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = f.path;
+          b.addEventListener("click", () => void openPubFile(f.path, b));
+          filesEl.appendChild(b);
+        });
+        editStatus.textContent = (data.files || []).length + " файлов";
+      } catch (err) {
+        editStatus.textContent = err.message || "Ошибка";
+      }
+    });
+
+    async function openPubFile(path, btn) {
+      editStatus.textContent = "Читаю…";
+      filesEl.querySelectorAll("button").forEach((x) => x.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      try {
+        const res = await fetch("/api/public/fs/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pub.name, token: pub.token, path }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка");
+        pub.path = path;
+        editor.value = data.content || "";
+        saveBtn.disabled = false;
+        editStatus.textContent = path;
+      } catch (err) {
+        editStatus.textContent = err.message || "Ошибка";
+      }
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      if (!pub.path) return;
+      saveBtn.disabled = true;
+      editStatus.textContent = "Сохраняю…";
+      try {
+        const res = await fetch("/api/public/fs/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: pub.name,
+            token: pub.token,
+            path: pub.path,
+            content: editor.value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка");
+        editStatus.textContent = "Сохранено · обнови превью";
+      } catch (err) {
+        editStatus.textContent = err.message || "Ошибка";
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

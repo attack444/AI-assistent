@@ -1,0 +1,154 @@
+services:
+
+  # ── AI Helper API + Streamlit (legacy chat) ─────────────────
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: ai-helper-app
+    restart: unless-stopped
+    ports:
+      - "8501:8501"   # Streamlit (legacy)
+      - "8502:8502"   # REST API
+    volumes:
+      - ai_helper_data:/root/.ai-helper
+      - /var/ai-helper/sites:/opt/sites
+      - /var/ai-helper/sites:/var/ai-helper/sites
+      # Исходники панели/API — чтобы DeepSeek (чат site=server) правил бэкенд
+      - /opt/ai-helper:/opt/ai-helper
+    env_file:
+      - ../.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - AI_HELPER_API_HOST=0.0.0.0
+      - AI_HELPER_API_PORT=8502
+      - SITES_ROOT=/opt/sites
+      - HOST_SITES_PATH=/var/ai-helper/sites
+      - AI_HELPER_PROJECT=/opt/ai-helper/project
+      - VPS_PUBLIC_IP=${VPS_PUBLIC_IP:-80.78.248.195}
+      - WORKSPACE_ROOTS=/opt/sites,/var/ai-helper/sites,/opt/ai-helper,/workspace
+      - MAX_UPLOAD_BYTES=2147483648
+      - PANEL_PASSWORD=${PANEL_PASSWORD:-}
+      - SECRET_KEY=${SECRET_KEY:-dev-insecure-change-me}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      - FREE_LLM_MODEL=${FREE_LLM_MODEL:-qwen2.5:1.5b}
+      - LLM_PREFER_FREE=${LLM_PREFER_FREE:-1}
+      - FAST_LLM_MODEL=${FAST_LLM_MODEL:-qwen2.5:1.5b}
+      - PUBLIC_WIDGET_GUEST=${PUBLIC_WIDGET_GUEST:-1}
+      - PUBLIC_AUTH_REQUIRED=${PUBLIC_AUTH_REQUIRED:-1}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-wordpress}
+      - MYSQL_USER=${MYSQL_USER:-wp}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-wp_change_me}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_change_me}
+    depends_on:
+      - ollama
+    networks:
+      - ai-net
+
+  # ── Ollama: бесплатная локальная модель ─────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-helper-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai-net
+
+  # ── Next.js control panel (файлы / сайты / чат) ─────────────
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    container_name: ai-helper-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - API_INTERNAL_URL=http://app:8502
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - app
+    networks:
+      - ai-net
+
+  # ── PHP-FPM (WordPress / обычный хостинг) ───────────────────
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: ai-helper-php
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/ai-helper/sites:/var/ai-helper/sites
+    networks:
+      - ai-net
+
+  # ── MySQL для WordPress ─────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: ai-helper-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
+      MYSQL_USER: ${MYSQL_USER:-wp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wp_change_me}
+    networks:
+      - ai-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── PostgreSQL ────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: ai-helper-db
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aihelper}
+      POSTGRES_USER: ${POSTGRES_USER:-aihelper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+    networks:
+      - ai-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aihelper}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ai-helper-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-net
+
+volumes:
+  ai_helper_data:
+  postgres_data:
+  redis_data:
+  mysql_data:
+  ollama_data:
+
+networks:
+  ai-net:
+    driver: bridge
