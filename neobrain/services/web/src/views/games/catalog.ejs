@@ -1,0 +1,22 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<h1>Каталог игр</h1>
+<p class="lead">Все проекты студии 5MB2. Карточки наполняются из админ-CMS без правки кода.</p>
+<div class="catalog">
+  <% if (!games || games.length === 0) { %>
+    <p class="hint">Игр пока нет — добавь первую в админке (/neobrain/admin/cms).</p>
+  <% } %>
+  <% (games||[]).forEach(function(g){ %>
+    <a class="game-card reveal" href="/games/game/<%= g.slug %>">
+      <div class="cover" <% if (g.accent) { %>style="background:linear-gradient(135deg,<%= g.accent %>55,#0a100c)"<% } %>>
+        <% if (g.coverUrl) { %><img src="<%= g.coverUrl %>" alt="<%= g.title %>"><% } else { %><%= g.title %><% } %>
+      </div>
+      <div class="body">
+        <span class="status status-<%= g.status %>"><%= g.status %></span>
+        <h3 style="margin:8px 0 4px"><%= g.title %></h3>
+        <p class="hint"><%= g.tagline || '' %></p>
+      </div>
+    </a>
+  <% }) %>
+</div>
+<script src="/static/games/js/anim.js"></script>
+<%- include('../partials/foot') %>

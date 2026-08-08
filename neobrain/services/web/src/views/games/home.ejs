@@ -1,20 +1,43 @@
 <%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
 <section class="game-hero">
-  <h1 class="glitch" data-text="5mb2 GAMES">5mb2 GAMES</h1>
-  <p class="lead">Инди-игры, анонсы, патчи и приколюшки. Быстро, ярко, без тяжёлых фреймворков.</p>
+  <h1 class="glitch" data-text="5MB2 GAMES">5MB2 GAMES</h1>
+  <p class="lead" style="margin:12px auto 20px">Инди-студия: делаем яркие игры, честные патчи и немного магии.
+     Быстро, стильно, без тяжёлых фреймворков.</p>
+  <div class="row" style="justify-content:center">
+    <a class="btn" href="/games/catalog">Все игры</a>
+    <a class="btn-ghost" href="/games/fun">Приколюшки</a>
+  </div>
 </section>
+
+<% if (featured && featured.length) { %>
+<h2>Избранное</h2>
+<div class="catalog">
+  <% featured.forEach(function(g){ %>
+    <a class="game-card reveal" href="/games/game/<%= g.slug %>">
+      <div class="cover" <% if (g.accent) { %>style="background:linear-gradient(135deg,<%= g.accent %>55,#0a100c)"<% } %>>
+        <% if (g.coverUrl) { %><img src="<%= g.coverUrl %>" alt="<%= g.title %>"><% } else { %><%= g.title %><% } %>
+      </div>
+      <div class="body">
+        <span class="status status-<%= g.status %>"><%= g.status %></span>
+        <h3 style="margin:8px 0 4px"><%= g.title %></h3>
+        <p class="hint"><%= g.tagline || '' %></p>
+      </div>
+    </a>
+  <% }) %>
+</div>
+<% } %>
 
 <h2>Свежее</h2>
 <div class="feed">
-  <% if (items.length === 0) { %>
-    <p class="hint">Пока пусто — скоро здесь появятся анонсы. Запусти seed, чтобы увидеть демо-контент.</p>
+  <% if (!items || items.length === 0) { %>
+    <p class="hint">Пока пусто — добавь контент в админ-CMS или запусти seed.</p>
   <% } %>
-  <% items.forEach(function(it){ %>
+  <% (items||[]).forEach(function(it){ %>
     <article class="feed-card reveal">
       <span class="tag tag-<%= it.kind %>"><%= it.kind %></span>
-      <h3><a href="/games/game/<%= it.gameSlug %>"><%= it.title %></a></h3>
       <% if (it.version) { %><span class="ver">v<%= it.version %></span><% } %>
-      <p><%- it.body.slice(0, 160) %>…</p>
+      <h3 style="margin:8px 0 6px"><a href="/games/game/<%= it.gameSlug %>"><%= it.title %></a></h3>
+      <p><%- it.body.slice(0, 150) %>…</p>
     </article>
   <% }) %>
 </div>

@@ -1,0 +1,61 @@
+<%- include('../partials/head', { title: title, user: user, site: 'neobrain' }) %>
+<h1>CMS студии 5MB2</h1>
+<p class="lead">Добавляй игры, релизы/патчи/новости и страницы — <b>без правки кода</b>.
+   Публикация релиза идёт через очередь (worker).</p>
+<div class="row"><a class="btn-ghost" href="/neobrain/admin">← Дашборд расходов</a>
+  <a class="btn-ghost" href="/games/catalog" target="_blank">Открыть каталог игр ↗</a></div>
+
+<section class="cards">
+  <!-- Новая игра -->
+  <form class="card" id="gameForm">
+    <h3>➕ Новая игра</h3>
+    <input name="slug" placeholder="slug (напр. pixel-quest)" required>
+    <input name="title" placeholder="Название" required>
+    <input name="tagline" placeholder="Короткий слоган">
+    <input name="coverUrl" placeholder="URL обложки (необязательно)">
+    <input name="playUrl" placeholder="URL «играть/скачать» (необязательно)">
+    <input name="accent" placeholder="Акцент #76b900 (необязательно)">
+    <label>Статус
+      <select name="status"><option value="dev">в разработке</option>
+        <option value="soon">скоро</option><option value="released">вышла</option></select>
+    </label>
+    <label><input type="checkbox" name="featured" style="width:auto"> в «Избранное» на главной</label>
+    <textarea name="description" rows="3" placeholder="Описание (HTML можно)"></textarea>
+    <button class="btn" type="submit">Создать игру</button>
+    <p class="msg" id="gameMsg"></p>
+  </form>
+
+  <!-- Новый релиз/патч/новость -->
+  <form class="card" id="releaseForm">
+    <h3>📰 Релиз / патч / новость</h3>
+    <input name="gameSlug" placeholder="slug игры (напр. pixel-quest)" required>
+    <label>Тип
+      <select name="kind"><option value="news">новость</option><option value="announce">анонс</option>
+        <option value="release">релиз</option><option value="patch">патч</option></select>
+    </label>
+    <input name="title" placeholder="Заголовок" required>
+    <input name="version" placeholder="Версия (для патча, напр. 1.0.1)">
+    <textarea name="body" rows="3" placeholder="Текст (HTML можно)" required></textarea>
+    <button class="btn" type="submit">Создать черновик</button>
+    <p class="msg" id="releaseMsg"></p>
+  </form>
+</section>
+
+<!-- Черновики релизов + публикация через очередь -->
+<div class="card">
+  <h3>Черновики и публикация</h3>
+  <p class="hint">Нажми «Опубликовать» — задача уйдёт в очередь game-release, worker выставит published.</p>
+  <div id="releaseList" class="list">Загрузка…</div>
+</div>
+
+<!-- Редактор страницы «О студии» -->
+<form class="card" id="pageForm">
+  <h3>Страница «О студии»</h3>
+  <input name="title" placeholder="Заголовок страницы" value="О студии 5MB2" required>
+  <textarea name="html" rows="5" placeholder="HTML контента страницы" required></textarea>
+  <button class="btn" type="submit">Сохранить страницу</button>
+  <p class="msg" id="pageMsg"></p>
+</form>
+
+<script src="/static/admin/cms.js"></script>
+<%- include('../partials/foot') %>

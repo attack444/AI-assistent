@@ -1,0 +1,14 @@
+<%- include('../partials/head', { title: title, user: user, site: 'games' }) %>
+<% if (page && page.html) { %>
+  <h1><%= page.title %></h1>
+  <div class="prose"><%- page.html %></div>
+<% } else { %>
+  <h1>О студии 5MB2</h1>
+  <div class="prose">
+    <p class="lead">Маленькая инди-студия, где важнее идея и настроение, чем размер бюджета.</p>
+    <p>Мы делаем короткие выразительные игры, честно пишем патч-ноуты и любим эксперименты
+       с визуалом. Эта страница редактируется из админ-CMS (site=games, slug=about) — без правки кода.</p>
+    <p class="hint">Контакты появятся здесь после заполнения страницы в админке.</p>
+  </div>
+<% } %>
+<%- include('../partials/foot') %>

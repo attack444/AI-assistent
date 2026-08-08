@@ -1,58 +1,91 @@
-/* 5mb2 GAMES — тёмная неоновая тема + анимации (чистый CSS). */
-:root{--bg:#0a0a12;--panel:#14141f;--ink:#e8e8f0;--muted:#8b8ba7;--neon:#ff2e97;--neon2:#22d3ee;--line:#26263a}
+/* =============================================================================
+   5MB2 GAMES — фирменный тёмный стиль студии.
+   Палитра перенесена с бренда 5MB2 (тема 5mb2-dark): NVIDIA-green на чёрном.
+   Шрифты: Unbounded (заголовки), Manrope (текст).
+   Только CSS/JS, без тяжёлых фреймворков — быстро на мобильных.
+============================================================================= */
+:root{
+  --bg:#060806; --bg2:#0a100c; --ink:#eef6ef; --muted:#9aada0;
+  --accent:#76b900; --accent2:#b6f000; --accent-ink:#061006;
+  --danger:#ff8a80; --line:rgba(118,185,0,.16); --glow:rgba(118,185,0,.32);
+}
 *{box-sizing:border-box}
-body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#1b1b2e,#0a0a12);color:var(--ink);line-height:1.55}
-a{color:var(--neon2);text-decoration:none}
-.topbar{display:flex;align-items:center;gap:18px;padding:14px 22px;background:rgba(20,20,31,.8);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;flex-wrap:wrap}
-.brand{font-weight:900;font-size:20px;color:#fff;text-shadow:0 0 10px var(--neon)}
-.topbar nav{display:flex;gap:16px;flex:1;flex-wrap:wrap}
+body{margin:0;font-family:Manrope,system-ui,Segoe UI,Roboto,sans-serif;background:
+  radial-gradient(1000px 500px at 50% -10%,rgba(118,185,0,.10),transparent),var(--bg);
+  color:var(--ink);line-height:1.6}
+h1,h2,h3,.brand,.glitch{font-family:Unbounded,Manrope,sans-serif;color:#fff}
+a{color:var(--accent2);text-decoration:none}
+
+.topbar{display:flex;align-items:center;gap:16px;padding:14px 22px;background:rgba(6,8,6,.85);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;flex-wrap:wrap}
+.brand{font-weight:800;font-size:20px;color:#fff;display:flex;align-items:center;gap:8px}
+.brand::before{content:"";width:14px;height:14px;background:var(--accent);border-radius:3px;box-shadow:0 0 12px var(--glow)}
+.topbar nav{display:flex;gap:14px;flex:1;flex-wrap:wrap}
 .topbar nav a,.topbar .auth a{color:var(--muted)}
-.topbar nav a:hover{color:#fff;text-shadow:0 0 8px var(--neon2)}
+.topbar nav a:hover{color:#fff;text-shadow:0 0 8px var(--glow)}
 .auth{display:flex;gap:12px;align-items:center}
-.container{max-width:1040px;margin:0 auto;padding:28px 20px}
-.btn{background:linear-gradient(90deg,var(--neon),var(--neon2));color:#0a0a12;border:none;padding:11px 20px;border-radius:10px;font-weight:800;cursor:pointer}
+.container{max-width:1080px;margin:0 auto;padding:28px 20px}
+
+.btn{background:var(--accent);color:var(--accent-ink);border:none;padding:11px 20px;border-radius:10px;font-weight:800;cursor:pointer;box-shadow:0 0 0 1px var(--glow)}
+.btn:hover{background:var(--accent2);box-shadow:0 0 18px var(--glow)}
 .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:10px 18px;border-radius:10px;cursor:pointer;font-weight:700}
-.lead{color:var(--muted);font-size:18px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.lead{color:var(--muted);font-size:18px;max-width:720px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px}
 .hint{color:var(--muted);font-size:13px}
+input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;margin:6px 0;background:#0d140f;color:var(--ink)}
+label{font-weight:700;font-size:14px;display:block;margin-top:8px}
 
 /* Hero + глитч */
-.game-hero{text-align:center;padding:60px 0}
-.glitch{font-size:56px;font-weight:900;position:relative;color:#fff;letter-spacing:2px}
+.game-hero{text-align:center;padding:64px 0}
+.glitch{font-size:64px;font-weight:800;position:relative;color:#fff;letter-spacing:1px;line-height:1.05}
 .glitch::before,.glitch::after{content:attr(data-text);position:absolute;left:0;right:0}
-.glitch::before{color:var(--neon);animation:glitch 2.5s infinite;clip-path:inset(0 0 55% 0)}
-.glitch::after{color:var(--neon2);animation:glitch 3s infinite reverse;clip-path:inset(55% 0 0 0)}
+.glitch::before{color:var(--accent);animation:glitch 2.5s infinite;clip-path:inset(0 0 55% 0)}
+.glitch::after{color:var(--accent2);animation:glitch 3s infinite reverse;clip-path:inset(55% 0 0 0)}
 @keyframes glitch{0%,100%{transform:translate(0)}20%{transform:translate(-3px,1px)}40%{transform:translate(3px,-1px)}60%{transform:translate(-2px,2px)}80%{transform:translate(2px,-2px)}}
 
-/* Лента карточек с «появлением» */
-.feed{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0}
-.feed-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;transition:transform .3s,box-shadow .3s}
-.feed-card:hover{transform:translateY(-4px);box-shadow:0 10px 30px rgba(255,46,151,.2)}
-.reveal{opacity:0;transform:translateY(20px);transition:opacity .5s,transform .5s}
-.reveal.visible{opacity:1;transform:none}
+/* Каталог/лента карточек */
+.feed,.catalog{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0}
+.feed-card,.game-card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;overflow:hidden;transition:transform .3s,box-shadow .3s}
+.feed-card{padding:18px}
+.feed-card:hover,.game-card:hover{transform:translateY(-4px);box-shadow:0 12px 34px var(--glow)}
+.game-card .cover{height:150px;background:linear-gradient(135deg,rgba(118,185,0,.25),rgba(6,8,6,.6));display:flex;align-items:center;justify-content:center;font-family:Unbounded;font-size:22px;color:#fff}
+.game-card .cover img{width:100%;height:100%;object-fit:cover}
+.game-card .body{padding:14px}
+.status{font-size:11px;text-transform:uppercase;font-weight:800;padding:3px 8px;border-radius:20px;border:1px solid var(--line)}
+.status-released{color:var(--accent2)}.status-dev{color:#ffd21e}.status-soon{color:#8ab4ff}
 .tag{font-size:11px;text-transform:uppercase;font-weight:800;padding:3px 8px;border-radius:20px}
-.tag-announce{background:#3b2f00;color:#ffd21e}.tag-release{background:#052e1a;color:#22c55e}
+.tag-announce{background:#3b2f00;color:#ffd21e}.tag-release{background:#0e2b00;color:var(--accent2)}
 .tag-patch{background:#0a2540;color:#38bdf8}.tag-news{background:#2a0a2e;color:#e879f9}
 .ver{color:var(--muted);font-size:12px;margin-left:6px}
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .5s,transform .5s}
+.reveal.visible{opacity:1;transform:none}
+
+/* Страница игры */
+.game-detail .hero-cover{height:260px;border-radius:16px;border:1px solid var(--line);
+  background:linear-gradient(135deg,rgba(118,185,0,.28),rgba(6,8,6,.7));display:flex;align-items:center;justify-content:center;
+  font-family:Unbounded;font-size:40px;color:#fff;margin-bottom:16px;overflow:hidden}
+.game-detail .hero-cover img{width:100%;height:100%;object-fit:cover}
+.timeline{border-left:2px solid var(--line);margin:16px 0;padding-left:18px}
+.timeline .item{margin-bottom:16px;position:relative}
+.timeline .item::before{content:"";position:absolute;left:-25px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--glow)}
 
 /* Галерея анимаций */
 .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-top:16px}
-.tile{height:120px;display:flex;align-items:center;justify-content:center;border-radius:14px;font-weight:800;background:var(--panel);border:1px solid var(--line)}
-.float{animation:float 3s ease-in-out infinite}
-@keyframes float{50%{transform:translateY(-14px)}}
-.pulse{animation:pulse 1.5s infinite}
-@keyframes pulse{50%{box-shadow:0 0 24px var(--neon)}}
-.spin{animation:spin 4s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.shake{animation:shake .6s infinite}
-@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
-.gradient-move{background:linear-gradient(270deg,var(--neon),var(--neon2),#a855f7);background-size:600% 600%;animation:grad 6s ease infinite;color:#0a0a12}
+.tile{height:120px;display:flex;align-items:center;justify-content:center;border-radius:14px;font-weight:800;background:var(--bg2);border:1px solid var(--line)}
+.float{animation:float 3s ease-in-out infinite}@keyframes float{50%{transform:translateY(-14px)}}
+.pulse{animation:pulse 1.5s infinite}@keyframes pulse{50%{box-shadow:0 0 24px var(--glow)}}
+.spin{animation:spin 4s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.shake{animation:shake .6s infinite}@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.gradient-move{background:linear-gradient(270deg,var(--accent),var(--accent2),#3ddc84);background-size:600% 600%;animation:grad 6s ease infinite;color:var(--accent-ink)}
 @keyframes grad{0%{background-position:0 50%}50%{background-position:100% 50%}100%{background-position:0 50%}}
-.neon{color:#fff;text-shadow:0 0 8px var(--neon),0 0 16px var(--neon2);animation:pulse 2s infinite}
+.neon{color:#fff;text-shadow:0 0 8px var(--accent),0 0 16px var(--accent2);animation:pulse 2s infinite}
 
 /* Приколюшки */
 .fun{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:16px}
 .runner-area{position:relative;height:120px;border:1px dashed var(--line);border-radius:12px;overflow:hidden;margin-top:8px}
-canvas{max-width:100%;background:#0a0a12;border-radius:8px;margin-top:8px}
+canvas{max-width:100%;background:#060806;border-radius:8px;margin-top:8px}
 .footer{border-top:1px solid var(--line);padding:20px;text-align:center;color:var(--muted);font-size:14px}
-h1,h2,h3{color:#fff}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.msg{color:var(--muted);font-size:14px;min-height:18px}
+.prose{max-width:760px}
+.prose h2{margin-top:24px}

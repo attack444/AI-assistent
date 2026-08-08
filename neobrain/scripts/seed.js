@@ -29,17 +29,44 @@ async function main() {
   const p1 = await prisma.project.create({ data: { ownerId: client.id, name: "Лендинг курса", repoUrl: "https://github.com/example/landing", domain: "course.example" } });
   const p2 = await prisma.project.create({ data: { ownerId: client.id, name: "Магазин", repoUrl: "https://github.com/example/shop", domain: "shop.example" } });
 
-  // Релизы игр для 5mb2 (опубликованные).
+  // --- Каталог игр студии 5MB2 (фирменный тёмно-зелёный стиль) ---
   const now = new Date();
+  const games = [
+    { slug: "pixel-quest", title: "Pixel Quest", tagline: "Пиксельное приключение на 20 уровней", status: "released", featured: true, accent: "#76b900",
+      description: "<p>Ретро-платформер про храброго пикселя. 20 уровней, секреты, боссы и честная сложность.</p>" },
+    { slug: "neon-racer", title: "Neon Racer", tagline: "Синтвейв-гонки по неоновым трассам", status: "soon", featured: true, accent: "#b6f000",
+      description: "<p>Аркадные гонки с процедурными трассами и драйвовым саундтреком. Скоро.</p>" },
+    { slug: "cube-lab", title: "Cube Lab", tagline: "Головоломки с кубами и физикой", status: "dev", featured: false, accent: "#38bdf8",
+      description: "<p>Медитативные головоломки: двигай кубы, ломай физику, находи выход.</p>" },
+  ];
+  for (const g of games) {
+    await prisma.game.upsert({ where: { slug: g.slug }, update: g, create: g });
+  }
+
+  // --- Релизы/патчи/новости (опубликованные) ---
   const releases = [
     { gameSlug: "pixel-quest", kind: "release", title: "Pixel Quest — релиз!", version: "1.0.0", body: "Наша первая игра вышла! Пиксельные приключения, 20 уровней." },
     { gameSlug: "pixel-quest", kind: "patch", title: "Патч баланса", version: "1.0.1", body: "Поправили сложность босса, добавили автосейв." },
     { gameSlug: "neon-racer", kind: "announce", title: "Анонс Neon Racer", body: "Скоро — неоновые гонки с синтвейв-саундтреком." },
-    { gameSlug: "neon-racer", kind: "news", title: "Как мы делали трассы", body: "Небольшой девлог про процедурную генерацию трасс." },
+    { gameSlug: "cube-lab", kind: "news", title: "Девлог: физика кубов", body: "Небольшой рассказ, как мы делали «сочную» физику кубов." },
   ];
   for (const r of releases) {
     await prisma.gameRelease.create({ data: { ...r, published: true, publishedAt: now } });
   }
+
+  // --- Страница «О студии» (CMS) ---
+  await prisma.pageStatic.upsert({
+    where: { site_slug: { site: "games", slug: "about" } },
+    update: {},
+    create: {
+      site: "games",
+      slug: "about",
+      title: "О студии 5MB2",
+      html: "<p class='lead'>5MB2 — небольшая инди-студия. Делаем короткие выразительные игры и честные патчи.</p>" +
+        "<h2>Как мы работаем</h2><p>Идея → прототип → релиз → патчи по фидбеку игроков.</p>" +
+        "<h2>Контакты</h2><p>hello@5mb2.ru · VK: 5mb2online</p>",
+    },
+  });
 
   // Немного логов расхода токенов за последние дни (для графиков дашборда).
   const models = ["deepseek-chat", "claude-3-5-sonnet"];
