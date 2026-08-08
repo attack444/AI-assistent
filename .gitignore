@@ -1,1 +1,9 @@
 .aider*
+.venv
+AI-assistent
+__pycache__
+*.pyc
+.venv
+AI-assistent
+__pycache__
+*.pyc
